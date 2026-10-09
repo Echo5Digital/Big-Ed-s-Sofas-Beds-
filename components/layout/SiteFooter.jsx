@@ -42,13 +42,13 @@ export default function SiteFooter() {
   return (
     <footer className="bg-brand-charcoal text-white">
       <Container className="grid grid-cols-2 gap-10 py-12 sm:grid-cols-2 lg:grid-cols-5">
-        <div className="col-span-2 flex flex-col gap-3 lg:col-span-1">
+        <div className="col-span-2 flex flex-col items-start gap-3 lg:col-span-1">
           <Image
             src={siteConfig.logo.src}
             alt={siteConfig.logo.alt}
             width={siteConfig.logo.width}
             height={siteConfig.logo.height}
-            className="h-16 w-auto"
+            className="h-16 w-auto shrink-0 self-start"
           />
           <p className="text-xs tracking-wide text-white/50">
             QUALITY FURNITURE &bull; COMFORT FOR LIFE

@@ -48,7 +48,7 @@ export default function SearchBox({ className = "" }) {
       {showResults && (
         <ul
           id={listId}
-          className="absolute right-0 z-40 mt-2 w-full min-w-[20rem] overflow-hidden rounded-xl border border-brand-charcoal/10 bg-white shadow-lg"
+          className="absolute right-0 left-0 z-40 mt-2 overflow-hidden rounded-xl border border-brand-charcoal/10 bg-white shadow-lg"
         >
           {results.length > 0 ? (
             results.map((product) => (

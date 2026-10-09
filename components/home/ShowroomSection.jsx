@@ -16,8 +16,8 @@ export default function ShowroomSection() {
         <div className="relative">
           <div className="relative aspect-4/3 w-full overflow-hidden rounded-2xl shadow-md">
             <Image
-              src="https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&h=750&fit=crop&q=80"
-              alt="Big Ed's Sofas & Beds showroom storefront exterior"
+              src="/images/showroom/showroom-interior-main.jpg"
+              alt="Leather sectional sofa on display in the Big Ed's Sofas & Beds showroom"
               fill
               sizes="(max-width: 1024px) 100vw, 50vw"
               className="object-cover"

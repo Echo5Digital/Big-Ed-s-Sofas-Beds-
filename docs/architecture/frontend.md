@@ -134,8 +134,10 @@ Integration points this frontend is already shaped for:
 - Real product names, SKUs, prices, inventory, and photography.
 - Verified business address, phone number, and hours
   (`lib/mock-data/site-config.js`).
-- Confirmed financing partners (or removal of the financing section) —
-  provider names currently shown are generic placeholders, not confirmed
-  partnerships.
+- Confirmed financing partners — real provider logos (Synchrony, Affirm,
+  Klarna, Acima) are displayed in `components/home/FinancingBanner.jsx`
+  (`public/images/financing/`), but displaying a logo does not by itself
+  confirm an active partnership. Verify each partnership with Big Ed's (or
+  remove the corresponding logo) before production.
 - Real customer testimonials with consent (current ones are illustrative).
 - Real social media profile URLs.

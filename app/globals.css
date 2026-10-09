@@ -22,6 +22,7 @@
   --font-display: var(--font-fredoka), ui-rounded, sans-serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-script: var(--font-caveat), cursive;
+  --font-poster: var(--font-luckiest-guy), var(--font-fredoka), ui-rounded, sans-serif;
 }
 
 body {
@@ -34,6 +35,15 @@ body {
   .text-stroke-dark {
     -webkit-text-stroke: 1.5px #5b0309;
     paint-order: stroke fill;
+  }
+
+  .hero-gold-text {
+    color: #ffee00;
+    background: linear-gradient(180deg, #ffffe8 0%, #fff066 30%, #ffee00 55%, #ffee00 100%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    -webkit-text-stroke: 0.5px #a8450a;
   }
 
   .scrollbar-hide {
