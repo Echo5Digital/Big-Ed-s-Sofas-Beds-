@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+:root {
+  --color-brand-red: #b30813;
+  --color-brand-red-dark: #85040a;
+  --color-brand-gold: #f7bf32;
+  --color-brand-gold-dark: #d99f1b;
+  --color-brand-cream: #fbf6ea;
+  --color-brand-charcoal: #171717;
+  --color-brand-charcoal-soft: #2a2622;
+}
+
+@theme inline {
+  --color-brand-red: var(--color-brand-red);
+  --color-brand-red-dark: var(--color-brand-red-dark);
+  --color-brand-gold: var(--color-brand-gold);
+  --color-brand-gold-dark: var(--color-brand-gold-dark);
+  --color-brand-cream: var(--color-brand-cream);
+  --color-brand-charcoal: var(--color-brand-charcoal);
+  --color-brand-charcoal-soft: var(--color-brand-charcoal-soft);
+
+  --font-display: var(--font-fredoka), ui-rounded, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-script: var(--font-caveat), cursive;
+}
+
+body {
+  background: var(--color-brand-cream);
+  color: var(--color-brand-charcoal);
+  font-family: var(--font-sans);
+}
+
+@layer utilities {
+  .text-stroke-dark {
+    -webkit-text-stroke: 1.5px #5b0309;
+    paint-order: stroke fill;
+  }
+
+  .scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
