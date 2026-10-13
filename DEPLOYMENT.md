@@ -51,8 +51,9 @@ You can reuse this same database for Render (point Render's `DATABASE_URL` at it
    - Root Directory: leave as repo root (the build command `cd`s as needed).
    - Build Command:
      ```
-     corepack enable && corepack prepare pnpm@9.15.0 --activate && pnpm install --frozen-lockfile && pnpm --filter @big-eds/database generate && pnpm --filter @big-eds/database migrate:deploy
+     pnpm install --frozen-lockfile && pnpm --filter @big-eds/database generate && pnpm --filter @big-eds/database migrate:deploy
      ```
+     (Don't add `corepack enable` — Render's filesystem is read-only where corepack tries to symlink the pnpm binary. Render's Node runtime already has pnpm available; pin the version via the `PNPM_VERSION` env var instead, see below.)
    - Start Command: `pnpm --filter @big-eds/api start`
    - Health Check Path: `/health`
 3. Add environment variables (Render dashboard → your service → Environment):
@@ -60,6 +61,7 @@ You can reuse this same database for Render (point Render's `DATABASE_URL` at it
    | Key | Value |
    |---|---|
    | `NODE_ENV` | `production` |
+   | `PNPM_VERSION` | `9.15.0` |
    | `DATABASE_URL` | the Postgres Internal Connection String from step 1 |
    | `PORT` | `4000` |
    | `JWT_ACCESS_SECRET` | a long random string (`openssl rand -base64 48`) |
@@ -125,3 +127,4 @@ You mentioned a possible future setup with both apps under one parent domain via
 - **Render build fails on `prisma migrate deploy` with "No migration found"**: you skipped step 0 — generate and commit the initial migration locally first.
 - **Vercel build fails with "command not found: pnpm"**: shouldn't happen (Vercel's Next.js framework preset handles pnpm automatically when it detects `pnpm-lock.yaml` at the repo root), but if it does, check that `packageManager` in the root `package.json` is still set correctly.
 - **Vercel build fails with "No Next.js version detected"**: this means something is overriding the Install Command (in the dashboard or in `vercel.json`) in a way that skips the real `pnpm install` — Vercel's framework-detection step needs `next` actually present in `node_modules`, not just listed in `package.json`. Fix: don't set a custom Install/Build Command in the Vercel project settings, and keep `apps/storefront/vercel.json` / `apps/admin/vercel.json` to just `{"framework": "nextjs"}` — let Vercel's native pnpm-workspace detection (triggered by finding `pnpm-lock.yaml` at the repo root) handle the install.
+- **Render build fails with `EROFS: read-only file system, unlink '/usr/bin/pnpm'`**: caused by running `corepack enable` on Render — its build filesystem has `/usr/bin` mounted read-only, so corepack can't symlink the pnpm binary there. Render's Node runtime already ships with pnpm; don't call `corepack enable`/`corepack prepare` at all — just set a `PNPM_VERSION` environment variable (e.g. `9.15.0`) to pin the version, which `render.yaml` already does.
