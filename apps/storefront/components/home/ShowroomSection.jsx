@@ -57,7 +57,7 @@ export default function ShowroomSection() {
             ))}
           </ul>
 
-          <Button href="#" variant="primary" size="lg" icon={MapPin} iconPosition="left" className="mt-4">
+          <Button href="/contact" variant="primary" size="lg" icon={MapPin} iconPosition="left" className="mt-4">
             Get Directions
           </Button>
         </div>

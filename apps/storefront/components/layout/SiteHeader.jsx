@@ -51,7 +51,7 @@ export default function SiteHeader() {
               <SearchBox />
             </div>
             <Link
-              href="#"
+              href="/wishlist"
               aria-label={`Wishlist, ${wishlistIds.length} item${wishlistIds.length === 1 ? "" : "s"}`}
               className="relative rounded-full p-1.5 text-brand-charcoal hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-brand-red"
             >
@@ -63,14 +63,14 @@ export default function SiteHeader() {
               )}
             </Link>
             <Link
-              href="#"
+              href="/account"
               aria-label="Account"
               className="rounded-full p-1.5 text-brand-charcoal hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-brand-red"
             >
               <User className="size-5" aria-hidden="true" />
             </Link>
             <Link
-              href="#"
+              href="/cart"
               aria-label={`Shopping cart, ${cartCount} item${cartCount === 1 ? "" : "s"}`}
               className="relative rounded-full p-1.5 text-brand-charcoal hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-brand-red"
             >
@@ -84,10 +84,10 @@ export default function SiteHeader() {
           </div>
 
           <div className="flex w-full items-center gap-1.5">
-            <Button href="#" variant="primary" size="sm" icon={ArrowRight} className="flex-1">
+            <Button href="/shop" variant="primary" size="sm" icon={ArrowRight} className="flex-1">
               Shop Now
             </Button>
-            <Button href="#" variant="gold" size="sm" icon={MapPin} iconPosition="left" className="flex-1">
+            <Button href="/about" variant="gold" size="sm" icon={MapPin} iconPosition="left" className="flex-1">
               Visit Showroom
             </Button>
           </div>
@@ -95,7 +95,7 @@ export default function SiteHeader() {
 
         <div className="ml-auto flex items-center gap-1 sm:gap-1.5 lg:hidden">
           <Link
-            href="#"
+            href="/wishlist"
             aria-label={`Wishlist, ${wishlistIds.length} item${wishlistIds.length === 1 ? "" : "s"}`}
             className="relative rounded-full p-1.5 text-brand-charcoal hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-brand-red"
           >
@@ -107,14 +107,14 @@ export default function SiteHeader() {
             )}
           </Link>
           <Link
-            href="#"
+            href="/account"
             aria-label="Account"
             className="hidden rounded-full p-1.5 text-brand-charcoal hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-brand-red sm:block"
           >
             <User className="size-5" aria-hidden="true" />
           </Link>
           <Link
-            href="#"
+            href="/cart"
             aria-label={`Shopping cart, ${cartCount} item${cartCount === 1 ? "" : "s"}`}
             className="relative rounded-full p-1.5 text-brand-charcoal hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-brand-red"
           >

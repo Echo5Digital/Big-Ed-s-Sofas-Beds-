@@ -49,11 +49,11 @@ export default function MobileNavigation({ open, onClose }) {
         </nav>
 
         <div className="mt-auto flex flex-col gap-3">
-          <Button href="#" variant="primary" icon={ArrowRight} className="w-full" onClick={onClose}>
+          <Button href="/shop" variant="primary" icon={ArrowRight} className="w-full" onClick={onClose}>
             Shop Now
           </Button>
           <Button
-            href="#"
+            href="/about"
             variant="gold"
             icon={MapPin}
             iconPosition="left"

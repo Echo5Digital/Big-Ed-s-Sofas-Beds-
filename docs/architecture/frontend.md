@@ -1,8 +1,19 @@
-# Frontend Architecture
+# Frontend Architecture (Storefront) — Historical: Homepage Phase
 
-This document describes the current frontend-only implementation of the Big Ed's
-Sofas & Beds homepage and how it is expected to integrate with the future
-backend platform.
+> **Note:** This app now lives at `apps/storefront/` inside the
+> `big-eds-retail-os` pnpm monorepo (it was previously the repo root). See
+> `docs/architecture/overview.md` for how it fits into the full platform. The
+> backend this doc describes as "future" (`apps/api`) now exists — see that
+> overview doc and `docs/database/schema.md`. Destination pages for every
+> nav/footer link (shop categories, product detail, cart, checkout, account,
+> wishlist, about, contact, financing, careers, blog, legal pages) have since
+> been built — see `apps/storefront/app/` for the full route list. Everything
+> below describes the original homepage-only phase and is kept for the
+> conventions it documents; treat anything it calls "not implemented yet" as
+> superseded wherever a corresponding page now exists.
+
+This document describes the original frontend-only implementation of the Big
+Ed's Sofas & Beds homepage and the conventions that later pages followed.
 
 ## Stack
 

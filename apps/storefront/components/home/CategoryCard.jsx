@@ -5,7 +5,7 @@ import { ChevronRight } from "lucide-react";
 export default function CategoryCard({ category }) {
   return (
     <Link
-      href="#"
+      href={`/shop/${category.slug}`}
       aria-label={`Shop ${category.name}`}
       className="group relative block aspect-[4/3] w-[42vw] shrink-0 snap-start overflow-hidden rounded-xl shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red sm:w-auto sm:shrink sm:snap-none"
     >

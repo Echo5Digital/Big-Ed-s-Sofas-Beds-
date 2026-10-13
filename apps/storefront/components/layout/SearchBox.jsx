@@ -54,7 +54,7 @@ export default function SearchBox({ className = "" }) {
             results.map((product) => (
               <li key={product.id}>
                 <Link
-                  href="#"
+                  href={`/products/${product.slug}`}
                   className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-brand-charcoal hover:bg-brand-cream"
                 >
                   <span className="truncate">{product.name}</span>

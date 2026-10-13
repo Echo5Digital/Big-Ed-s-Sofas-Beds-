@@ -1,0 +1,6 @@
+{
+  "name": "@big-eds/pos",
+  "version": "0.0.0",
+  "private": true,
+  "description": "In-store cashier POS — deferred. See README.md in this directory."
+}

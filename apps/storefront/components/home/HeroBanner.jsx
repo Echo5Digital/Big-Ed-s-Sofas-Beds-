@@ -52,10 +52,10 @@ export default function HeroBanner() {
           </p>
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
-            <Button href="#" variant="primary" size="lg" icon={ArrowRight}>
+            <Button href="/shop" variant="primary" size="lg" icon={ArrowRight}>
               Shop Now
             </Button>
-            <Button href="#" variant="gold" size="lg" icon={ArrowRight}>
+            <Button href="/about" variant="gold" size="lg" icon={ArrowRight}>
               Visit Our Showroom
             </Button>
           </div>

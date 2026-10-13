@@ -14,7 +14,7 @@ export default function FeaturedProducts() {
           subtitle="Stylish looks. Everyday comfort. Great prices."
           action={
             <Link
-              href="#"
+              href="/shop"
               className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-red-dark hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red"
             >
               View All Products

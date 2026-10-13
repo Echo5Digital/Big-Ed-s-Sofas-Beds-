@@ -1,8 +1,9 @@
 // DEMO DATA ONLY.
-// Names, prices, ratings, review counts, and badges below are visual placeholders
-// copied from the design reference. They are NOT verified inventory, pricing, or
-// reviews and MUST be replaced with real data from the backend product service
-// before this site is used in production.
+// Names, prices, ratings, review counts, badges, descriptions, dimensions and
+// stock/location info below are visual placeholders written for this demo
+// frontend. They are NOT verified inventory, pricing, or reviews and MUST be
+// replaced with real data from the backend product/inventory service before
+// this site is used in production.
 
 export const products = [
   {
@@ -17,6 +18,11 @@ export const products = [
     badge: "BEST SELLER",
     rating: 4.5,
     reviewCount: 142,
+    description:
+      "The Harper Sofa pairs a clean, track-arm silhouette with a deep seat cushion for everyday comfort. Durable woven upholstery and a solid hardwood frame make it equally at home in a casual family room or a tidy apartment living room.",
+    dimensions: { width: 84, height: 34, depth: 38 },
+    stockStatus: "in-stock",
+    stockLocations: ["Showroom", "Warehouse"],
   },
   {
     id: "mason-sectional",
@@ -30,6 +36,11 @@ export const products = [
     badge: "SALE",
     rating: 4.5,
     reviewCount: 87,
+    description:
+      "Built for movie nights and big families, the Mason 3-Piece Sectional wraps a generous chaise and oversized back cushions around a reinforced steel seat frame. Stain-resistant fabric and reversible cushions keep it looking great for years.",
+    dimensions: { width: 112, height: 36, depth: 65 },
+    stockStatus: "in-stock",
+    stockLocations: ["Showroom", "Warehouse"],
   },
   {
     id: "logan-recliner",
@@ -43,6 +54,29 @@ export const products = [
     badge: null,
     rating: 4.5,
     reviewCount: 213,
+    description:
+      "The Logan Recliner glides smoothly from upright to full recline with a padded headrest and footrest for total relaxation. Soft-touch upholstery and a sturdy base make it a long-lasting favorite chair for any living room or den.",
+    dimensions: { width: 32, height: 40, depth: 38 },
+    stockStatus: "in-stock",
+    stockLocations: ["Showroom"],
+  },
+  {
+    id: "wade-swivel-recliner",
+    name: "Wade Swivel Recliner",
+    slug: "wade-swivel-recliner",
+    sku: "REC-WADE-002",
+    category: "recliners",
+    price: 579.99,
+    compareAtPrice: 649.99,
+    image: "https://images.unsplash.com/photo-1506898667547-42e22a46e125?w=600&h=450&fit=crop&q=80",
+    badge: "SALE",
+    rating: 4.3,
+    reviewCount: 58,
+    description:
+      "The Wade Swivel Recliner adds 360-degree swivel and gentle rocking to a classic reclining chair, so you can face the conversation or the TV without leaving your seat. A padded chaise pad footrest extends fully for all-day comfort.",
+    dimensions: { width: 34, height: 41, depth: 36 },
+    stockStatus: "in-stock",
+    stockLocations: ["Warehouse"],
   },
   {
     id: "chatham-bedroom-set",
@@ -56,6 +90,47 @@ export const products = [
     badge: null,
     rating: 4.5,
     reviewCount: 96,
+    description:
+      "The Chatham 5-Piece Bedroom Set includes a queen bed frame, dresser, mirror, and two nightstands finished in a warm driftwood tone. Clean lines and soft-close drawers bring a coordinated, furniture-store finish to any bedroom.",
+    dimensions: { width: 64, height: 48, depth: 86 },
+    stockStatus: "in-stock",
+    stockLocations: ["Warehouse"],
+  },
+  {
+    id: "brooks-platform-bed",
+    name: "Brooks Upholstered Platform Bed",
+    slug: "brooks-upholstered-platform-bed",
+    sku: "BED-BRKS-QN1",
+    category: "beds",
+    price: 549.99,
+    compareAtPrice: null,
+    image: "https://images.unsplash.com/photo-1631679706909-1844bbd07221?w=600&h=450&fit=crop&q=80",
+    badge: null,
+    rating: 4.6,
+    reviewCount: 64,
+    description:
+      "The Brooks Platform Bed features a tall, channel-tufted upholstered headboard and a slatted platform base that works with or without a box spring. A simple, modern profile that fits bedrooms big and small.",
+    dimensions: { width: 65, height: 48, depth: 86 },
+    stockStatus: "in-stock",
+    stockLocations: ["Showroom", "Warehouse"],
+  },
+  {
+    id: "nora-storage-bed",
+    name: "Nora Storage Bed with Drawers",
+    slug: "nora-storage-bed-with-drawers",
+    sku: "BED-NORA-QN2",
+    category: "beds",
+    price: 699.99,
+    compareAtPrice: 849.99,
+    image: "https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=600&h=450&fit=crop&q=80",
+    badge: "SALE",
+    rating: 4.4,
+    reviewCount: 41,
+    description:
+      "The Nora Storage Bed tucks two full-width drawers under the frame, giving small bedrooms extra space for linens or off-season clothing without the need for a separate dresser. A low-profile footboard keeps the room feeling open.",
+    dimensions: { width: 65, height: 42, depth: 88 },
+    stockStatus: "limited",
+    stockLocations: ["Warehouse"],
   },
   {
     id: "sealy-posturepedic-golden-crest",
@@ -69,6 +144,47 @@ export const products = [
     badge: "SALE",
     rating: 4.5,
     reviewCount: 164,
+    description:
+      "The Sealy Posturepedic Golden Crest combines targeted coil support with a plush pillow-top for pressure relief where you need it most. A reliable choice for back and side sleepers who want a medium-firm feel.",
+    dimensions: { width: 60, height: 13, depth: 80 },
+    stockStatus: "in-stock",
+    stockLocations: ["Showroom", "Warehouse"],
+  },
+  {
+    id: "serta-perfect-sleeper-hybrid",
+    name: "Serta Perfect Sleeper Hybrid Mattress",
+    slug: "serta-perfect-sleeper-hybrid-mattress",
+    sku: "MAT-SRTA-HY1",
+    category: "mattresses",
+    price: 799.99,
+    compareAtPrice: null,
+    image: "https://images.unsplash.com/photo-1631052066420-1733d1f0b4f2?w=600&h=450&fit=crop&q=80",
+    badge: null,
+    rating: 4.4,
+    reviewCount: 102,
+    description:
+      "A hybrid build layers cooling gel memory foam over individually wrapped coils, giving the Perfect Sleeper a balanced feel that sleeps cool and responds quickly when you change positions overnight.",
+    dimensions: { width: 60, height: 12, depth: 80 },
+    stockStatus: "in-stock",
+    stockLocations: ["Warehouse"],
+  },
+  {
+    id: "tempur-cloud-select",
+    name: "Tempur-Cloud Select Mattress",
+    slug: "tempur-cloud-select-mattress",
+    sku: "MAT-TMPR-CS1",
+    category: "mattresses",
+    price: 1399.99,
+    compareAtPrice: 1699.99,
+    image: "https://images.unsplash.com/photo-1634643836960-c8e1e3a0dc1f?w=600&h=450&fit=crop&q=80",
+    badge: "SALE",
+    rating: 4.7,
+    reviewCount: 73,
+    description:
+      "Premium pressure-relieving memory foam contours closely to your body for a soft, cushioned feel. The Tempur-Cloud Select is a top pick for sleepers who want a plush mattress without sacrificing support.",
+    dimensions: { width: 60, height: 11, depth: 80 },
+    stockStatus: "in-stock",
+    stockLocations: ["Showroom"],
   },
   {
     id: "riverside-dining-set",
@@ -82,5 +198,46 @@ export const products = [
     badge: null,
     rating: 4.5,
     reviewCount: 78,
+    description:
+      "The Riverside 6-Piece Dining Set seats the whole family with a solid-top table and six upholstered-seat chairs. A warm wood finish and sturdy construction make it ready for both weeknight dinners and holiday hosting.",
+    dimensions: { width: 72, height: 30, depth: 40 },
+    stockStatus: "in-stock",
+    stockLocations: ["Warehouse"],
+  },
+  {
+    id: "camden-counter-height-set",
+    name: "Camden 5-Piece Counter Height Dining Set",
+    slug: "camden-5-piece-counter-height-dining-set",
+    sku: "DIN-CMDN-005",
+    category: "dining-sets",
+    price: 649.99,
+    compareAtPrice: 749.99,
+    image: "https://images.unsplash.com/photo-1617098900591-3f90928e8c54?w=600&h=450&fit=crop&q=80",
+    badge: "SALE",
+    rating: 4.2,
+    reviewCount: 35,
+    description:
+      "Counter-height seating gives the Camden set a casual, bistro-style feel that works well for open-concept kitchens. Includes a sturdy table and four swivel-seat stools finished in a durable espresso tone.",
+    dimensions: { width: 48, height: 36, depth: 48 },
+    stockStatus: "in-stock",
+    stockLocations: ["Showroom", "Warehouse"],
+  },
+  {
+    id: "willow-bistro-dining-set",
+    name: "Willow 5-Piece Dining Set",
+    slug: "willow-5-piece-dining-set",
+    sku: "DIN-WLLW-005",
+    category: "dining-sets",
+    price: 549.99,
+    compareAtPrice: null,
+    image: "https://images.unsplash.com/photo-1554995207-c18c203602cb?w=600&h=450&fit=crop&q=80",
+    badge: null,
+    rating: 4.1,
+    reviewCount: 29,
+    description:
+      "A compact table and four slat-back chairs make the Willow Dining Set a great fit for apartments, breakfast nooks, and smaller dining rooms that still need everyday seating for four.",
+    dimensions: { width: 42, height: 30, depth: 42 },
+    stockStatus: "limited",
+    stockLocations: ["Warehouse"],
   },
 ];

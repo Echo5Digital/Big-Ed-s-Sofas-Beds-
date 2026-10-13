@@ -28,7 +28,7 @@ export default function DealsBanner() {
               </li>
             ))}
           </ul>
-          <Button href="#" variant="gold" size="lg" icon={ArrowRight}>
+          <Button href="/deals" variant="gold" size="lg" icon={ArrowRight}>
             Shop All Deals
           </Button>
         </div>

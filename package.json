@@ -1,0 +1,23 @@
+{
+  "name": "big-eds-retail-os",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev:storefront": "pnpm --filter @big-eds/storefront dev",
+    "dev:admin": "pnpm --filter @big-eds/admin dev",
+    "dev:api": "pnpm --filter @big-eds/api dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "db:generate": "pnpm --filter @big-eds/database generate",
+    "db:migrate": "pnpm --filter @big-eds/database migrate",
+    "db:seed": "pnpm --filter @big-eds/database seed",
+    "db:studio": "pnpm --filter @big-eds/database studio"
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2"
+  }
+}

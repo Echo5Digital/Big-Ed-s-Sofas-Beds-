@@ -5,16 +5,51 @@
 // demonstrate the interaction pattern the future order/wishlist services
 // will plug into.
 
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useMemo } from "react";
 
 const DemoCartContext = createContext(null);
 
 export function DemoCartProvider({ children }) {
-  const [cartCount, setCartCount] = useState(0);
+  const [cartItems, setCartItems] = useState([]);
   const [wishlistIds, setWishlistIds] = useState([]);
 
-  const addToCart = useCallback(() => {
-    setCartCount((count) => count + 1);
+  const addToCart = useCallback((product, quantity = 1) => {
+    setCartItems((items) => {
+      const existing = items.find((item) => item.productId === product.id);
+      if (existing) {
+        return items.map((item) =>
+          item.productId === product.id
+            ? { ...item, quantity: item.quantity + quantity }
+            : item
+        );
+      }
+      return [
+        ...items,
+        {
+          productId: product.id,
+          slug: product.slug,
+          name: product.name,
+          image: product.image,
+          price: product.price,
+          quantity,
+        },
+      ];
+    });
+  }, []);
+
+  const removeFromCart = useCallback((productId) => {
+    setCartItems((items) => items.filter((item) => item.productId !== productId));
+  }, []);
+
+  const updateQuantity = useCallback((productId, quantity) => {
+    setCartItems((items) => {
+      if (quantity <= 0) {
+        return items.filter((item) => item.productId !== productId);
+      }
+      return items.map((item) =>
+        item.productId === productId ? { ...item, quantity } : item
+      );
+    });
   }, []);
 
   const toggleWishlist = useCallback((productId) => {
@@ -23,7 +58,26 @@ export function DemoCartProvider({ children }) {
     );
   }, []);
 
-  const value = { cartCount, addToCart, wishlistIds, toggleWishlist };
+  const cartCount = useMemo(
+    () => cartItems.reduce((total, item) => total + item.quantity, 0),
+    [cartItems]
+  );
+
+  const cartSubtotal = useMemo(
+    () => cartItems.reduce((total, item) => total + item.price * item.quantity, 0),
+    [cartItems]
+  );
+
+  const value = {
+    cartItems,
+    cartCount,
+    cartSubtotal,
+    addToCart,
+    removeFromCart,
+    updateQuantity,
+    wishlistIds,
+    toggleWishlist,
+  };
 
   return <DemoCartContext.Provider value={value}>{children}</DemoCartContext.Provider>;
 }

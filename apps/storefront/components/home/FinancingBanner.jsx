@@ -48,7 +48,7 @@ export default function FinancingBanner() {
           ))}
         </div>
 
-        <Button href="#" variant="gold" size="lg" icon={ArrowRight}>
+        <Button href="/financing" variant="gold" size="lg" icon={ArrowRight}>
           Learn About Financing
         </Button>
       </Container>
