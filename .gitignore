@@ -48,3 +48,6 @@ packages/database/generated/
 
 # logs
 *.log
+
+# internal planning documents (not for repo distribution)
+Big_Eds_Developer_Kickoff_Plan.pdf
