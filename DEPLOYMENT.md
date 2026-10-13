@@ -81,7 +81,7 @@ Render gives you a URL like `https://big-eds-retail-os-api.onrender.com`. You'll
 ## 2. Vercel — Admin dashboard
 
 1. In Vercel: **Add New → Project**, import this repo.
-2. **Root Directory**: set to `apps/admin` (Vercel's project settings UI, under "Root Directory" — click Edit and select it). This is what makes Vercel treat the subfolder as the app root; the committed `apps/admin/vercel.json` then handles the monorepo-aware build/install commands.
+2. **Root Directory**: set to `apps/admin` (Vercel's project settings UI, under "Root Directory" — click Edit and select it). Vercel detects `pnpm-lock.yaml` at the repo root and automatically runs `pnpm install` from there (resolving the `workspace:*` dependencies correctly), then builds from `apps/admin`. Leave Build/Install/Output Command settings on their defaults — don't override them, and don't add a custom `installCommand` that skips the real install, or Vercel's framework-detection step will fail with "No Next.js version detected" even though `next` is a real dependency (it needs `node_modules` actually populated, not just listed in `package.json`).
 3. Framework Preset: Next.js (auto-detected).
 4. Environment Variables:
 
@@ -102,7 +102,7 @@ Render gives you a URL like `https://big-eds-retail-os-api.onrender.com`. You'll
 ## 3. Vercel — Storefront
 
 1. **Add New → Project** again (a separate Vercel project from the admin one), import the same repo.
-2. **Root Directory**: `apps/storefront`.
+2. **Root Directory**: `apps/storefront`. Same note as the admin app above — leave Vercel's Build/Install/Output Command settings on their defaults.
 3. Framework Preset: Next.js (auto-detected). No environment variables are required for this pass — the storefront doesn't call the API yet (see the note at the top of this doc).
 4. Deploy. Vercel gives you a URL like `https://big-eds-storefront.vercel.app`.
 
@@ -124,3 +124,4 @@ You mentioned a possible future setup with both apps under one parent domain via
 - **CORS error in the browser console**: `CORS_ORIGINS` on Render must match the calling origin *exactly* — same scheme, same host, no path, no trailing slash. Check for `www.` mismatches too.
 - **Render build fails on `prisma migrate deploy` with "No migration found"**: you skipped step 0 — generate and commit the initial migration locally first.
 - **Vercel build fails with "command not found: pnpm"**: shouldn't happen (Vercel's Next.js framework preset handles pnpm automatically when it detects `pnpm-lock.yaml` at the repo root), but if it does, check that `packageManager` in the root `package.json` is still set correctly.
+- **Vercel build fails with "No Next.js version detected"**: this means something is overriding the Install Command (in the dashboard or in `vercel.json`) in a way that skips the real `pnpm install` — Vercel's framework-detection step needs `next` actually present in `node_modules`, not just listed in `package.json`. Fix: don't set a custom Install/Build Command in the Vercel project settings, and keep `apps/storefront/vercel.json` / `apps/admin/vercel.json` to just `{"framework": "nextjs"}` — let Vercel's native pnpm-workspace detection (triggered by finding `pnpm-lock.yaml` at the repo root) handle the install.
