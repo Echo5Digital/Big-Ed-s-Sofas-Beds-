@@ -6,7 +6,8 @@ Sofas & Beds. Built per `Big_Eds_Developer_Kickoff_Plan.pdf` — see
 (and where/why it deviates).
 
 **Current scope:** E-Commerce Website, Inventory Management, Purchase Order
-System. In-store POS is intentionally deferred — see `apps/pos/README.md`.
+System, and In-Store POS (cash/deposit tender; card tender is stubbed
+pending a payment processor decision — see `apps/pos/README.md`).
 
 ## Stack
 
@@ -20,8 +21,8 @@ System. In-store POS is intentionally deferred — see `apps/pos/README.md`.
 ```
 apps/storefront/   Public e-commerce site           (port 3000)
 apps/admin/        Staff dashboard — inventory + PO  (port 3001)
+apps/pos/          In-store cashier POS              (port 3002)
 apps/api/          Express REST API                  (port 4000)
-apps/pos/          Placeholder — deferred milestone
 packages/database/ Prisma schema, migrations, seed
 packages/validation/  Shared Zod validation schemas
 packages/config/   Shared constants
@@ -58,6 +59,9 @@ cp apps/api/.env.example apps/api/.env
 
 # Admin dashboard
 cp apps/admin/.env.example apps/admin/.env.local
+
+# POS
+cp apps/pos/.env.example apps/pos/.env.local
 ```
 
 ## Running locally
@@ -68,6 +72,7 @@ Run each app in its own terminal (or use a process manager of your choice):
 pnpm dev:api         # http://localhost:4000
 pnpm dev:storefront  # http://localhost:3000
 pnpm dev:admin       # http://localhost:3001 — sign in with the seeded admin
+pnpm dev:pos         # http://localhost:3002 — sign in with the seeded cashier
 ```
 
 ## Other useful commands
@@ -75,6 +80,7 @@ pnpm dev:admin       # http://localhost:3001 — sign in with the seeded admin
 ```bash
 pnpm build           # build every app
 pnpm lint            # lint every app
+pnpm test            # run apps/api's automated tests (real dev database)
 pnpm db:studio       # Prisma Studio — browse/edit data visually
 ```
 

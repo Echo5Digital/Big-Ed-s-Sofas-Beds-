@@ -303,7 +303,7 @@ function InventoryContent() {
 
 export default function InventoryPage() {
   return (
-    <RequireAuth>
+    <RequireAuth permission="inventory:read">
       <InventoryContent />
     </RequireAuth>
   );

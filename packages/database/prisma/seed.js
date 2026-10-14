@@ -16,6 +16,10 @@ const PERMISSIONS = [
   { key: "orders:write", description: "Edit/cancel customer orders" },
   { key: "users:manage", description: "Manage staff users and roles" },
   { key: "reports:read", description: "View reports" },
+  { key: "pos:register:open", description: "Open a POS register session" },
+  { key: "pos:register:close", description: "Close out a POS register session" },
+  { key: "pos:sell", description: "Ring up POS sales (cash, deposit, card)" },
+  { key: "pos:refund", description: "Process POS returns/refunds" },
 ];
 
 const ROLE_PERMISSIONS = {
@@ -40,6 +44,15 @@ const ROLE_PERMISSIONS = {
     "purchasing:receive",
     "orders:read",
   ],
+  CASHIER: [
+    "catalog:read",
+    "inventory:read",
+    "orders:read",
+    "pos:register:open",
+    "pos:register:close",
+    "pos:sell",
+    "pos:refund",
+  ],
 };
 
 async function main() {
@@ -53,7 +66,7 @@ async function main() {
   }
 
   const roles = {};
-  for (const roleName of ["ADMIN", "MANAGER", "STAFF"]) {
+  for (const roleName of ["ADMIN", "MANAGER", "STAFF", "CASHIER"]) {
     roles[roleName] = await prisma.role.upsert({
       where: { name: roleName },
       update: {},
@@ -95,6 +108,31 @@ async function main() {
 
   console.log(`Admin user ready: ${adminEmail} / ${adminPassword} (CHANGE THIS IMMEDIATELY)`);
 
+  console.log("Seeding default cashier user...");
+  const cashierEmail = process.env.SEED_CASHIER_EMAIL || "cashier@bigedsfurniture.com";
+  const cashierPassword = process.env.SEED_CASHIER_PASSWORD || "ChangeMe123!";
+  const cashierPasswordHash = await bcrypt.hash(cashierPassword, 12);
+
+  const cashierUser = await prisma.user.upsert({
+    where: { email: cashierEmail },
+    update: {},
+    create: {
+      email: cashierEmail,
+      passwordHash: cashierPasswordHash,
+      firstName: "Showroom",
+      lastName: "Cashier",
+      isActive: true,
+    },
+  });
+
+  await prisma.userRole.upsert({
+    where: { userId_roleId: { userId: cashierUser.id, roleId: roles.CASHIER.id } },
+    update: {},
+    create: { userId: cashierUser.id, roleId: roles.CASHIER.id },
+  });
+
+  console.log(`Cashier user ready: ${cashierEmail} / ${cashierPassword} (CHANGE THIS IMMEDIATELY)`);
+
   console.log("Seeding locations...");
   const showroom = await prisma.location.upsert({
     where: { id: "00000000-0000-0000-0000-000000000001" },
@@ -114,6 +152,14 @@ async function main() {
       type: "WAREHOUSE",
     },
   });
+
+  console.log("Seeding POS register...");
+  const existingRegister = await prisma.register.findFirst({ where: { name: "Register 01" } });
+  if (!existingRegister) {
+    await prisma.register.create({
+      data: { name: "Register 01", locationId: showroom.id, isActive: true },
+    });
+  }
 
   console.log("Seeding categories...");
   const categoryDefs = [

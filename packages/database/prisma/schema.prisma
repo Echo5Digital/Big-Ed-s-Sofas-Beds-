@@ -22,6 +22,7 @@ enum RoleName {
   ADMIN
   MANAGER
   STAFF
+  CASHIER
 }
 
 model User {
@@ -37,6 +38,7 @@ model User {
   purchaseOrdersApproved PurchaseOrder[] @relation("POApprovedBy")
   goodsReceipts GoodsReceipt[]
   stockMovements StockMovement[]
+  registerSessionsOpened RegisterSession[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -213,6 +215,7 @@ model Location {
   transfersTo   Transfer[] @relation("TransferTo")
   counts    Count[]
   goodsReceipts GoodsReceipt[]
+  registers Register[]
   createdAt DateTime      @default(now())
 
   @@index([type])
@@ -431,6 +434,7 @@ enum OrderChannel {
 enum FulfillmentMethod {
   PICKUP
   DELIVERY
+  IN_STORE
 }
 
 model Order {
@@ -459,6 +463,7 @@ model Order {
   deliveries        Delivery[]
   pickups           Pickup[]
   statusHistory     StatusHistory[]
+  receipts          Receipt[]
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
@@ -559,16 +564,21 @@ model ProviderEvent {
 }
 
 // ---------------------------------------------------------------------------
-// POS (schema reserved for later milestone — not wired to any API yet)
+// POS (in-store cashier app — apps/pos). Card-present tender is stubbed until
+// a payment processor and terminal model are selected; see
+// docs/requirements/open-questions.md.
 // ---------------------------------------------------------------------------
 
 model Register {
-  id        String            @id @default(uuid())
-  name      String
+  id         String            @id @default(uuid())
+  name       String
   locationId String?
-  isActive  Boolean           @default(true)
-  sessions  RegisterSession[]
-  createdAt DateTime          @default(now())
+  location   Location?         @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  isActive   Boolean           @default(true)
+  sessions   RegisterSession[]
+  createdAt  DateTime          @default(now())
+
+  @@index([locationId])
 }
 
 enum RegisterSessionStatus {
@@ -581,6 +591,7 @@ model RegisterSession {
   registerId      String
   register        Register               @relation(fields: [registerId], references: [id], onDelete: Restrict)
   openedById      String?
+  openedBy        User?                  @relation(fields: [openedById], references: [id], onDelete: SetNull)
   status          RegisterSessionStatus  @default(OPEN)
   openingCashCents Int                   @default(0)
   closingCashCents Int?
@@ -593,6 +604,7 @@ model RegisterSession {
 
   @@index([registerId])
   @@index([status])
+  @@index([openedById])
 }
 
 enum CashMovementType {
@@ -616,12 +628,13 @@ model CashMovement {
 }
 
 model Receipt {
-  id                String          @id @default(uuid())
+  id                String           @id @default(uuid())
   registerSessionId String?
   registerSession   RegisterSession? @relation(fields: [registerSessionId], references: [id], onDelete: SetNull)
   orderId           String?
-  receiptNumber     String          @unique
-  createdAt         DateTime        @default(now())
+  order             Order?           @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  receiptNumber     String           @unique
+  createdAt         DateTime         @default(now())
 
   @@index([registerSessionId])
   @@index([orderId])

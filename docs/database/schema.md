@@ -31,7 +31,8 @@ in use (seeded in `packages/database/prisma/seed.js`):
 `catalog:read`, `catalog:write`, `inventory:read`, `inventory:adjust`,
 `purchasing:read`, `purchasing:write`, `purchasing:approve`,
 `purchasing:receive`, `orders:read`, `orders:write`, `users:manage`,
-`reports:read`.
+`reports:read`, `pos:register:open`, `pos:register:close`, `pos:sell`,
+`pos:refund`.
 
 `AuditLog` records privileged actions (`inventory.adjust`,
 `inventory.transfer`, `po.approve`, `po.reject`, `auth.login`) with the
@@ -76,9 +77,17 @@ application logic.
 
 ### POS (`Register`, `RegisterSession`, `CashMovement`, `Receipt`)
 
-Schema-complete, API-incomplete by design — see `apps/pos/README.md`. These
-tables exist now so the eventual POS milestone doesn't require a schema
-migration, per the kickoff plan's repo organization guidance.
+Implemented — see `apps/api/src/services/pos.service.js` and
+`apps/pos/README.md`. `Register.locationId`, `RegisterSession.openedById`,
+and `Receipt.orderId` are real foreign keys (to `Location`, `User`, and
+`Order` respectively), added alongside the POS API build; they were bare,
+unconstrained strings in the original schema-reservation pass.
+`RegisterSession` tracks `openingCashCents`/`closingCashCents`/
+`expectedCashCents`/`discrepancyCents` so closeout reconciliation is a
+stored fact, not a report computed after the fact. `Order.channel` (`ONLINE`
+| `POS`) and `Order.fulfillmentMethod` (`PICKUP` | `DELIVERY` | `IN_STORE`)
+distinguish a POS walk-out sale from an online pickup/delivery order without
+a separate order type.
 
 ### Purchasing (`Supplier`, `PurchaseOrder`, `POLine`, `GoodsReceipt`, `ReceiptLine`)
 

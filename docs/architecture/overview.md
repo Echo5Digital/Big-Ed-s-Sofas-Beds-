@@ -24,8 +24,11 @@ apps/
   storefront/   Next.js customer-facing e-commerce site (public)
   admin/        Next.js staff dashboard — catalog, inventory, purchasing, orders
   api/          Express.js REST API — the only app that talks to the database
-  pos/          Placeholder only. In-store POS is explicitly deferred — see
-                apps/pos/README.md and docs/requirements/open-questions.md.
+  pos/          Next.js in-store cashier app (port 3002). Register open/close,
+                cash sales, deposits, receipts, and closeout reconciliation are
+                real; card-present tender is stubbed pending a payment
+                processor/terminal decision — see apps/pos/README.md and
+                docs/requirements/open-questions.md.
 
 packages/
   database/     Prisma schema, migrations, seed script, generated client
@@ -46,21 +49,22 @@ tests/e2e/      Reserved for future end-to-end test suites (not yet populated)
 ```
 Customer Web (apps/storefront, :3000)  ─┐
 Staff Dashboard (apps/admin, :3001)    ─┼─► Express API (apps/api, :4000) ─► PostgreSQL (Prisma)
-In-Store POS (apps/pos — not built)    ─┘
+In-Store POS (apps/pos, :3002)         ─┘
 ```
 
-- The admin app calls the API's absolute URL directly (`NEXT_PUBLIC_API_URL`,
-  `apps/admin/lib/api/client.js`) with `credentials: "include"` so the
+- The admin and POS apps call the API's absolute URL directly
+  (`NEXT_PUBLIC_API_URL`, `apps/admin/lib/api/client.js` /
+  `apps/pos/lib/api/client.js`) with `credentials: "include"` so the
   httpOnly auth cookies are sent — both server-side (SSR) and from the
   browser. This works the same in local dev (`http://localhost:4000`) and in
-  production (e.g. Render), since admin and API are different origins either
-  way once deployed. The storefront currently runs entirely on local mock
-  data and doesn't call the API at all — see `DEPLOYMENT.md`.
+  production (e.g. Render), since these apps and the API are different
+  origins either way once deployed. The storefront currently runs entirely
+  on local mock data and doesn't call the API at all — see `DEPLOYMENT.md`.
 - The storefront's public catalog/checkout endpoints (`GET /api/catalog/*`,
   `POST /api/checkout`) require no auth. Every staff endpoint
   (`/api/inventory/*`, `/api/purchasing/*`, `/api/catalog/admin/*`,
-  `/api/dashboard/*`, `/api/admin/*`) requires a valid session **and** the
-  specific permission for that action — enforced server-side in
+  `/api/dashboard/*`, `/api/admin/*`, `/api/pos/*`) requires a valid session
+  **and** the specific permission for that action — enforced server-side in
   `apps/api/src/middleware/auth.js`, never trusted from the client.
 
 ## Auth & RBAC
@@ -77,10 +81,12 @@ In-Store POS (apps/pos — not built)    ─┘
 - Permissions are re-read from the database on every request (not baked into
   the JWT), so disabling a user or changing their role takes effect
   immediately rather than waiting for token expiry.
-- Three seeded roles: `ADMIN` (all permissions), `MANAGER` (catalog, inventory,
+- Four seeded roles: `ADMIN` (all permissions), `MANAGER` (catalog, inventory,
   purchasing including approval, orders, reports), `STAFF` (read-only plus PO
-  receiving). See `packages/database/prisma/seed.js` for the exact permission
-  grants and `docs/database/schema.md` for the full permission list.
+  receiving), `CASHIER` (catalog/inventory/orders read plus `pos:*` —
+  register open/close, sell, refund). See `packages/database/prisma/seed.js`
+  for the exact permission grants and `docs/database/schema.md` for the full
+  permission list.
 
 ## Inventory integrity (the part the kickoff plan calls "non-negotiable")
 
@@ -118,8 +124,11 @@ These are scope guardrails from the kickoff plan, not omissions:
   inventory-reserved order and leaves it `UNPAID` — no payment provider is
   wired up. The storefront checkout page is clearly labeled as review-only.
   This matches the plan's instruction not to begin "irreversible
-  payment/provider work... until prerequisites are confirmed."
-- **In-store POS** (`apps/pos`) — placeholder only, see that app's README.
+  payment/provider work... until prerequisites are confirmed." The same gap
+  applies to POS card-present tender (`apps/pos`): cash and deposit sales
+  are fully implemented, but `POST /api/pos/sales` rejects `tenderMethod:
+  "CARD"` with 501 until a processor and terminal model are selected — see
+  `apps/pos/README.md`.
 - **Tax calculation** — `Order.taxCents` exists in the schema but nothing
   computes it yet; a real tax engine needs a confirmed jurisdiction/approach
   first (see `docs/requirements/open-questions.md`).

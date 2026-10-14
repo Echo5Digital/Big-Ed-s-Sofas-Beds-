@@ -174,6 +174,51 @@ const checkoutCreateSchema = z.object({
     .nullable(),
 });
 
+// ---------------------------------------------------------------------------
+// POS (in-store cashier app)
+// ---------------------------------------------------------------------------
+
+const registerOpenSchema = z.object({
+  registerId: z.string().uuid(),
+  openingCashCents: z.number().int().nonnegative(),
+});
+
+const registerCloseSchema = z.object({
+  closingCashCents: z.number().int().nonnegative(),
+  notes: z.string().max(1000).optional().nullable(),
+});
+
+// Card tender is intentionally not a distinct success path yet — no payment
+// processor/terminal model has been selected (see
+// docs/requirements/open-questions.md). CASH and DEPOSIT are real, working
+// tenders; a request with method "CARD" is rejected at the route level with
+// a 501 rather than silently faked.
+const posSaleSchema = z.object({
+  registerSessionId: z.string().uuid(),
+  lines: z.array(cartLineSchema).min(1),
+  tenderMethod: z.enum(["CASH", "CARD", "DEPOSIT"]),
+  tenderedCents: z.number().int().nonnegative(),
+  depositAmountCents: z.number().int().positive().optional(),
+  customer: z
+    .object({
+      email: z.string().email(),
+      firstName: z.string().min(1).max(100),
+      lastName: z.string().min(1).max(100),
+      phone: z.string().max(40).optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+});
+
+const posRefundSchema = z.object({
+  registerSessionId: z.string().uuid(),
+  orderId: z.string().uuid(),
+  amountCents: z.number().int().positive(),
+  reasonCode: z.string().min(1).max(120),
+  notes: z.string().max(1000).optional().nullable(),
+  restock: z.boolean().optional(),
+});
+
 module.exports = {
   loginSchema,
   categoryCreateSchema,
@@ -190,4 +235,8 @@ module.exports = {
   goodsReceiptCreateSchema,
   cartLineSchema,
   checkoutCreateSchema,
+  registerOpenSchema,
+  registerCloseSchema,
+  posSaleSchema,
+  posRefundSchema,
 };

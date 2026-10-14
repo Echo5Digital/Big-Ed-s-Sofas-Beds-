@@ -42,9 +42,38 @@ orders as sold, which is exactly the bug class the kickoff plan warns
 against ("never mark a sale complete solely because a checkout page
 displayed success").
 
-## POS card sale / cash / deposit — not implemented
+## POS cash sale / deposit (implemented) / card sale (stubbed)
 
-Reserved for the POS milestone. See `apps/pos/README.md`.
+`POST /api/pos/sales` in `apps/api/src/routes/pos.routes.js`, backed by
+`apps/api/src/services/pos.service.js`:
+
+1. Reject the request outright (409 at the service layer, 501 at the route)
+   if `tenderMethod` is `CARD` — no payment processor or terminal model has
+   been selected (see `docs/requirements/open-questions.md`), so this path
+   must never fabricate a successful card charge.
+2. For `CASH`/`DEPOSIT`: price the lines server-side from live `Variant`
+   data (never trust a client-sent price), create a `DRAFT` order with
+   `channel: "POS"` and `fulfillmentMethod: "IN_STORE"`.
+3. Reserve stock against the register's assigned location, then immediately
+   call `convertReservationToSale` — a POS cashier completes checkout in one
+   motion, unlike the online cart's held reservation. This reuses the exact
+   same `inventory.service.js` functions the online checkout path uses, so
+   POS and web sales serialize on the same `StockBalance` row and can never
+   double-sell the last unit across channels.
+4. If any line fails to reserve, compensate already-converted lines with an
+   offsetting `adjustStock` call and cancel the order — a half-rung-up sale
+   is never left ambiguous.
+5. Write a `Payment` (`status: SUCCEEDED`), a `CashMovement` on the register
+   session (type `SALE` or `DEPOSIT`), and a `Receipt`. `paymentStatus`
+   becomes `PAID` (full tender) or `PARTIALLY_PAID` (deposit less than the
+   order total) — never inferred from `status` or `fulfillmentStatus`.
+
+Register sessions (`POST /api/pos/registers/open`,
+`POST /api/pos/sessions/:id/close`) and refunds (`POST /api/pos/refunds`)
+follow the same real/working pattern — register closeout reconciles counted
+cash against the session's `CashMovement` rows and records any discrepancy
+rather than silently absorbing it; refunds are capped at the order total and
+write a compensating `REFUND` cash movement.
 
 ## Receiving stock (implemented)
 

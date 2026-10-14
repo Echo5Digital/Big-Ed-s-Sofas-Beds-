@@ -8,6 +8,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import DataTable from "@/components/ui/DataTable";
 import Badge from "@/components/ui/Badge";
 import { api, ApiClientError } from "@/lib/api/client";
+import { useAuth } from "@/lib/hooks/useAuth";
 
 const STATUS_TONE = {
   DRAFT: "default",
@@ -30,6 +31,7 @@ const STATUS_LABEL = {
 };
 
 function PurchasingContent() {
+  const { hasPermission } = useAuth();
   const [purchaseOrders, setPurchaseOrders] = useState(null);
   const [error, setError] = useState(null);
 
@@ -69,13 +71,15 @@ function PurchasingContent() {
         title="Purchase Orders"
         subtitle="Suppliers, approvals, and receiving"
         action={
-          <Link
-            href="/purchasing/new"
-            className="inline-flex items-center gap-2 rounded-full bg-brand-red px-4 py-2 text-sm font-semibold text-white hover:bg-brand-red-dark"
-          >
-            <PlusCircle className="size-4" aria-hidden="true" />
-            Create New PO
-          </Link>
+          hasPermission("purchasing:write") && (
+            <Link
+              href="/purchasing/new"
+              className="inline-flex items-center gap-2 rounded-full bg-brand-red px-4 py-2 text-sm font-semibold text-white hover:bg-brand-red-dark"
+            >
+              <PlusCircle className="size-4" aria-hidden="true" />
+              Create New PO
+            </Link>
+          )
         }
       />
 
@@ -88,7 +92,7 @@ function PurchasingContent() {
 
 export default function PurchasingPage() {
   return (
-    <RequireAuth>
+    <RequireAuth permission="purchasing:read">
       <PurchasingContent />
     </RequireAuth>
   );

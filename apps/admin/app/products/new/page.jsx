@@ -277,7 +277,7 @@ function NewProductContent() {
 
 export default function NewProductPage() {
   return (
-    <RequireAuth>
+    <RequireAuth permission="catalog:write">
       <NewProductContent />
     </RequireAuth>
   );

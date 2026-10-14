@@ -8,6 +8,7 @@ import DataTable from "@/components/ui/DataTable";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { api, ApiClientError } from "@/lib/api/client";
+import { useAuth } from "@/lib/hooks/useAuth";
 
 function NewSupplierModal({ open, onClose, onDone }) {
   const [name, setName] = useState("");
@@ -104,6 +105,7 @@ function NewSupplierModal({ open, onClose, onDone }) {
 }
 
 function SuppliersContent() {
+  const { hasPermission } = useAuth();
   const [suppliers, setSuppliers] = useState(null);
   const [error, setError] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -133,9 +135,11 @@ function SuppliersContent() {
         title="Suppliers"
         subtitle="Vendor profiles and lead times"
         action={
-          <Button icon={PlusCircle} onClick={() => setModalOpen(true)}>
-            New Supplier
-          </Button>
+          hasPermission("purchasing:write") && (
+            <Button icon={PlusCircle} onClick={() => setModalOpen(true)}>
+              New Supplier
+            </Button>
+          )
         }
       />
 
@@ -157,7 +161,7 @@ function SuppliersContent() {
 
 export default function SuppliersPage() {
   return (
-    <RequireAuth>
+    <RequireAuth permission="purchasing:read">
       <SuppliersContent />
     </RequireAuth>
   );

@@ -5,7 +5,11 @@ import Container from "@/components/ui/Container";
 import SectionHeading from "@/components/ui/SectionHeading";
 import ProductCard from "@/components/home/ProductCard";
 
+const FEATURED_COUNT = 6;
+
 export default function FeaturedProducts() {
+  const featured = products.slice(0, FEATURED_COUNT);
+
   return (
     <section className="bg-brand-cream py-12 sm:py-16">
       <Container>
@@ -24,7 +28,7 @@ export default function FeaturedProducts() {
         />
 
         <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-          {products.map((product) => (
+          {featured.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}
         </div>

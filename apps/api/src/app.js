@@ -12,6 +12,7 @@ const inventoryRoutes = require("./routes/inventory.routes");
 const purchasingRoutes = require("./routes/purchasing.routes");
 const ordersRoutes = require("./routes/orders.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
+const posRoutes = require("./routes/pos.routes");
 
 function createApp() {
   const app = express();
@@ -37,6 +38,7 @@ function createApp() {
   app.use("/api/purchasing", purchasingRoutes);
   app.use("/api", ordersRoutes);
   app.use("/api/dashboard", dashboardRoutes);
+  app.use("/api/pos", posRoutes);
 
   app.use((req, res) => {
     res.status(404).json({ error: { message: "Not found" } });

@@ -204,7 +204,7 @@ function PurchaseOrderDetailContent() {
 
 export default function PurchaseOrderDetailPage() {
   return (
-    <RequireAuth>
+    <RequireAuth permission="purchasing:read">
       <PurchaseOrderDetailContent />
     </RequireAuth>
   );

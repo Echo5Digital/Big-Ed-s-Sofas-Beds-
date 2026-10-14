@@ -93,15 +93,15 @@ export default function SiteHeader() {
           </div>
         </div>
 
-        <div className="ml-auto flex items-center gap-1 sm:gap-1.5 lg:hidden">
+        <div className="ml-auto flex items-center gap-0.5 sm:gap-1 lg:hidden">
           <Link
             href="/wishlist"
             aria-label={`Wishlist, ${wishlistIds.length} item${wishlistIds.length === 1 ? "" : "s"}`}
-            className="relative rounded-full p-1.5 text-brand-charcoal hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-brand-red"
+            className="relative rounded-full p-2.5 text-brand-charcoal hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-brand-red"
           >
             <Heart className="size-5" aria-hidden="true" />
             {wishlistIds.length > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-brand-red text-[10px] font-bold text-white">
+              <span className="absolute right-0.5 top-0.5 flex size-4 items-center justify-center rounded-full bg-brand-red text-[10px] font-bold text-white">
                 {wishlistIds.length}
               </span>
             )}
@@ -109,18 +109,18 @@ export default function SiteHeader() {
           <Link
             href="/account"
             aria-label="Account"
-            className="hidden rounded-full p-1.5 text-brand-charcoal hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-brand-red sm:block"
+            className="hidden rounded-full p-2.5 text-brand-charcoal hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-brand-red sm:block"
           >
             <User className="size-5" aria-hidden="true" />
           </Link>
           <Link
             href="/cart"
             aria-label={`Shopping cart, ${cartCount} item${cartCount === 1 ? "" : "s"}`}
-            className="relative rounded-full p-1.5 text-brand-charcoal hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-brand-red"
+            className="relative rounded-full p-2.5 text-brand-charcoal hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-brand-red"
           >
             <ShoppingBag className="size-5" aria-hidden="true" />
             {cartCount > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-brand-red text-[10px] font-bold text-white">
+              <span className="absolute right-0.5 top-0.5 flex size-4 items-center justify-center rounded-full bg-brand-red text-[10px] font-bold text-white">
                 {cartCount}
               </span>
             )}
@@ -129,7 +129,7 @@ export default function SiteHeader() {
             type="button"
             onClick={() => setMobileOpen(true)}
             aria-label="Open menu"
-            className="rounded-full p-1.5 text-brand-charcoal hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-brand-red"
+            className="rounded-full p-2.5 text-brand-charcoal hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-brand-red"
           >
             <Menu className="size-5" aria-hidden="true" />
           </button>

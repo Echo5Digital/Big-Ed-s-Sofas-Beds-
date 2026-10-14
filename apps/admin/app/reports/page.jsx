@@ -32,9 +32,9 @@ function ReportsContent() {
       </div>
 
       <Card className="text-sm text-brand-charcoal/60">
-        Deeper financial and inventory-turnover reporting (register reconciliation, cost-of-goods, margin by
-        category) is planned once the POS and payment provider are integrated — those reports require
-        payment-confirmed sales data that doesn&rsquo;t exist yet in this milestone.
+        Sales and order totals above already include in-store POS sales (cash and deposit tender) alongside online
+        orders. Deeper financial reporting (cost-of-goods, margin by category) and card-tender settlement reports are
+        planned once a payment provider is integrated — see <code>docs/requirements/open-questions.md</code>.
       </Card>
     </div>
   );
@@ -42,7 +42,7 @@ function ReportsContent() {
 
 export default function ReportsPage() {
   return (
-    <RequireAuth>
+    <RequireAuth permission="reports:read">
       <ReportsContent />
     </RequireAuth>
   );

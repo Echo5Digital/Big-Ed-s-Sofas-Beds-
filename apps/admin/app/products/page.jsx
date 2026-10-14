@@ -82,7 +82,7 @@ function ProductsContent() {
 
 export default function ProductsPage() {
   return (
-    <RequireAuth>
+    <RequireAuth permission="catalog:read">
       <ProductsContent />
     </RequireAuth>
   );

@@ -9,9 +9,11 @@
   "scripts": {
     "dev:storefront": "pnpm --filter @big-eds/storefront dev",
     "dev:admin": "pnpm --filter @big-eds/admin dev",
+    "dev:pos": "pnpm --filter @big-eds/pos dev",
     "dev:api": "pnpm --filter @big-eds/api dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
+    "test": "pnpm --filter @big-eds/api test",
     "db:generate": "pnpm --filter @big-eds/database generate",
     "db:migrate": "pnpm --filter @big-eds/database migrate",
     "db:seed": "pnpm --filter @big-eds/database seed",

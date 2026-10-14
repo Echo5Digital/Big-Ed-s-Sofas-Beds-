@@ -4,19 +4,26 @@ These are blockers for specific future work, not for what has already been
 built. Carried over from the kickoff plan's "Required client inputs + launch
 gate" section (page 13), reorganized by what they block.
 
-## Blocks: In-Store POS (`apps/pos`)
+## Blocks: Card-present tender on In-Store POS (`apps/pos`)
+
+`apps/pos` is built and working for cash sales, deposits, receipts, and
+register closeout/reconciliation (`apps/api/src/services/pos.service.js`).
+What's still blocked on a client decision is specifically the card-present
+tender path:
 
 - Current POS system (if any), preferred payment processor, merchant account,
   and specific in-store card terminal model(s). The kickoff plan is explicit:
   "select the provider and supported reader model early; validate terminal
   API, partial/deposit payments, refunds, failure recovery, webhooks and
-  settlement reports" — none of this can be scaffolded speculatively, because
-  the data shape of a "payment confirmation" depends entirely on the chosen
-  provider's API.
+  settlement reports" — none of this can be built speculatively, because the
+  data shape of a "payment confirmation" depends entirely on the chosen
+  provider's API. `POST /api/pos/sales` currently rejects
+  `tenderMethod: "CARD"` with a 501 rather than fabricating a successful
+  charge.
 - Register/cash-drawer hardware, if any, beyond the browser-based terminal
   integration.
 - Staff discount authorization policy (who can apply a discount, up to what
-  limit, with what approval).
+  limit, with what approval) — no discount field exists yet on POS sales.
 
 ## Blocks: Live payment on the e-commerce checkout
 
@@ -95,4 +102,11 @@ here so they aren't lost, not because they're due now:
   server-session-store based.
 - Checkout: UI-only / no live payment for this build pass, per explicit
   scope guardrail against starting "irreversible payment/provider work"
-  before a provider is confirmed.
+  before a provider is confirmed. Same guardrail applies to POS card tender.
+- POS: built with cash/deposit tender real and card tender stubbed (see
+  above), rather than waiting on the payment provider decision to start any
+  POS work — register sessions, cash sales, deposits, and closeout
+  reconciliation don't depend on that decision and don't need to wait for it.
+  Added a `CASHIER` role and `pos:*` permission keys
+  (`packages/database/prisma/seed.js`) rather than overloading `STAFF` or
+  `MANAGER` with register access.

@@ -214,7 +214,7 @@ function NewPurchaseOrderContent() {
 
 export default function NewPurchaseOrderPage() {
   return (
-    <RequireAuth>
+    <RequireAuth permission="purchasing:write">
       <NewPurchaseOrderContent />
     </RequireAuth>
   );

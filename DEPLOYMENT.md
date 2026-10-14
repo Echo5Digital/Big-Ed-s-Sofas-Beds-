@@ -5,13 +5,12 @@ Target topology:
 ```
 apps/storefront  →  Vercel project #1  (public e-commerce site)
 apps/admin       →  Vercel project #2  (staff dashboard)
+apps/pos         →  Vercel project #3  (in-store cashier POS)
 apps/api         →  Render web service (Express API)
 Postgres         →  Render managed database
 ```
 
-`apps/pos` is not deployed anywhere yet — it's an intentional placeholder (see `apps/pos/README.md`).
-
-The storefront currently runs entirely on local mock data (`apps/storefront/lib/mock-data/`) and does not call the API yet, so it has no environment variables to configure for this pass — it deploys as a standalone static/SSR Next.js app with zero backend dependency. Only `apps/admin` and `apps/api` talk to each other.
+The storefront currently runs entirely on local mock data (`apps/storefront/lib/mock-data/`) and does not call the API yet, so it has no environment variables to configure for this pass — it deploys as a standalone static/SSR Next.js app with zero backend dependency. `apps/admin` and `apps/pos` both talk to `apps/api` directly (same pattern — absolute `NEXT_PUBLIC_API_URL`, credentialed cross-origin requests).
 
 ---
 
@@ -101,16 +100,37 @@ Render gives you a URL like `https://big-eds-retail-os-api.onrender.com`. You'll
 
 ---
 
-## 3. Vercel — Storefront
+## 3. Vercel — In-store POS
 
-1. **Add New → Project** again (a separate Vercel project from the admin one), import the same repo.
+1. **Add New → Project** again (a separate Vercel project from admin/storefront), import the same repo.
+2. **Root Directory**: `apps/pos`. Same note as the admin app above — leave Vercel's Build/Install/Output Command settings on their defaults.
+3. Framework Preset: Next.js (auto-detected).
+4. Environment Variables:
+
+   | Key | Value |
+   |---|---|
+   | `NEXT_PUBLIC_API_URL` | your Render API URL from step 1, e.g. `https://big-eds-retail-os-api.onrender.com` (no trailing slash) |
+
+5. Deploy. Vercel gives you a URL like `https://big-eds-pos.vercel.app`.
+6. **Go back to Render** and add this URL to `CORS_ORIGINS` alongside the admin URL (comma-separated):
+   ```
+   https://big-eds-admin.vercel.app,https://big-eds-pos.vercel.app
+   ```
+   Redeploy the Render service for the new CORS origin to take effect.
+7. Visit the POS URL, sign in with the seeded cashier credentials (see `packages/database/prisma/seed.js` — override via `SEED_CASHIER_EMAIL`/`SEED_CASHIER_PASSWORD`), open a register, and ring a cash sale end-to-end before considering this deploy verified. Card tender will correctly show as unavailable — that's the intended stub, not a bug (see `apps/pos/README.md`).
+
+---
+
+## 4. Vercel — Storefront
+
+1. **Add New → Project** again (a separate Vercel project from admin/POS), import the same repo.
 2. **Root Directory**: `apps/storefront`. Same note as the admin app above — leave Vercel's Build/Install/Output Command settings on their defaults.
 3. Framework Preset: Next.js (auto-detected). No environment variables are required for this pass — the storefront doesn't call the API yet (see the note at the top of this doc).
 4. Deploy. Vercel gives you a URL like `https://big-eds-storefront.vercel.app`.
 
 ---
 
-## 4. Custom domains (when ready)
+## 5. Custom domains (when ready)
 
 You mentioned a possible future setup with both apps under one parent domain via subdomains (e.g. `admin.bigeds.com` + `api.bigeds.com`). When you're ready:
 

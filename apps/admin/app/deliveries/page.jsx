@@ -20,7 +20,7 @@ function DeliveriesContent() {
 
 export default function DeliveriesPage() {
   return (
-    <RequireAuth>
+    <RequireAuth permission="orders:read">
       <DeliveriesContent />
     </RequireAuth>
   );

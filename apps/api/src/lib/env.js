@@ -16,7 +16,9 @@ const env = {
   jwtRefreshSecret: required("JWT_REFRESH_SECRET"),
   accessTokenTtlMinutes: Number(process.env.ACCESS_TOKEN_TTL_MINUTES || 15),
   refreshTokenTtlDays: Number(process.env.REFRESH_TOKEN_TTL_DAYS || 7),
-  corsOrigins: (process.env.CORS_ORIGINS || "http://localhost:3000").split(",").map((s) => s.trim()),
+  corsOrigins: (process.env.CORS_ORIGINS || "http://localhost:3000,http://localhost:3001,http://localhost:3002")
+    .split(",")
+    .map((s) => s.trim()),
   // Defaults assume production deploys the API and the Next.js apps on
   // different domains (e.g. Render + Vercel), which requires SameSite=None
   // and Secure for the auth cookie to be sent on cross-site requests at all.

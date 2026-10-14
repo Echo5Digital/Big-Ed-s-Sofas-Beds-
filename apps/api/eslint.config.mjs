@@ -19,4 +19,18 @@ export default [
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_|^next$|^req$|^res$" }],
     },
   },
+  {
+    files: ["**/*.test.js"],
+    languageOptions: {
+      globals: {
+        describe: "readonly",
+        it: "readonly",
+        expect: "readonly",
+        beforeAll: "readonly",
+        afterAll: "readonly",
+        beforeEach: "readonly",
+        afterEach: "readonly",
+      },
+    },
+  },
 ];

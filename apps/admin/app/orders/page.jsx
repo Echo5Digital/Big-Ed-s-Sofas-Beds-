@@ -55,7 +55,7 @@ function OrdersContent() {
 
 export default function OrdersPage() {
   return (
-    <RequireAuth>
+    <RequireAuth permission="orders:read">
       <OrdersContent />
     </RequireAuth>
   );
