@@ -32,6 +32,11 @@ export const metadata = {
   title: "Big Ed's Sofas & Beds | Big Comfort. Bigger Savings.",
   description:
     "Quality sofas, sectionals, beds, mattresses, recliners and dining sets at affordable prices. Visit Big Ed's Sofas & Beds showroom today.",
+  icons: {
+    icon: "/Big_ed_favicon.webp",
+    shortcut: "/Big_ed_favicon.webp",
+    apple: "/Big_ed_favicon.webp",
+  },
 };
 
 export default function RootLayout({ children }) {
