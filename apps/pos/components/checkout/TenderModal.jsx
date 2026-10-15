@@ -16,23 +16,31 @@ export default function TenderModal({ open, onClose, subtotalCents, onConfirm, s
   const [tenderMethod, setTenderMethod] = useState("CASH");
   const [tendered, setTendered] = useState("");
   const [depositAmount, setDepositAmount] = useState("");
+  const [discountAmount, setDiscountAmount] = useState("");
+  const [discountReasonCode, setDiscountReasonCode] = useState("");
 
   const tenderedCents = Math.round(Number(tendered || 0) * 100);
   const depositAmountCents = Math.round(Number(depositAmount || 0) * 100);
-  const amountDueCents = tenderMethod === "DEPOSIT" ? depositAmountCents : subtotalCents;
+  const discountCents = Math.round(Number(discountAmount || 0) * 100);
+  const totalCents = Math.max(0, subtotalCents - discountCents);
+  const amountDueCents = tenderMethod === "DEPOSIT" ? depositAmountCents : totalCents;
   const changeDueCents = tenderMethod === "CASH" ? Math.max(0, tenderedCents - amountDueCents) : 0;
 
   const canConfirm = useMemo(() => {
     if (tenderMethod === "CARD") return false;
-    if (tenderMethod === "DEPOSIT" && (!depositAmountCents || depositAmountCents > subtotalCents)) return false;
+    if (discountCents > subtotalCents) return false;
+    if (discountCents > 0 && !discountReasonCode.trim()) return false;
+    if (tenderMethod === "DEPOSIT" && (!depositAmountCents || depositAmountCents > totalCents)) return false;
     return tenderedCents >= amountDueCents;
-  }, [tenderMethod, tenderedCents, amountDueCents, depositAmountCents, subtotalCents]);
+  }, [tenderMethod, tenderedCents, amountDueCents, depositAmountCents, totalCents, discountCents, subtotalCents, discountReasonCode]);
 
   function handleConfirm() {
     onConfirm({
       tenderMethod,
       tenderedCents,
       depositAmountCents: tenderMethod === "DEPOSIT" ? depositAmountCents : undefined,
+      discountCents: discountCents > 0 ? discountCents : undefined,
+      discountReasonCode: discountCents > 0 ? discountReasonCode.trim() : undefined,
     });
   }
 
@@ -64,6 +72,33 @@ export default function TenderModal({ open, onClose, subtotalCents, onConfirm, s
           </p>
         )}
 
+        {tenderMethod !== "CARD" && (
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="discountAmount" className="text-sm font-medium text-brand-charcoal">
+              Discount ($, optional)
+            </label>
+            <input
+              id="discountAmount"
+              type="number"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              value={discountAmount}
+              onChange={(e) => setDiscountAmount(e.target.value)}
+              className="rounded-lg border border-black/15 px-3 py-3 text-base focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+            />
+            {discountCents > 0 && (
+              <input
+                type="text"
+                placeholder="Reason for discount (required)"
+                value={discountReasonCode}
+                onChange={(e) => setDiscountReasonCode(e.target.value)}
+                className="rounded-lg border border-black/15 px-3 py-3 text-base focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+              />
+            )}
+          </div>
+        )}
+
         {tenderMethod === "DEPOSIT" && (
           <div className="flex flex-col gap-1.5">
             <label htmlFor="depositAmount" className="text-sm font-medium text-brand-charcoal">
@@ -79,7 +114,7 @@ export default function TenderModal({ open, onClose, subtotalCents, onConfirm, s
               onChange={(e) => setDepositAmount(e.target.value)}
               className="rounded-lg border border-black/15 px-3 py-3 text-base focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
             />
-            <p className="text-xs text-brand-charcoal/50">Order total: {formatCents(subtotalCents)}</p>
+            <p className="text-xs text-brand-charcoal/50">Order total: {formatCents(totalCents)}</p>
           </div>
         )}
 

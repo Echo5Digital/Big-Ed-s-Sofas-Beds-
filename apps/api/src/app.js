@@ -13,6 +13,7 @@ const purchasingRoutes = require("./routes/purchasing.routes");
 const ordersRoutes = require("./routes/orders.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
 const posRoutes = require("./routes/pos.routes");
+const webhooksRoutes = require("./routes/webhooks.routes");
 
 function createApp() {
   const app = express();
@@ -24,6 +25,10 @@ function createApp() {
       credentials: true,
     })
   );
+  // Mounted before the global JSON body parser: Stripe webhook signature
+  // verification needs the raw, untouched request body, not a parsed object.
+  app.use("/api/webhooks", webhooksRoutes);
+
   app.use(express.json({ limit: "2mb" }));
   app.use(cookieParser());
   if (env.nodeEnv !== "test") {

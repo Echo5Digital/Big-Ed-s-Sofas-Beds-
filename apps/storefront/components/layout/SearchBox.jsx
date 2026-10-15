@@ -1,26 +1,34 @@
 "use client";
 
-import { useMemo, useState, useId } from "react";
+import { useEffect, useState, useId } from "react";
 import { Search } from "lucide-react";
 import Link from "next/link";
-import { products } from "@/lib/mock-data/products";
+import { getProducts } from "@/lib/api/catalog";
+import { normalizeProductForCard } from "@/lib/api/normalize";
 import { formatCurrency } from "@/utils/formatCurrency";
+
+const SEARCH_DEBOUNCE_MS = 250;
 
 export default function SearchBox({ className = "" }) {
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
+  const [results, setResults] = useState([]);
   const inputId = useId();
   const listId = useId();
 
-  const results = useMemo(() => {
-    const term = query.trim().toLowerCase();
-    if (!term) return [];
-    return products
-      .filter((product) => product.name.toLowerCase().includes(term))
-      .slice(0, 5);
-  }, [query]);
+  const trimmedQuery = query.trim();
 
-  const showResults = focused && query.trim().length > 0;
+  useEffect(() => {
+    if (!trimmedQuery) return;
+    const timeout = setTimeout(() => {
+      getProducts({ q: trimmedQuery, pageSize: 5 })
+        .then((data) => setResults(data.products.map(normalizeProductForCard)))
+        .catch(() => setResults([]));
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timeout);
+  }, [trimmedQuery]);
+
+  const showResults = focused && trimmedQuery.length > 0;
 
   return (
     <div className={`relative ${className}`}>

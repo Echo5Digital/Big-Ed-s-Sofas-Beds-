@@ -1,23 +1,21 @@
+// Live catalog data, never stale-cached — see app/page.jsx for rationale.
+export const instant = false;
+
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import Container from "@/components/ui/Container";
 import Breadcrumbs from "@/components/ui/Breadcrumbs";
-import StarRating from "@/components/ui/StarRating";
 import Price from "@/components/ui/Price";
 import ProductCard from "@/components/home/ProductCard";
 import ProductPurchasePanel from "@/components/products/ProductPurchasePanel";
-import { products } from "@/lib/mock-data/products";
-import { categories } from "@/lib/mock-data/categories";
-import { getRelatedProducts } from "@/lib/shop";
-
-export function generateStaticParams() {
-  return products.map((product) => ({ slug: product.slug }));
-}
+import { getProductBySlug, getProducts } from "@/lib/api/catalog";
+import { normalizeProductForCard } from "@/lib/api/normalize";
+import { ApiClientError } from "@/lib/api/client";
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
-  const product = products.find((p) => p.slug === slug);
+  const product = await getProductBySlug(slug).catch(() => null);
   if (!product) {
     return { title: "Product Not Found | Big Ed's Sofas & Beds" };
   }
@@ -29,15 +27,30 @@ export async function generateMetadata({ params }) {
 
 export default async function ProductDetailPage({ params }) {
   const { slug } = await params;
-  const product = products.find((p) => p.slug === slug);
 
-  if (!product) {
-    notFound();
+  let product;
+  try {
+    product = await getProductBySlug(slug);
+  } catch (err) {
+    if (err instanceof ApiClientError && err.status === 404) {
+      notFound();
+    }
+    throw err;
   }
 
-  const category = categories.find((c) => c.slug === product.category);
-  const related = getRelatedProducts(product);
-  const inStock = product.stockStatus !== "out-of-stock";
+  const defaultVariant = product.variants.find((v) => v.isActive) ?? product.variants[0];
+  const totalAvailable = defaultVariant?.availability?.totalAvailable ?? 0;
+  const locationNames = (defaultVariant?.availability?.byLocation ?? [])
+    .filter((l) => l.availableToSell > 0)
+    .map((l) => l.locationName);
+  const inStock = totalAvailable > 0;
+
+  const related = product.category
+    ? (await getProducts({ category: product.category.slug, pageSize: 5 })).products
+        .filter((p) => p.id !== product.id)
+        .slice(0, 4)
+        .map(normalizeProductForCard)
+    : [];
 
   return (
     <div className="pb-10">
@@ -46,7 +59,7 @@ export default async function ProductDetailPage({ params }) {
           items={[
             { label: "Home", href: "/" },
             { label: "Shop All", href: "/shop" },
-            ...(category ? [{ label: category.name, href: `/shop/${category.slug}` }] : []),
+            ...(product.category ? [{ label: product.category.name, href: `/shop/${product.category.slug}` }] : []),
             { label: product.name },
           ]}
         />
@@ -54,17 +67,19 @@ export default async function ProductDetailPage({ params }) {
 
       <Container className="mt-5 grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-12">
         <div className="relative aspect-4/3 w-full overflow-hidden rounded-2xl bg-brand-cream shadow-sm">
-          <Image
-            src={product.image}
-            alt={product.name}
-            fill
-            priority
-            sizes="(max-width: 1024px) 100vw, 50vw"
-            className="object-cover"
-          />
-          {product.badge && (
-            <span className="absolute left-4 top-4 rounded px-2.5 py-1 text-xs font-bold tracking-wide bg-brand-red text-white">
-              {product.badge}
+          {product.images[0] && (
+            <Image
+              src={product.images[0].url}
+              alt={product.images[0].altText || product.name}
+              fill
+              priority
+              sizes="(max-width: 1024px) 100vw, 50vw"
+              className="object-cover"
+            />
+          )}
+          {!inStock && (
+            <span className="absolute left-4 top-4 rounded px-2.5 py-1 text-xs font-bold tracking-wide bg-brand-charcoal/70 text-white">
+              OUT OF STOCK
             </span>
           )}
         </div>
@@ -75,13 +90,14 @@ export default async function ProductDetailPage({ params }) {
               {product.name}
             </h1>
             <p className="mt-1 text-xs font-medium uppercase tracking-wide text-brand-charcoal/50">
-              SKU: {product.sku}
+              SKU: {defaultVariant?.sku}
             </p>
           </div>
 
-          <StarRating rating={product.rating} reviewCount={product.reviewCount} size="md" />
-
-          <Price price={product.price} compareAtPrice={product.compareAtPrice} />
+          <Price
+            price={defaultVariant ? defaultVariant.priceCents / 100 : 0}
+            compareAtPrice={defaultVariant?.compareAtCents ? defaultVariant.compareAtCents / 100 : null}
+          />
 
           <p className="text-sm leading-relaxed text-brand-charcoal/75 sm:text-base">
             {product.description}
@@ -101,29 +117,34 @@ export default async function ProductDetailPage({ params }) {
             )}
             <span>
               {inStock
-                ? `In stock — ${product.stockLocations.join(" & ")}`
+                ? `In stock — ${locationNames.join(" & ")}`
                 : "Currently out of stock — check back soon"}
-              {product.stockStatus === "limited" && " (limited quantity available)"}
-              <span className="mt-0.5 block text-xs font-normal opacity-70">
-                Availability shown is demo inventory data, not a live stock feed.
-              </span>
+              {inStock && totalAvailable <= 2 && " (limited quantity available)"}
             </span>
           </div>
 
-          <dl className="grid grid-cols-3 gap-3 rounded-xl border border-brand-charcoal/10 bg-white p-4 text-center">
-            <div>
-              <dt className="text-xs font-semibold uppercase tracking-wide text-brand-charcoal/50">Width</dt>
-              <dd className="mt-1 text-sm font-bold text-brand-charcoal">{product.dimensions.width}&quot;</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold uppercase tracking-wide text-brand-charcoal/50">Height</dt>
-              <dd className="mt-1 text-sm font-bold text-brand-charcoal">{product.dimensions.height}&quot;</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold uppercase tracking-wide text-brand-charcoal/50">Depth</dt>
-              <dd className="mt-1 text-sm font-bold text-brand-charcoal">{product.dimensions.depth}&quot;</dd>
-            </div>
-          </dl>
+          {defaultVariant?.dimensions && (
+            <dl className="grid grid-cols-3 gap-3 rounded-xl border border-brand-charcoal/10 bg-white p-4 text-center">
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wide text-brand-charcoal/50">Width</dt>
+                <dd className="mt-1 text-sm font-bold text-brand-charcoal">
+                  {defaultVariant.dimensions.widthInches}&quot;
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wide text-brand-charcoal/50">Height</dt>
+                <dd className="mt-1 text-sm font-bold text-brand-charcoal">
+                  {defaultVariant.dimensions.heightInches}&quot;
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wide text-brand-charcoal/50">Depth</dt>
+                <dd className="mt-1 text-sm font-bold text-brand-charcoal">
+                  {defaultVariant.dimensions.depthInches}&quot;
+                </dd>
+              </div>
+            </dl>
+          )}
 
           <ProductPurchasePanel product={product} />
         </div>

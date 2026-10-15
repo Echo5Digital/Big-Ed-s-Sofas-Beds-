@@ -1,3 +1,6 @@
+// Live catalog data, never stale-cached — see app/page.jsx for rationale.
+export const instant = false;
+
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { PackageSearch } from "lucide-react";
@@ -6,32 +9,47 @@ import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import EmptyState from "@/components/ui/EmptyState";
 import ProductCard from "@/components/home/ProductCard";
 import CategoryCard from "@/components/home/CategoryCard";
-import { resolveShopSlug, getAllShopSlugs } from "@/lib/shop";
-import { categories } from "@/lib/mock-data/categories";
+import { getCategories, getProducts } from "@/lib/api/catalog";
+import { normalizeProductForCard } from "@/lib/api/normalize";
 
-export function generateStaticParams() {
-  return getAllShopSlugs().map((category) => ({ category }));
+// Resolves a /shop/[category] slug against the live category list. Supports
+// nested categories (via Category.parentId) transparently: a parent slug
+// shows its children as sub-category links, a leaf slug shows its own
+// products directly — today's seed data is flat (no parent/child relations
+// set), so every slug currently behaves as a leaf category page.
+async function resolveCategory(slug) {
+  const categories = await getCategories();
+  const category = categories.find((c) => c.slug === slug);
+  if (!category) return null;
+
+  const children = categories.filter((c) => c.parentId === category.id);
+  const { products } = await getProducts({ category: slug, pageSize: 100 });
+
+  return { category, children, products };
 }
 
 export async function generateMetadata({ params }) {
   const { category: slug } = await params;
-  const category = resolveShopSlug(slug);
-  if (!category) {
+  const resolved = await resolveCategory(slug);
+  if (!resolved) {
     return { title: "Category Not Found | Big Ed's Sofas & Beds" };
   }
   return {
-    title: `${category.name} | Big Ed's Sofas & Beds`,
-    description: category.description,
+    title: `${resolved.category.name} | Big Ed's Sofas & Beds`,
   };
 }
 
 export default async function ShopCategoryPage({ params }) {
   const { category: slug } = await params;
-  const category = resolveShopSlug(slug);
+  const resolved = await resolveCategory(slug);
 
-  if (!category) {
+  if (!resolved) {
     notFound();
   }
+
+  const { category, children, products: rawProducts } = resolved;
+  const products = rawProducts.map(normalizeProductForCard);
+  const allCategories = await getCategories();
 
   return (
     <div className="py-8 sm:py-10">
@@ -44,12 +62,11 @@ export default async function ShopCategoryPage({ params }) {
           <h1 className="font-display text-3xl font-bold text-brand-charcoal sm:text-4xl">
             {category.name}
           </h1>
-          <p className="max-w-2xl text-sm text-brand-charcoal/70 sm:text-base">{category.description}</p>
         </div>
 
-        {category.subCategories.length > 0 && (
+        {children.length > 0 && (
           <div className="mt-6 flex flex-wrap gap-2">
-            {category.subCategories.map((sub) => (
+            {children.map((sub) => (
               <Link
                 key={sub.slug}
                 href={`/shop/${sub.slug}`}
@@ -62,9 +79,9 @@ export default async function ShopCategoryPage({ params }) {
         )}
 
         <div className="mt-8">
-          {category.products.length > 0 ? (
+          {products.length > 0 ? (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-              {category.products.map((product) => (
+              {products.map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}
             </div>
@@ -79,13 +96,13 @@ export default async function ShopCategoryPage({ params }) {
           )}
         </div>
 
-        {category.subCategories.length === 0 && (
+        {children.length === 0 && (
           <div className="mt-12">
             <h2 className="font-display text-lg font-semibold text-brand-charcoal">
               Explore More Categories
             </h2>
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              {categories
+              {allCategories
                 .filter((c) => c.slug !== category.slug)
                 .slice(0, 6)
                 .map((c) => (

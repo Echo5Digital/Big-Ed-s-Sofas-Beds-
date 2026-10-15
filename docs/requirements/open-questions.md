@@ -6,10 +6,10 @@ gate" section (page 13), reorganized by what they block.
 
 ## Blocks: Card-present tender on In-Store POS (`apps/pos`)
 
-`apps/pos` is built and working for cash sales, deposits, receipts, and
-register closeout/reconciliation (`apps/api/src/services/pos.service.js`).
-What's still blocked on a client decision is specifically the card-present
-tender path:
+`apps/pos` is built and working for cash sales, deposits, discounts (with a
+required reason code), receipts, and register closeout/reconciliation
+(`apps/api/src/services/pos.service.js`). What's still blocked on a client
+decision is specifically the card-present tender path:
 
 - Current POS system (if any), preferred payment processor, merchant account,
   and specific in-store card terminal model(s). The kickoff plan is explicit:
@@ -19,20 +19,31 @@ tender path:
   data shape of a "payment confirmation" depends entirely on the chosen
   provider's API. `POST /api/pos/sales` currently rejects
   `tenderMethod: "CARD"` with a 501 rather than fabricating a successful
-  charge.
+  charge. Stripe Terminal is a candidate (online checkout now uses Stripe —
+  see "Decisions already made" below) but needs its own reader-model decision
+  before it's wired up; it is a separate integration from online Payment
+  Intents.
 - Register/cash-drawer hardware, if any, beyond the browser-based terminal
   integration.
-- Staff discount authorization policy (who can apply a discount, up to what
-  limit, with what approval) — no discount field exists yet on POS sales.
+- Discount authorization is intentionally minimal today: any staff member
+  with `pos:sell` can apply a discount as long as they record a reason code,
+  with no approval-limit tiers. A tiered policy (who can discount how much
+  without manager approval) is still a client decision if the business wants
+  one.
 
-## Blocks: Live payment on the e-commerce checkout
+## Blocks: Live payment on the e-commerce checkout — RESOLVED
 
-- Same payment provider decision as above — the storefront checkout
-  (`apps/storefront/app/checkout/page.jsx`) is intentionally UI-only
-  (clearly labeled "payment integration coming soon") until this is decided.
-- Deposit policy, cancellation/refund/exchange rules — needed to build the
-  real (non-demo) versions of `Payment`/`Refund` handling in
-  `apps/api/src/routes/orders.routes.js`.
+Online checkout now creates a real Stripe PaymentIntent (test mode) and
+collects card details via Stripe Elements — see "Decisions already made"
+below for the shape. Still open:
+
+- Deposit policy, cancellation/refund/exchange rules for online orders —
+  needed to build out `Refund` handling for e-commerce (POS refunds already
+  work; online refunds through Stripe are not yet implemented).
+- Real Stripe account + live-mode keys — this build uses test-mode
+  placeholders (`sk_test_...`/`pk_test_...`/`whsec_...` in `.env.example`)
+  until a real Stripe account is connected and the mandatory production
+  launch checklist is complete.
 
 ## Blocks: Tax calculation
 
@@ -100,13 +111,31 @@ here so they aren't lost, not because they're due now:
   the kickoff plan.
 - Staff auth: JWT access + refresh tokens in httpOnly cookies, not
   server-session-store based.
-- Checkout: UI-only / no live payment for this build pass, per explicit
-  scope guardrail against starting "irreversible payment/provider work"
-  before a provider is confirmed. Same guardrail applies to POS card tender.
+- Checkout: online checkout uses **Stripe** (Payment Intents, test mode) —
+  `POST /api/checkout` creates the order + inventory reservation, then
+  creates a Stripe PaymentIntent and returns its `clientSecret`; the
+  storefront collects card details with Stripe Elements and calls
+  `stripe.confirmPayment()` client-side. The order is only marked `PAID` by
+  `POST /api/webhooks/stripe` reacting to `payment_intent.succeeded` — a
+  client-side "payment succeeded" response is never trusted on its own
+  (`apps/api/src/routes/webhooks.routes.js`), per the non-negotiable "never
+  assume terminal pending means paid" rule. Webhook events are recorded in
+  `ProviderEvent` keyed on Stripe's `event.id`; a duplicate delivery hits the
+  existing unique-constraint→409 mapping and is acknowledged as a no-op
+  rather than re-applied. If the PaymentIntent can't be created (e.g. a
+  misconfigured key), the order and its stock reservations are rolled back
+  immediately rather than left `CONFIRMED`/`RESERVED` with no way to pay.
+  Same guardrail still applies to POS card-present tender (separate
+  integration — Stripe Terminal, not yet wired up).
 - POS: built with cash/deposit tender real and card tender stubbed (see
   above), rather than waiting on the payment provider decision to start any
-  POS work — register sessions, cash sales, deposits, and closeout
-  reconciliation don't depend on that decision and don't need to wait for it.
-  Added a `CASHIER` role and `pos:*` permission keys
-  (`packages/database/prisma/seed.js`) rather than overloading `STAFF` or
-  `MANAGER` with register access.
+  POS work — register sessions, cash sales, deposits, discounts (with
+  required reason code), and closeout reconciliation don't depend on that
+  decision and don't need to wait for it. Added a `CASHIER` role and `pos:*`
+  permission keys (`packages/database/prisma/seed.js`) rather than
+  overloading `STAFF` or `MANAGER` with register access.
+- Storefront: now calls the real catalog/checkout API
+  (`apps/storefront/lib/api/`) instead of local mock data — product
+  browsing, search, cart, and checkout all hit `apps/api`. Mock data files
+  under `apps/storefront/lib/mock-data/` remain for non-catalog marketing
+  content (blog, testimonials, site copy) only.

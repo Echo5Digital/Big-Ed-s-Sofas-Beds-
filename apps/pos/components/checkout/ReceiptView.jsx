@@ -38,6 +38,12 @@ export default function ReceiptView({ open, onClose, sale }) {
               <span>Subtotal</span>
               <span>{formatCents(order.subtotalCents)}</span>
             </div>
+            {order.discountCents > 0 && (
+              <div className="flex justify-between">
+                <span>Discount</span>
+                <span>-{formatCents(order.discountCents)}</span>
+              </div>
+            )}
             <div className="flex justify-between font-semibold">
               <span>{payment.method === "DEPOSIT" ? "Deposit paid" : "Total paid"}</span>
               <span>{formatCents(payment.amountCents)}</span>

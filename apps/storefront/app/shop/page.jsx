@@ -1,10 +1,13 @@
+// Live catalog data, never stale-cached — see app/page.jsx for rationale.
+export const instant = false;
+
 import Link from "next/link";
 import Container from "@/components/ui/Container";
 import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import ProductCard from "@/components/home/ProductCard";
 import CategoryCard from "@/components/home/CategoryCard";
-import { categories } from "@/lib/mock-data/categories";
-import { products } from "@/lib/mock-data/products";
+import { getCategories, getProducts } from "@/lib/api/catalog";
+import { normalizeProductForCard } from "@/lib/api/normalize";
 
 export const metadata = {
   title: "Shop All Furniture | Big Ed's Sofas & Beds",
@@ -12,7 +15,12 @@ export const metadata = {
     "Browse every category at Big Ed's Sofas & Beds — sofas, sectionals, recliners, bedroom sets, mattresses and dining sets.",
 };
 
-export default function ShopAllPage() {
+export default async function ShopAllPage() {
+  const [categories, { products: rawProducts }] = await Promise.all([
+    getCategories(),
+    getProducts({ pageSize: 100 }),
+  ]);
+  const products = rawProducts.map(normalizeProductForCard);
   return (
     <div className="py-8 sm:py-10">
       <Container>

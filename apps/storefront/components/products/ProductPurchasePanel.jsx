@@ -6,18 +6,61 @@ import { useDemoCart } from "@/components/layout/DemoCartProvider";
 
 export default function ProductPurchasePanel({ product }) {
   const { addToCart } = useDemoCart();
+  const activeVariants = product.variants.filter((v) => v.isActive);
+  const [selectedVariantId, setSelectedVariantId] = useState(
+    activeVariants[0]?.id ?? product.variants[0]?.id
+  );
+  const selectedVariant = product.variants.find((v) => v.id === selectedVariantId);
   const [quantity, setQuantity] = useState(1);
   const [fulfillment, setFulfillment] = useState("delivery");
   const [justAdded, setJustAdded] = useState(false);
 
+  const available = selectedVariant?.availability?.totalAvailable ?? 0;
+  const canAddToCart = available > 0 && quantity <= available;
+
   function handleAddToCart() {
-    addToCart(product, quantity);
+    if (!canAddToCart || !selectedVariant) return;
+    addToCart(
+      {
+        id: product.id,
+        variantId: selectedVariant.id,
+        slug: product.slug,
+        name: `${product.name} — ${selectedVariant.name}`,
+        image: product.images[0]?.url ?? null,
+        price: selectedVariant.priceCents / 100,
+      },
+      quantity
+    );
     setJustAdded(true);
     setTimeout(() => setJustAdded(false), 1800);
   }
 
   return (
     <div className="flex flex-col gap-5">
+      {product.variants.length > 1 && (
+        <div>
+          <span className="mb-2 block text-sm font-semibold text-brand-charcoal">Options</span>
+          <div className="flex flex-wrap gap-2">
+            {product.variants.map((variant) => (
+              <button
+                key={variant.id}
+                type="button"
+                onClick={() => setSelectedVariantId(variant.id)}
+                disabled={!variant.isActive}
+                aria-pressed={selectedVariantId === variant.id}
+                className={`rounded-xl border px-3 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                  selectedVariantId === variant.id
+                    ? "border-brand-red bg-brand-red/5 text-brand-red-dark"
+                    : "border-brand-charcoal/20 text-brand-charcoal hover:border-brand-charcoal/40"
+                }`}
+              >
+                {[variant.name, variant.color, variant.size].filter(Boolean).join(" / ")}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div>
         <span className="mb-2 block text-sm font-semibold text-brand-charcoal">Quantity</span>
         <div className="inline-flex items-center rounded-full border border-brand-charcoal/20 bg-white">
@@ -86,7 +129,8 @@ export default function ProductPurchasePanel({ product }) {
       <button
         type="button"
         onClick={handleAddToCart}
-        className="hidden items-center justify-center gap-2 rounded-full bg-brand-red px-6 py-3.5 text-base font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark sm:flex"
+        disabled={!canAddToCart}
+        className="hidden items-center justify-center gap-2 rounded-full bg-brand-red px-6 py-3.5 text-base font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark disabled:cursor-not-allowed disabled:bg-brand-charcoal/20 disabled:text-brand-charcoal/50 sm:flex"
       >
         {justAdded ? (
           <>
@@ -96,7 +140,7 @@ export default function ProductPurchasePanel({ product }) {
         ) : (
           <>
             <ShoppingCart className="size-5 shrink-0" aria-hidden="true" />
-            Add to Cart
+            {available === 0 ? "Out of Stock" : "Add to Cart"}
           </>
         )}
       </button>
@@ -106,7 +150,8 @@ export default function ProductPurchasePanel({ product }) {
         <button
           type="button"
           onClick={handleAddToCart}
-          className="flex w-full items-center justify-center gap-2 rounded-full bg-brand-red px-6 py-3.5 text-base font-semibold text-white shadow-lg transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark"
+          disabled={!canAddToCart}
+          className="flex w-full items-center justify-center gap-2 rounded-full bg-brand-red px-6 py-3.5 text-base font-semibold text-white shadow-lg transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark disabled:cursor-not-allowed disabled:bg-brand-charcoal/20 disabled:text-brand-charcoal/50"
         >
           {justAdded ? (
             <>
@@ -116,7 +161,7 @@ export default function ProductPurchasePanel({ product }) {
           ) : (
             <>
               <ShoppingCart className="size-5 shrink-0" aria-hidden="true" />
-              Add to Cart
+              {available === 0 ? "Out of Stock" : "Add to Cart"}
             </>
           )}
         </button>

@@ -11,6 +11,7 @@ import { useDemoCart } from "@/components/layout/DemoCartProvider";
 const BADGE_STYLES = {
   "BEST SELLER": "bg-brand-charcoal text-white",
   SALE: "bg-brand-red text-white",
+  "OUT OF STOCK": "bg-brand-charcoal/60 text-white",
 };
 
 export default function ProductCard({ product }) {
@@ -31,13 +32,15 @@ export default function ProductCard({ product }) {
           href={`/products/${product.slug}`}
           className="absolute inset-0 block focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red"
         >
-          <Image
-            src={product.image}
-            alt={product.name}
-            fill
-            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
-            className="object-cover"
-          />
+          {product.image && (
+            <Image
+              src={product.image}
+              alt={product.name}
+              fill
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
+              className="object-cover"
+            />
+          )}
         </Link>
         {product.badge && (
           <span
@@ -70,13 +73,16 @@ export default function ProductCard({ product }) {
         >
           {product.name}
         </Link>
-        <StarRating rating={product.rating} reviewCount={product.reviewCount} />
+        {typeof product.rating === "number" && (
+          <StarRating rating={product.rating} reviewCount={product.reviewCount} />
+        )}
         <Price price={product.price} compareAtPrice={product.compareAtPrice} />
 
         <button
           type="button"
           onClick={handleAddToCart}
-          className="mt-auto flex items-center justify-center gap-2 rounded-full bg-brand-red px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark"
+          disabled={product.totalAvailable === 0}
+          className="mt-auto flex items-center justify-center gap-2 rounded-full bg-brand-red px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark disabled:cursor-not-allowed disabled:bg-brand-charcoal/20 disabled:text-brand-charcoal/50"
         >
           {justAdded ? (
             <>
@@ -86,7 +92,7 @@ export default function ProductCard({ product }) {
           ) : (
             <>
               <ShoppingCart className="size-4 shrink-0" aria-hidden="true" />
-              Add to Cart
+              {product.totalAvailable === 0 ? "Out of Stock" : "Add to Cart"}
             </>
           )}
         </button>

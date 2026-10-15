@@ -10,6 +10,7 @@ const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
 const { NotFoundError, ConflictError } = require("../lib/errors");
+const { createWithSequentialNumber } = require("../lib/sequentialNumber");
 
 const router = express.Router();
 
@@ -116,29 +117,30 @@ router.post(
     });
     const variantById = new Map(variants.map((v) => [v.id, v]));
 
-    const poNumber = await nextPoNumber();
-
-    const po = await prisma.purchaseOrder.create({
-      data: {
-        poNumber,
-        status: "DRAFT",
-        supplierId: poData.supplierId,
-        locationId: poData.locationId,
-        expectedDate: poData.expectedDate ? new Date(poData.expectedDate) : undefined,
-        notes: poData.notes,
-        createdById: req.user.id,
-        lines: {
-          create: lines.map((l) => ({
-            variantId: l.variantId,
-            skuSnapshot: variantById.get(l.variantId)?.sku ?? "UNKNOWN",
-            expectedQty: l.expectedQty,
-            unitCostCents: l.unitCostCents,
-            taxCents: l.taxCents ?? 0,
-            freightCents: l.freightCents ?? 0,
-          })),
+    const po = await createWithSequentialNumber(async () => {
+      const poNumber = await nextPoNumber();
+      return prisma.purchaseOrder.create({
+        data: {
+          poNumber,
+          status: "DRAFT",
+          supplierId: poData.supplierId,
+          locationId: poData.locationId,
+          expectedDate: poData.expectedDate ? new Date(poData.expectedDate) : undefined,
+          notes: poData.notes,
+          createdById: req.user.id,
+          lines: {
+            create: lines.map((l) => ({
+              variantId: l.variantId,
+              skuSnapshot: variantById.get(l.variantId)?.sku ?? "UNKNOWN",
+              expectedQty: l.expectedQty,
+              unitCostCents: l.unitCostCents,
+              taxCents: l.taxCents ?? 0,
+              freightCents: l.freightCents ?? 0,
+            })),
+          },
         },
-      },
-      include: { supplier: true, lines: true },
+        include: { supplier: true, lines: true },
+      });
     });
 
     res.status(201).json({ purchaseOrder: serializePO(po) });

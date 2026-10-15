@@ -37,14 +37,16 @@ export default function CartPage() {
             <div className="flex flex-col gap-4 lg:col-span-2">
               {cartItems.map((item) => (
                 <div
-                  key={item.productId}
+                  key={item.variantId}
                   className="flex gap-4 rounded-xl border border-brand-charcoal/10 bg-white p-4"
                 >
                   <Link
                     href={`/products/${item.slug}`}
                     className="relative size-20 shrink-0 overflow-hidden rounded-lg bg-brand-cream sm:size-24"
                   >
-                    <Image src={item.image} alt={item.name} fill sizes="96px" className="object-cover" />
+                    {item.image && (
+                      <Image src={item.image} alt={item.name} fill sizes="96px" className="object-cover" />
+                    )}
                   </Link>
 
                   <div className="flex flex-1 flex-col gap-2">
@@ -57,7 +59,7 @@ export default function CartPage() {
                       </Link>
                       <button
                         type="button"
-                        onClick={() => removeFromCart(item.productId)}
+                        onClick={() => removeFromCart(item.variantId)}
                         aria-label={`Remove ${item.name} from cart`}
                         className="rounded-full p-2.5 text-brand-charcoal/40 hover:bg-brand-red/5 hover:text-brand-red-dark focus-visible:outline-2 focus-visible:outline-brand-red"
                       >
@@ -69,7 +71,7 @@ export default function CartPage() {
                       <div className="inline-flex items-center rounded-full border border-brand-charcoal/20 bg-white">
                         <button
                           type="button"
-                          onClick={() => updateQuantity(item.productId, item.quantity - 1)}
+                          onClick={() => updateQuantity(item.variantId, item.quantity - 1)}
                           aria-label={`Decrease quantity of ${item.name}`}
                           className="flex size-10 items-center justify-center rounded-full text-brand-charcoal hover:bg-brand-charcoal/5"
                         >
@@ -80,7 +82,7 @@ export default function CartPage() {
                         </span>
                         <button
                           type="button"
-                          onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+                          onClick={() => updateQuantity(item.variantId, item.quantity + 1)}
                           aria-label={`Increase quantity of ${item.name}`}
                           className="flex size-10 items-center justify-center rounded-full text-brand-charcoal hover:bg-brand-charcoal/5"
                         >

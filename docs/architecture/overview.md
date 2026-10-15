@@ -58,14 +58,21 @@ In-Store POS (apps/pos, :3002)         ─┘
   httpOnly auth cookies are sent — both server-side (SSR) and from the
   browser. This works the same in local dev (`http://localhost:4000`) and in
   production (e.g. Render), since these apps and the API are different
-  origins either way once deployed. The storefront currently runs entirely
-  on local mock data and doesn't call the API at all — see `DEPLOYMENT.md`.
+  origins either way once deployed. The storefront uses the same pattern
+  (`apps/storefront/lib/api/client.js`) — catalog browsing, search, cart
+  checkout, and payment all call the real API; only non-catalog marketing
+  content (blog, testimonials, site copy) still comes from local mock data
+  — see `DEPLOYMENT.md`.
 - The storefront's public catalog/checkout endpoints (`GET /api/catalog/*`,
-  `POST /api/checkout`) require no auth. Every staff endpoint
-  (`/api/inventory/*`, `/api/purchasing/*`, `/api/catalog/admin/*`,
-  `/api/dashboard/*`, `/api/admin/*`, `/api/pos/*`) requires a valid session
-  **and** the specific permission for that action — enforced server-side in
-  `apps/api/src/middleware/auth.js`, never trusted from the client.
+  `POST /api/checkout`) require no auth. `POST /api/webhooks/stripe` also
+  requires no session auth — its authenticity comes from Stripe's signature
+  verification, not RBAC — and is mounted before the global JSON body parser
+  since Stripe needs the raw request body to verify that signature. Every
+  staff endpoint (`/api/inventory/*`, `/api/purchasing/*`,
+  `/api/catalog/admin/*`, `/api/dashboard/*`, `/api/admin/*`, `/api/pos/*`)
+  requires a valid session **and** the specific permission for that action —
+  enforced server-side in `apps/api/src/middleware/auth.js`, never trusted
+  from the client.
 
 ## Auth & RBAC
 
@@ -116,19 +123,42 @@ enums that are never conflated: `status` (Draft/Confirmed/Canceled/Closed),
 (Unallocated/Reserved/Ready/PickedUp/Delivered). See
 `packages/database/prisma/schema.prisma`.
 
+## Payments (Stripe, online checkout)
+
+`POST /api/checkout` creates a priced, inventory-reserved order, then creates
+a Stripe PaymentIntent (`apps/api/src/lib/stripe.js`) for the order total and
+returns its `clientSecret`. The storefront (`apps/storefront/app/checkout/page.jsx`)
+collects card details with Stripe Elements and calls `stripe.confirmPayment()`
+client-side — but the order's `paymentStatus` stays `UNPAID` until
+`POST /api/webhooks/stripe` (`apps/api/src/routes/webhooks.routes.js`) reacts
+to a signed `payment_intent.succeeded` event from Stripe itself. This is the
+non-negotiable rule from the kickoff plan: "never assume terminal pending
+means paid." The webhook route:
+
+- Is mounted before the global `express.json()` parser and uses
+  `express.raw()` so Stripe's HMAC signature verification gets the untouched
+  request body.
+- Records every event in `ProviderEvent` keyed on Stripe's `event.id` before
+  handling it — a duplicate delivery hits the column's unique constraint,
+  which is caught and acknowledged with 200 (a no-op), not re-applied.
+- On success, converts every active `Reservation` on the order to a sale and
+  marks the order `PAID`/`READY`. On failure, releases the reservations and
+  cancels the order. If the PaymentIntent itself can't be created (e.g. a
+  misconfigured key), `/checkout` releases the reservations and cancels the
+  order inline rather than leaving it `CONFIRMED`/`RESERVED` with no way to
+  pay.
+
+This build uses Stripe **test mode** — see `docs/requirements/open-questions.md`
+for the live-mode launch checklist. POS card-present tender is a separate,
+still-stubbed integration (Stripe Terminal would need its own reader-model
+decision): cash and deposit sales are fully implemented, but
+`POST /api/pos/sales` rejects `tenderMethod: "CARD"` with 501 — see
+`apps/pos/README.md`.
+
 ## What is explicitly NOT built yet (by design)
 
 These are scope guardrails from the kickoff plan, not omissions:
 
-- **Live payment processing.** `POST /api/checkout` creates a priced,
-  inventory-reserved order and leaves it `UNPAID` — no payment provider is
-  wired up. The storefront checkout page is clearly labeled as review-only.
-  This matches the plan's instruction not to begin "irreversible
-  payment/provider work... until prerequisites are confirmed." The same gap
-  applies to POS card-present tender (`apps/pos`): cash and deposit sales
-  are fully implemented, but `POST /api/pos/sales` rejects `tenderMethod:
-  "CARD"` with 501 until a processor and terminal model are selected — see
-  `apps/pos/README.md`.
 - **Tax calculation** — `Order.taxCents` exists in the schema but nothing
   computes it yet; a real tax engine needs a confirmed jurisdiction/approach
   first (see `docs/requirements/open-questions.md`).

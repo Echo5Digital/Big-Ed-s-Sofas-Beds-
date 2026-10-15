@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { products } from "@/lib/mock-data/products";
 import Container from "@/components/ui/Container";
 import SectionHeading from "@/components/ui/SectionHeading";
 import ProductCard from "@/components/home/ProductCard";
+import { getProducts } from "@/lib/api/catalog";
+import { normalizeProductForCard } from "@/lib/api/normalize";
 
 const FEATURED_COUNT = 6;
 
-export default function FeaturedProducts() {
-  const featured = products.slice(0, FEATURED_COUNT);
+export default async function FeaturedProducts() {
+  const { products: rawProducts } = await getProducts({ pageSize: FEATURED_COUNT });
+  const featured = rawProducts.map(normalizeProductForCard);
 
   return (
     <section className="bg-brand-cream py-12 sm:py-16">

@@ -1,5 +1,6 @@
 const { prisma } = require("@big-eds/database");
 const { ConflictError, NotFoundError } = require("../lib/errors");
+const { createWithSequentialNumber } = require("../lib/sequentialNumber");
 const inventoryService = require("./inventory.service");
 
 // POS sales reserve and convert in the same request (a cashier completes the
@@ -74,7 +75,17 @@ async function getOpenSession(registerSessionId) {
 // processor/terminal has been selected yet (see
 // docs/requirements/open-questions.md) and this function must never fabricate
 // a successful card charge.
-async function ringSale({ registerSessionId, lines, tenderMethod, tenderedCents, depositAmountCents, customerInput, performedById }) {
+async function ringSale({
+  registerSessionId,
+  lines,
+  tenderMethod,
+  tenderedCents,
+  depositAmountCents,
+  discountCents,
+  discountReasonCode,
+  customerInput,
+  performedById,
+}) {
   if (tenderMethod === "CARD") {
     throw new ConflictError(
       "Card-present tender is not available yet — no payment processor or terminal model has been selected. Use cash or deposit."
@@ -99,10 +110,15 @@ async function ringSale({ registerSessionId, lines, tenderMethod, tenderedCents,
   }
 
   const subtotalCents = lines.reduce((sum, l) => sum + variantById.get(l.variantId).priceCents * l.quantity, 0);
-  const saleAmountCents = tenderMethod === "DEPOSIT" ? depositAmountCents : subtotalCents;
 
-  if (tenderMethod === "DEPOSIT" && (!depositAmountCents || depositAmountCents > subtotalCents)) {
-    throw new ConflictError("Deposit amount must be greater than zero and not exceed the order subtotal");
+  if (discountCents > subtotalCents) {
+    throw new ConflictError("Discount cannot exceed the order subtotal", { subtotalCents, discountCents });
+  }
+  const totalCents = subtotalCents - (discountCents || 0);
+  const saleAmountCents = tenderMethod === "DEPOSIT" ? depositAmountCents : totalCents;
+
+  if (tenderMethod === "DEPOSIT" && (!depositAmountCents || depositAmountCents > totalCents)) {
+    throw new ConflictError("Deposit amount must be greater than zero and not exceed the order total");
   }
   if (tenderedCents < saleAmountCents) {
     throw new ConflictError("Tendered amount is less than the amount due", {
@@ -121,36 +137,39 @@ async function ringSale({ registerSessionId, lines, tenderMethod, tenderedCents,
     customerId = customer.id;
   }
 
-  const order = await prisma.$transaction(async (tx) => {
-    const orderNumber = await nextOrderNumber(tx);
-    return tx.order.create({
-      data: {
-        orderNumber,
-        channel: "POS",
-        customerId,
-        status: "DRAFT",
-        paymentStatus: "UNPAID",
-        fulfillmentStatus: "UNALLOCATED",
-        fulfillmentMethod: "IN_STORE",
-        subtotalCents,
-        totalCents: subtotalCents,
-        lines: {
-          create: lines.map((l) => {
-            const variant = variantById.get(l.variantId);
-            return {
-              variantId: variant.id,
-              skuSnapshot: variant.sku,
-              nameSnapshot: `${variant.product.name} — ${variant.name}`,
-              quantity: l.quantity,
-              unitPriceCents: variant.priceCents,
-              lineTotalCents: variant.priceCents * l.quantity,
-            };
-          }),
+  const order = await createWithSequentialNumber(() =>
+    prisma.$transaction(async (tx) => {
+      const orderNumber = await nextOrderNumber(tx);
+      return tx.order.create({
+        data: {
+          orderNumber,
+          channel: "POS",
+          customerId,
+          status: "DRAFT",
+          paymentStatus: "UNPAID",
+          fulfillmentStatus: "UNALLOCATED",
+          fulfillmentMethod: "IN_STORE",
+          subtotalCents,
+          discountCents: discountCents || 0,
+          totalCents,
+          lines: {
+            create: lines.map((l) => {
+              const variant = variantById.get(l.variantId);
+              return {
+                variantId: variant.id,
+                skuSnapshot: variant.sku,
+                nameSnapshot: `${variant.product.name} — ${variant.name}`,
+                quantity: l.quantity,
+                unitPriceCents: variant.priceCents,
+                lineTotalCents: variant.priceCents * l.quantity,
+              };
+            }),
+          },
         },
-      },
-      include: { lines: true, customer: true },
-    });
-  });
+        include: { lines: true, customer: true },
+      });
+    })
+  );
 
   // Reserve-then-convert per line, each its own transaction (same pattern as
   // online checkout) so concurrent POS/web sales serialize on the stock
@@ -199,48 +218,63 @@ async function ringSale({ registerSessionId, lines, tenderMethod, tenderedCents,
 
   const changeDueCents = tenderMethod === "CASH" ? tenderedCents - saleAmountCents : 0;
 
-  const result = await prisma.$transaction(async (tx) => {
-    const payment = await tx.payment.create({
-      data: {
-        orderId: order.id,
-        method: tenderMethod,
-        status: "SUCCEEDED",
-        amountCents: saleAmountCents,
-      },
-    });
+  const result = await createWithSequentialNumber(() =>
+    prisma.$transaction(async (tx) => {
+      const payment = await tx.payment.create({
+        data: {
+          orderId: order.id,
+          method: tenderMethod,
+          status: "SUCCEEDED",
+          amountCents: saleAmountCents,
+        },
+      });
 
-    const paymentStatus = tenderMethod === "DEPOSIT" && saleAmountCents < subtotalCents ? "PARTIALLY_PAID" : "PAID";
+      const paymentStatus = tenderMethod === "DEPOSIT" && saleAmountCents < totalCents ? "PARTIALLY_PAID" : "PAID";
 
-    const confirmedOrder = await tx.order.update({
-      where: { id: order.id },
-      data: {
-        status: "CONFIRMED",
-        fulfillmentStatus: "READY",
-        paymentStatus,
-      },
-      include: { lines: true, customer: true, payments: true },
-    });
+      const confirmedOrder = await tx.order.update({
+        where: { id: order.id },
+        data: {
+          status: "CONFIRMED",
+          fulfillmentStatus: "READY",
+          paymentStatus,
+        },
+        include: { lines: true, customer: true, payments: true },
+      });
 
-    await tx.cashMovement.create({
-      data: {
-        registerSessionId,
-        type: tenderMethod === "DEPOSIT" ? "DEPOSIT" : "SALE",
-        amountCents: saleAmountCents,
-        notes: `Order ${confirmedOrder.orderNumber}`,
-      },
-    });
+      await tx.cashMovement.create({
+        data: {
+          registerSessionId,
+          type: tenderMethod === "DEPOSIT" ? "DEPOSIT" : "SALE",
+          amountCents: saleAmountCents,
+          notes: `Order ${confirmedOrder.orderNumber}`,
+        },
+      });
 
-    const receiptNumber = await nextReceiptNumber(tx);
-    const receipt = await tx.receipt.create({
-      data: {
-        registerSessionId,
-        orderId: order.id,
-        receiptNumber,
-      },
-    });
+      const receiptNumber = await nextReceiptNumber(tx);
+      const receipt = await tx.receipt.create({
+        data: {
+          registerSessionId,
+          orderId: order.id,
+          receiptNumber,
+        },
+      });
 
-    return { order: confirmedOrder, payment, receipt };
-  });
+      if (discountCents > 0) {
+        await tx.auditLog.create({
+          data: {
+            userId: performedById,
+            action: "pos.sale.discount",
+            entityType: "Order",
+            entityId: order.id,
+            reasonCode: discountReasonCode,
+            metadata: { discountCents, subtotalCents },
+          },
+        });
+      }
+
+      return { order: confirmedOrder, payment, receipt };
+    })
+  );
 
   return {
     order: result.order,

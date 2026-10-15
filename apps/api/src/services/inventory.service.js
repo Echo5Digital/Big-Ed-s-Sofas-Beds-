@@ -3,17 +3,30 @@ const { RESERVATION_TTL_MINUTES } = require("@big-eds/config");
 const { ConflictError, NotFoundError } = require("../lib/errors");
 
 // All mutating stock operations run inside a single Prisma transaction and
-// re-read the balance row with the transaction's connection immediately
-// before mutating it, so concurrent requests serialize on the row rather than
-// racing on a stale read. This is what prevents the "last unit sold twice"
-// failure the kickoff plan calls out explicitly.
+// take a row-level lock (SELECT ... FOR UPDATE) on the balance row before
+// checking availability, so concurrent requests for the same row block on
+// the lock instead of both reading a stale snapshot and both passing the
+// availability check. This is what prevents the "last unit sold twice"
+// failure the kickoff plan calls out explicitly — a plain findUnique here
+// (without FOR UPDATE) would let two concurrent transactions both read
+// reserved=0, both pass the check, and both commit their increment.
 
 async function getOrCreateBalance(tx, variantId, locationId) {
-  const existing = await tx.stockBalance.findUnique({
-    where: { variantId_locationId: { variantId, locationId } },
-  });
+  const [existing] = await tx.$queryRaw`
+    SELECT * FROM "StockBalance"
+    WHERE "variantId" = ${variantId} AND "locationId" = ${locationId}
+    FOR UPDATE
+  `;
   if (existing) return existing;
-  return tx.stockBalance.create({ data: { variantId, locationId } });
+  // Row doesn't exist yet — create it, then lock it so a concurrent
+  // first-reservation race still serializes correctly.
+  await tx.stockBalance.create({ data: { variantId, locationId } });
+  const [created] = await tx.$queryRaw`
+    SELECT * FROM "StockBalance"
+    WHERE "variantId" = ${variantId} AND "locationId" = ${locationId}
+    FOR UPDATE
+  `;
+  return created;
 }
 
 function availableToSell(balance) {

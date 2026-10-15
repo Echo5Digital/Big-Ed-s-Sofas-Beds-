@@ -193,22 +193,29 @@ const registerCloseSchema = z.object({
 // docs/requirements/open-questions.md). CASH and DEPOSIT are real, working
 // tenders; a request with method "CARD" is rejected at the route level with
 // a 501 rather than silently faked.
-const posSaleSchema = z.object({
-  registerSessionId: z.string().uuid(),
-  lines: z.array(cartLineSchema).min(1),
-  tenderMethod: z.enum(["CASH", "CARD", "DEPOSIT"]),
-  tenderedCents: z.number().int().nonnegative(),
-  depositAmountCents: z.number().int().positive().optional(),
-  customer: z
-    .object({
-      email: z.string().email(),
-      firstName: z.string().min(1).max(100),
-      lastName: z.string().min(1).max(100),
-      phone: z.string().max(40).optional().nullable(),
-    })
-    .optional()
-    .nullable(),
-});
+const posSaleSchema = z
+  .object({
+    registerSessionId: z.string().uuid(),
+    lines: z.array(cartLineSchema).min(1),
+    tenderMethod: z.enum(["CASH", "CARD", "DEPOSIT"]),
+    tenderedCents: z.number().int().nonnegative(),
+    depositAmountCents: z.number().int().positive().optional(),
+    discountCents: z.number().int().nonnegative().optional(),
+    discountReasonCode: z.string().min(1).max(120).optional(),
+    customer: z
+      .object({
+        email: z.string().email(),
+        firstName: z.string().min(1).max(100),
+        lastName: z.string().min(1).max(100),
+        phone: z.string().max(40).optional().nullable(),
+      })
+      .optional()
+      .nullable(),
+  })
+  .refine((data) => !data.discountCents || Boolean(data.discountReasonCode), {
+    message: "discountReasonCode is required whenever discountCents is greater than zero",
+    path: ["discountReasonCode"],
+  });
 
 const posRefundSchema = z.object({
   registerSessionId: z.string().uuid(),

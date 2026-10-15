@@ -60,7 +60,7 @@ export default function CheckoutScreen() {
   const itemCount = cart.reduce((sum, l) => sum + l.quantity, 0);
   const subtotalCents = cart.reduce((sum, l) => sum + l.priceCents * l.quantity, 0);
 
-  async function handleConfirmPayment({ tenderMethod, tenderedCents, depositAmountCents }) {
+  async function handleConfirmPayment({ tenderMethod, tenderedCents, depositAmountCents, discountCents, discountReasonCode }) {
     setError(null);
     setSubmitting(true);
     try {
@@ -70,6 +70,8 @@ export default function CheckoutScreen() {
         tenderMethod,
         tenderedCents,
         depositAmountCents,
+        discountCents,
+        discountReasonCode,
       });
       setCompletedSale(data);
       setTenderOpen(false);

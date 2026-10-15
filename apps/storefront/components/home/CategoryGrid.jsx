@@ -1,8 +1,10 @@
-import { categories } from "@/lib/mock-data/categories";
 import Container from "@/components/ui/Container";
 import CategoryCard from "@/components/home/CategoryCard";
+import { getCategories } from "@/lib/api/catalog";
 
-export default function CategoryGrid() {
+export default async function CategoryGrid() {
+  const categories = await getCategories();
+
   return (
     <section aria-label="Shop by category" className="bg-brand-cream py-8 sm:py-10">
       <Container>

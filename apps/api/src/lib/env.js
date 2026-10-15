@@ -29,6 +29,9 @@ const env = {
     ? process.env.COOKIE_SECURE === "true"
     : process.env.NODE_ENV === "production",
   cookieSameSite: process.env.COOKIE_SAME_SITE || (process.env.NODE_ENV === "production" ? "none" : "lax"),
+  stripeSecretKey: required("STRIPE_SECRET_KEY"),
+  stripeWebhookSecret: required("STRIPE_WEBHOOK_SECRET"),
+  stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || "",
 };
 
 module.exports = { env };

@@ -1,9 +1,8 @@
 "use client";
 
-// Demo-only client-side cart & wishlist state for this frontend phase.
-// Nothing here is persisted to an account or backend — it exists purely to
-// demonstrate the interaction pattern the future order/wishlist services
-// will plug into.
+// Client-side cart & wishlist state. Cart contents are in-memory only (not
+// persisted to an account or backend) — lines carry a real variantId so
+// checkout can submit them directly to POST /api/checkout.
 
 import { createContext, useContext, useState, useCallback, useMemo } from "react";
 
@@ -13,12 +12,16 @@ export function DemoCartProvider({ children }) {
   const [cartItems, setCartItems] = useState([]);
   const [wishlistIds, setWishlistIds] = useState([]);
 
+  // `product` here is the normalized card shape (id, slug, name, image,
+  // price) plus a `variantId` identifying which real Variant to check out —
+  // from the product detail page's selected variant, or the product's sole/
+  // first active variant when added from a card with no selector.
   const addToCart = useCallback((product, quantity = 1) => {
     setCartItems((items) => {
-      const existing = items.find((item) => item.productId === product.id);
+      const existing = items.find((item) => item.variantId === product.variantId);
       if (existing) {
         return items.map((item) =>
-          item.productId === product.id
+          item.variantId === product.variantId
             ? { ...item, quantity: item.quantity + quantity }
             : item
         );
@@ -27,6 +30,7 @@ export function DemoCartProvider({ children }) {
         ...items,
         {
           productId: product.id,
+          variantId: product.variantId,
           slug: product.slug,
           name: product.name,
           image: product.image,
@@ -37,19 +41,23 @@ export function DemoCartProvider({ children }) {
     });
   }, []);
 
-  const removeFromCart = useCallback((productId) => {
-    setCartItems((items) => items.filter((item) => item.productId !== productId));
+  const removeFromCart = useCallback((variantId) => {
+    setCartItems((items) => items.filter((item) => item.variantId !== variantId));
   }, []);
 
-  const updateQuantity = useCallback((productId, quantity) => {
+  const updateQuantity = useCallback((variantId, quantity) => {
     setCartItems((items) => {
       if (quantity <= 0) {
-        return items.filter((item) => item.productId !== productId);
+        return items.filter((item) => item.variantId !== variantId);
       }
       return items.map((item) =>
-        item.productId === productId ? { ...item, quantity } : item
+        item.variantId === variantId ? { ...item, quantity } : item
       );
     });
+  }, []);
+
+  const clearCart = useCallback(() => {
+    setCartItems([]);
   }, []);
 
   const toggleWishlist = useCallback((productId) => {
@@ -75,6 +83,7 @@ export function DemoCartProvider({ children }) {
     addToCart,
     removeFromCart,
     updateQuantity,
+    clearCart,
     wishlistIds,
     toggleWishlist,
   };

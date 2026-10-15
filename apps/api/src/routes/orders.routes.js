@@ -6,6 +6,8 @@ const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
 const { NotFoundError, ConflictError } = require("../lib/errors");
 const inventoryService = require("../services/inventory.service");
+const { stripe } = require("../lib/stripe");
+const { createWithSequentialNumber } = require("../lib/sequentialNumber");
 
 const router = express.Router();
 
@@ -44,16 +46,19 @@ function serializeOrder(order) {
 
 // --- Public checkout (storefront) -----------------------------------------
 //
-// Scope note: this endpoint builds a priced, inventory-reserved DRAFT order.
-// It deliberately stops short of charging a card — per the kickoff plan,
-// payment/provider integration requires a confirmed provider + reviewed spec
-// before going live. The order is left UNPAID with an active reservation
-// until that integration exists; nothing here marks a sale "complete."
+// Builds a priced, inventory-reserved order and creates a Stripe PaymentIntent
+// for it. The order stays UNPAID (and the reservation stays ACTIVE, not yet
+// converted to a sale) until the Stripe webhook confirms payment — a
+// client-side "payment succeeded" callback is never trusted on its own, per
+// the kickoff plan's "never assume terminal pending means paid" rule. See
+// src/routes/webhooks.routes.js for the confirmation path.
 router.post(
   "/checkout",
   validateBody(checkoutCreateSchema),
   asyncHandler(async (req, res) => {
     const { lines, fulfillmentMethod, customer: customerInput, deliveryAddress } = req.body;
+
+    await inventoryService.expireStaleReservations();
 
     const warehouse = await prisma.location.findFirst({ where: { type: "WAREHOUSE", isActive: true } });
     if (!warehouse) throw new ConflictError("No active fulfillment location configured");
@@ -75,43 +80,44 @@ router.post(
       create: customerInput,
     });
 
-    const orderNumber = await nextOrderNumber();
-
     const subtotalCents = lines.reduce((sum, l) => sum + variantById.get(l.variantId).priceCents * l.quantity, 0);
 
-    const order = await prisma.order.create({
-      data: {
-        orderNumber,
-        channel: "ONLINE",
-        customerId: customer.id,
-        status: "DRAFT",
-        paymentStatus: "UNPAID",
-        fulfillmentStatus: "UNALLOCATED",
-        fulfillmentMethod,
-        subtotalCents,
-        totalCents: subtotalCents,
-        lines: {
-          create: lines.map((l) => {
-            const variant = variantById.get(l.variantId);
-            return {
-              variantId: variant.id,
-              skuSnapshot: variant.sku,
-              nameSnapshot: `${variant.product.name} — ${variant.name}`,
-              quantity: l.quantity,
-              unitPriceCents: variant.priceCents,
-              lineTotalCents: variant.priceCents * l.quantity,
-            };
-          }),
+    const order = await createWithSequentialNumber(async () => {
+      const orderNumber = await nextOrderNumber();
+      return prisma.order.create({
+        data: {
+          orderNumber,
+          channel: "ONLINE",
+          customerId: customer.id,
+          status: "DRAFT",
+          paymentStatus: "UNPAID",
+          fulfillmentStatus: "UNALLOCATED",
+          fulfillmentMethod,
+          subtotalCents,
+          totalCents: subtotalCents,
+          lines: {
+            create: lines.map((l) => {
+              const variant = variantById.get(l.variantId);
+              return {
+                variantId: variant.id,
+                skuSnapshot: variant.sku,
+                nameSnapshot: `${variant.product.name} — ${variant.name}`,
+                quantity: l.quantity,
+                unitPriceCents: variant.priceCents,
+                lineTotalCents: variant.priceCents * l.quantity,
+              };
+            }),
+          },
+          ...(deliveryAddress
+            ? {
+                deliveries: {
+                  create: { feeCents: 0 },
+                },
+              }
+            : {}),
         },
-        ...(deliveryAddress
-          ? {
-              deliveries: {
-                create: { feeCents: 0 },
-              },
-            }
-          : {}),
-      },
-      include: { lines: true, customer: true },
+        include: { lines: true, customer: true },
+      });
     });
 
     const reservationFailures = [];
@@ -141,9 +147,42 @@ router.post(
       include: { lines: true, customer: true },
     });
 
+    // If PaymentIntent creation (or recording it) fails, the order must not
+    // be left CONFIRMED/RESERVED with stock held hostage and no way to pay —
+    // release every reservation just created and cancel the order, same as
+    // the out-of-stock rollback above.
+    let paymentIntent;
+    try {
+      paymentIntent = await stripe.paymentIntents.create({
+        amount: confirmed.totalCents,
+        currency: "usd",
+        metadata: { orderId: confirmed.id, orderNumber: confirmed.orderNumber },
+      });
+
+      await prisma.payment.create({
+        data: {
+          orderId: confirmed.id,
+          method: "CARD",
+          status: "PENDING",
+          amountCents: confirmed.totalCents,
+          providerName: "stripe",
+          providerRef: paymentIntent.id,
+        },
+      });
+    } catch (err) {
+      const activeReservations = await prisma.reservation.findMany({
+        where: { orderId: confirmed.id, status: "ACTIVE" },
+      });
+      for (const reservation of activeReservations) {
+        await inventoryService.releaseReservation(reservation.id);
+      }
+      await prisma.order.update({ where: { id: confirmed.id }, data: { status: "CANCELED" } });
+      throw err;
+    }
+
     res.status(201).json({
       order: serializeOrder(confirmed),
-      paymentNote: "Payment processing is not yet integrated. This order is reserved and unpaid pending provider setup.",
+      clientSecret: paymentIntent.client_secret,
     });
   })
 );

@@ -1,6 +1,7 @@
 const express = require("express");
 const { prisma } = require("@big-eds/database");
 const { stockAdjustSchema, stockTransferSchema, countCreateSchema, countSubmitSchema } = require("@big-eds/validation");
+const { LOW_STOCK_THRESHOLD } = require("@big-eds/config");
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
@@ -26,6 +27,8 @@ router.get(
   asyncHandler(async (req, res) => {
     const { locationId, lowStockOnly } = req.query;
 
+    await inventoryService.expireStaleReservations();
+
     const balances = await prisma.stockBalance.findMany({
       where: locationId ? { locationId: String(locationId) } : undefined,
       include: {
@@ -35,22 +38,30 @@ router.get(
       orderBy: { updatedAt: "desc" },
     });
 
-    const shaped = balances.map((b) => ({
-      id: b.id,
-      variantId: b.variantId,
-      sku: b.variant.sku,
-      productName: b.variant.product.name,
-      variantName: b.variant.name,
-      locationId: b.locationId,
-      locationName: b.location.name,
-      onHand: b.onHand,
-      reserved: b.reserved,
-      quarantined: b.quarantined,
-      availableToSell: Math.max(0, b.onHand - b.reserved - b.quarantined),
-      updatedAt: b.updatedAt,
-    }));
+    const shaped = balances.map((b) => {
+      const availableToSell = Math.max(0, b.onHand - b.reserved - b.quarantined);
+      return {
+        id: b.id,
+        variantId: b.variantId,
+        sku: b.variant.sku,
+        productName: b.variant.product.name,
+        variantName: b.variant.name,
+        locationId: b.locationId,
+        locationName: b.location.name,
+        onHand: b.onHand,
+        reserved: b.reserved,
+        quarantined: b.quarantined,
+        availableToSell,
+        // Suggestion only — tops back up to 2x the low-stock threshold. A
+        // manager must still review and approve any PO created from this
+        // (see purchase-orders/:id/approve); nothing here orders automatically.
+        suggestedReorderQty:
+          availableToSell <= LOW_STOCK_THRESHOLD ? Math.max(0, LOW_STOCK_THRESHOLD * 2 - availableToSell) : 0,
+        updatedAt: b.updatedAt,
+      };
+    });
 
-    const result = lowStockOnly === "true" ? shaped.filter((b) => b.availableToSell <= 2) : shaped;
+    const result = lowStockOnly === "true" ? shaped.filter((b) => b.availableToSell <= LOW_STOCK_THRESHOLD) : shaped;
 
     res.json({ balances: result });
   })

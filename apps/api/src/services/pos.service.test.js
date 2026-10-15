@@ -114,6 +114,45 @@ describe("pos.service", () => {
     await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 100000 });
   });
 
+  it("applies a discount with a reason code and charges the discounted total", async () => {
+    await seedStock(5);
+    const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+    const result = await posService.ringSale({
+      registerSessionId: session.id,
+      lines: [{ variantId: variant.id, quantity: 1 }],
+      tenderMethod: "CASH",
+      tenderedCents: 45000,
+      discountCents: 5000,
+      discountReasonCode: "manager_price_match",
+      performedById: null,
+    });
+
+    expect(result.order.subtotalCents).toBe(50000);
+    expect(result.order.totalCents).toBe(45000);
+    expect(result.payment.amountCents).toBe(45000);
+
+    const auditEntry = await prisma.auditLog.findFirst({
+      where: { entityId: result.order.id, action: "pos.sale.discount" },
+    });
+    expect(auditEntry).not.toBeNull();
+    expect(auditEntry.reasonCode).toBe("manager_price_match");
+
+    await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 45000 });
+  });
+
+  it("rejects a discount with no reason code at the validation layer", () => {
+    const { posSaleSchema } = require("@big-eds/validation");
+    const result = posSaleSchema.safeParse({
+      registerSessionId: register.id,
+      lines: [{ variantId: variant.id, quantity: 1 }],
+      tenderMethod: "CASH",
+      tenderedCents: 45000,
+      discountCents: 5000,
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("rejects CARD tender without writing any order or stock change", async () => {
     await seedStock(5);
     const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });

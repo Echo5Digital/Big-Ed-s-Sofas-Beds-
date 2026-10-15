@@ -20,6 +20,7 @@ function serializeOrder(order) {
     paymentStatus: order.paymentStatus,
     fulfillmentStatus: order.fulfillmentStatus,
     subtotalCents: order.subtotalCents,
+    discountCents: order.discountCents,
     totalCents: order.totalCents,
     customer: order.customer
       ? { id: order.customer.id, email: order.customer.email, firstName: order.customer.firstName, lastName: order.customer.lastName }
@@ -103,7 +104,16 @@ router.post(
   requirePermission("pos:sell"),
   validateBody(posSaleSchema),
   asyncHandler(async (req, res) => {
-    const { registerSessionId, lines, tenderMethod, tenderedCents, depositAmountCents, customer } = req.body;
+    const {
+      registerSessionId,
+      lines,
+      tenderMethod,
+      tenderedCents,
+      depositAmountCents,
+      discountCents,
+      discountReasonCode,
+      customer,
+    } = req.body;
 
     if (tenderMethod === "CARD") {
       return res.status(501).json({
@@ -120,6 +130,8 @@ router.post(
       tenderMethod,
       tenderedCents,
       depositAmountCents,
+      discountCents,
+      discountReasonCode,
       customerInput: customer,
       performedById: req.user.id,
     });

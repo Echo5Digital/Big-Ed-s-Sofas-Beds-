@@ -231,6 +231,11 @@ function InventoryContent() {
       ),
     },
     {
+      key: "suggestedReorderQty",
+      header: "Suggested Reorder",
+      render: (r) => (r.suggestedReorderQty > 0 ? r.suggestedReorderQty : "—"),
+    },
+    {
       key: "actions",
       header: "",
       render: (r) => (

@@ -1,3 +1,9 @@
+// Category/featured-product data is fetched live from the catalog API on
+// every request (never stale-cached) — stock and pricing must reflect the
+// real inventory ledger, not a build-time snapshot. See
+// docs/architecture/overview.md for the Cache Components tradeoff.
+export const instant = false;
+
 import HeroBanner from "@/components/home/HeroBanner";
 import CategoryGrid from "@/components/home/CategoryGrid";
 import FeaturedProducts from "@/components/home/FeaturedProducts";

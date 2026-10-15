@@ -1,18 +1,23 @@
+// Live catalog data, never stale-cached — see app/page.jsx for rationale.
+export const instant = false;
+
 import { Tag } from "lucide-react";
 import Container from "@/components/ui/Container";
 import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import EmptyState from "@/components/ui/EmptyState";
 import ProductCard from "@/components/home/ProductCard";
 import BearMascot from "@/components/ui/BearMascot";
-import { getDealsProducts } from "@/lib/shop";
+import { getProducts } from "@/lib/api/catalog";
+import { normalizeProductForCard } from "@/lib/api/normalize";
 
 export const metadata = {
   title: "Deals | Big Ed's Sofas & Beds",
   description: "Shop the best current markdowns on sofas, mattresses, bedroom sets and dining sets at Big Ed's Sofas & Beds.",
 };
 
-export default function DealsPage() {
-  const deals = getDealsProducts();
+export default async function DealsPage() {
+  const { products: rawProducts } = await getProducts({ pageSize: 100 });
+  const deals = rawProducts.map(normalizeProductForCard).filter((p) => p.compareAtPrice);
 
   return (
     <div className="pb-10">
