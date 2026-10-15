@@ -2,14 +2,21 @@ import Container from "@/components/ui/Container";
 import CategoryCard from "@/components/home/CategoryCard";
 import { getCategories } from "@/lib/api/catalog";
 
+// Homepage "Shop by Category" teaser shows a curated subset in a fixed
+// order, not the full catalog list (that's what /shop is for) — matches
+// product slugs from packages/database/prisma/seed.js.
+const FEATURED_SLUGS = ["sofas", "sectionals", "recliners", "bedroom", "mattresses", "dining"];
+
 export default async function CategoryGrid() {
   const categories = await getCategories();
+  const bySlug = new Map(categories.map((c) => [c.slug, c]));
+  const featured = FEATURED_SLUGS.map((slug) => bySlug.get(slug)).filter(Boolean);
 
   return (
-    <section aria-label="Shop by category" className="bg-brand-cream py-8 sm:py-10">
+    <section aria-label="Shop by category" className="bg-brand-cream py-10 sm:py-14">
       <Container>
-        <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 scrollbar-hide snap-x sm:mx-0 sm:grid sm:grid-cols-4 sm:gap-4 sm:overflow-visible sm:px-0 xl:grid-cols-7">
-          {categories.map((category) => (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6">
+          {featured.map((category) => (
             <CategoryCard key={category.id} category={category} />
           ))}
         </div>

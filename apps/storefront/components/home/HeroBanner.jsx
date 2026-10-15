@@ -11,7 +11,7 @@ export default function HeroBanner() {
           alt="Big Ed mascot giving a thumbs up"
           fill
           priority
-          sizes="100vw"
+          sizes="(max-width: 1440px) 100vw, 1440px"
           className="object-cover object-[15%_center]"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-brand-charcoal via-transparent to-transparent" />
@@ -23,7 +23,7 @@ export default function HeroBanner() {
           alt="Big Ed mascot giving a thumbs up beside an elegant warm living room with a cream sectional sofa"
           fill
           priority
-          sizes="100vw"
+          sizes="(max-width: 1440px) 100vw, 1440px"
           className="object-cover"
         />
       </div>

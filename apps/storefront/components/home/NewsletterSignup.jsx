@@ -33,7 +33,7 @@ export default function NewsletterSignup() {
         <div className="flex items-start gap-3 text-center lg:text-left">
           <Mail className="mt-1 hidden size-7 shrink-0 text-brand-red sm:block" aria-hidden="true" />
           <div>
-            <h2 className="font-display text-xl font-semibold text-brand-charcoal sm:text-2xl">
+            <h2 className="font-serif-heading text-xl font-bold tracking-tight text-brand-charcoal sm:text-2xl">
               Get Special Offers &amp; Save Big!
             </h2>
             <p className="mt-1 text-sm text-brand-charcoal/70">

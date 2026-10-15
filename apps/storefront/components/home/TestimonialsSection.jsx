@@ -7,7 +7,7 @@ export default function TestimonialsSection() {
   return (
     <section className="bg-brand-cream py-14 sm:py-16">
       <Container>
-        <h2 className="font-display text-center text-2xl font-semibold text-brand-charcoal sm:text-3xl">
+        <h2 className="font-serif-heading text-center text-2xl font-bold tracking-tight text-brand-charcoal sm:text-3xl">
           What Our Customers Say
         </h2>
         <p className="mx-auto mt-2 max-w-xl text-center text-xs text-brand-charcoal/50">

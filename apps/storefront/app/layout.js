@@ -1,4 +1,4 @@
-import { Fredoka, Inter, Caveat, Luckiest_Guy } from "next/font/google";
+import { Fredoka, Inter, Caveat, Luckiest_Guy, Lora } from "next/font/google";
 import "./globals.css";
 import { DemoCartProvider } from "@/components/layout/DemoCartProvider";
 import AnnouncementBar from "@/components/layout/AnnouncementBar";
@@ -28,6 +28,12 @@ const luckiestGuy = Luckiest_Guy({
   weight: ["400"],
 });
 
+const lora = Lora({
+  variable: "--font-lora",
+  subsets: ["latin"],
+  weight: ["700"],
+});
+
 export const metadata = {
   title: "Big Ed's Sofas & Beds | Big Comfort. Bigger Savings.",
   description:
@@ -43,7 +49,7 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="en"
-      className={`${fredoka.variable} ${inter.variable} ${caveat.variable} ${luckiestGuy.variable} h-full antialiased`}
+      className={`${fredoka.variable} ${inter.variable} ${caveat.variable} ${luckiestGuy.variable} ${lora.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-brand-cream text-brand-charcoal">
         <DemoCartProvider>

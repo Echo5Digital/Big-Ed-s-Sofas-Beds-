@@ -37,7 +37,7 @@ export default function ShowroomSection() {
         </div>
 
         <div className="flex flex-col items-start gap-4 pt-6 lg:pt-0">
-          <h2 className="font-display text-2xl font-semibold text-brand-charcoal sm:text-3xl">
+          <h2 className="font-serif-heading text-2xl font-bold tracking-tight text-brand-charcoal sm:text-3xl">
             Visit Our Showroom
           </h2>
           <p className="text-base font-semibold text-brand-red-dark">One Location. A Bigger Selection.</p>

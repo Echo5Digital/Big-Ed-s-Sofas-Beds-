@@ -10,60 +10,58 @@ const STICKERS = {
   prices: "/Big Ed’s Great Prices Badge.webp",
 };
 
-function PawPrint({ className }) {
+function Burst({ className }) {
   return (
-    <svg viewBox="0 0 64 64" className={className} aria-hidden="true">
-      <ellipse cx="32" cy="42" rx="18" ry="14" />
-      <ellipse cx="14" cy="20" rx="7" ry="9" transform="rotate(-20 14 20)" />
-      <ellipse cx="32" cy="12" rx="7.5" ry="9.5" />
-      <ellipse cx="50" cy="20" rx="7" ry="9" transform="rotate(20 50 20)" />
+    <svg viewBox="0 0 10 24" className={className} aria-hidden="true">
+      <polygon points="5,0 10,24 0,24" />
     </svg>
   );
 }
 
 export default function BenefitsSection() {
   return (
-    <>
-      {/* Heading section */}
-      <section className="relative overflow-hidden bg-brand-cream pt-14 pb-6 sm:pt-16">
-        <PawPrint className="absolute top-4 left-4 size-14 -rotate-12 fill-brand-red/10 sm:size-20 lg:left-16" />
-        <PawPrint className="absolute top-10 right-6 size-10 rotate-12 fill-brand-gold/20 sm:size-16 lg:right-20" />
-        <Container>
-          <h2 className="font-display text-stroke-dark relative text-center text-4xl leading-none font-bold text-brand-gold drop-shadow-[0_3px_0_rgba(0,0,0,0.25)] sm:text-5xl lg:text-6xl">
-            Why Shop <span className="text-brand-red">Big Ed&rsquo;s</span>?
-          </h2>
-        </Container>
-      </section>
+    <section className="relative flex min-h-screen flex-col justify-center overflow-hidden bg-brand-charcoal py-12 sm:py-16">
+      <Image
+        src="/BigEdsSofas&Beds.webp"
+        alt=""
+        fill
+        priority
+        sizes="100vw"
+        className="object-cover"
+      />
 
-      {/* Benefit cards section */}
-      <section className="bg-brand-cream pt-4 pb-14 sm:pb-16">
-        <Container>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-5 lg:grid-cols-5">
-            {benefits.map((benefit) => (
-              <div
-                key={benefit.id}
-                className="flex flex-col items-center gap-3 rounded-2xl border border-brand-charcoal/10 bg-white px-3 py-5 text-center shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <div className="relative size-20 shrink-0 sm:size-24">
-                  <Image
-                    src={STICKERS[benefit.id]}
-                    alt={benefit.title}
-                    fill
-                    sizes="(max-width: 640px) 80px, 96px"
-                    className="object-contain"
-                  />
-                </div>
-                <h3 className="font-display text-sm font-bold text-brand-charcoal sm:text-base">
-                  {benefit.title}
-                </h3>
-                <p className="whitespace-pre-line text-xs text-brand-charcoal/70 sm:text-sm">
-                  {benefit.description}
-                </p>
-              </div>
-            ))}
+      <Container className="relative z-10 flex flex-1 flex-col justify-center gap-10 sm:gap-12">
+        <div className="relative mx-auto flex flex-col items-center">
+          <span className="font-poster -skew-x-2 rounded-md border-2 border-brand-red-dark bg-gradient-to-b from-brand-red to-brand-red-dark px-6 py-1 text-xl leading-tight text-white shadow-[0_0_0_2px_rgba(0,0,0,0.35)] sm:text-2xl md:text-3xl">
+            Why Shop
+          </span>
+
+          <div className="relative -mt-2 flex items-center gap-2 sm:gap-3">
+            <Burst className="hidden size-8 -rotate-12 fill-brand-gold sm:block md:size-10" />
+            <h2 className="font-poster text-stroke-black relative text-5xl leading-none font-normal text-brand-gold drop-shadow-[0_4px_0_rgba(0,0,0,0.9)] sm:text-6xl md:text-7xl lg:text-8xl">
+              Big Ed&rsquo;s?
+            </h2>
+            <Burst className="hidden size-8 rotate-12 fill-brand-gold sm:block md:size-10" />
           </div>
-        </Container>
-      </section>
-    </>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
+          {benefits.map((benefit) => (
+            <div
+              key={benefit.id}
+              className="relative aspect-2/3 w-full transition-transform hover:-translate-y-1"
+            >
+              <Image
+                src={STICKERS[benefit.id]}
+                alt={benefit.title}
+                fill
+                sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 18vw"
+                className="object-contain"
+              />
+            </div>
+          ))}
+        </div>
+      </Container>
+    </section>
   );
 }

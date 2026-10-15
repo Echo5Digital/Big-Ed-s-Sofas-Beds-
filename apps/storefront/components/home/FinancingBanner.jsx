@@ -14,10 +14,10 @@ export default function FinancingBanner() {
             alt="Big Ed mascot giving a thumbs up"
             width={1583}
             height={992}
-            className="h-20 w-auto shrink-0 self-start sm:h-24"
+            className="h-28 w-auto shrink-0 sm:h-32 lg:h-36"
           />
           <div>
-            <h2 className="font-display text-2xl font-semibold text-brand-gold sm:text-3xl">
+            <h2 className="font-serif-heading text-2xl font-bold tracking-tight text-brand-gold sm:text-3xl">
               Comfort Today.
               <br />
               Pay Your Way.
@@ -30,7 +30,7 @@ export default function FinancingBanner() {
 
         <div
           aria-label="Financing provider logos — partnerships pending confirmation"
-          className="flex flex-wrap items-center justify-center gap-3"
+          className="grid shrink-0 grid-cols-2 gap-3 sm:grid-cols-4"
         >
           {financingProviders.map((provider) => (
             <div
@@ -48,7 +48,7 @@ export default function FinancingBanner() {
           ))}
         </div>
 
-        <Button href="/financing" variant="gold" size="lg" icon={ArrowRight}>
+        <Button href="/financing" variant="gold" size="lg" icon={ArrowRight} className="shrink-0 whitespace-nowrap">
           Learn About Financing
         </Button>
       </Container>
