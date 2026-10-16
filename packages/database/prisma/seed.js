@@ -201,6 +201,7 @@ async function main() {
       categorySlug: "sectionals",
       brand: "Big Ed's Select",
       description: "Deep-seat sectional with reversible chaise and performance fabric.",
+      image: "/sectionals.webp",
       variants: [
         { sku: "SEC-CLOUD-GRY", name: "Gray", color: "Gray", priceCents: 89900, costCents: 42000, onHandShowroom: 2, onHandWarehouse: 6 },
         { sku: "SEC-CLOUD-CHR", name: "Charcoal", color: "Charcoal", priceCents: 89900, costCents: 42000, onHandShowroom: 1, onHandWarehouse: 4 },
@@ -212,6 +213,7 @@ async function main() {
       categorySlug: "recliners",
       brand: "Big Ed's Select",
       description: "Power recline with USB charging and padded headrest.",
+      image: "/recliner.webp",
       variants: [
         { sku: "REC-POWER-BLK", name: "Black", color: "Black", priceCents: 39900, costCents: 18000, onHandShowroom: 2, onHandWarehouse: 5 },
         { sku: "REC-POWER-BRN", name: "Brown", color: "Brown", priceCents: 39900, costCents: 18000, onHandShowroom: 1, onHandWarehouse: 3 },
@@ -223,6 +225,7 @@ async function main() {
       categorySlug: "beds",
       brand: "Big Ed's Select",
       description: "Low-profile platform frame, no box spring required.",
+      image: null,
       variants: [
         { sku: "BED-PLAT-Q", name: "Queen", size: "Queen", priceCents: 64900, costCents: 29000, onHandShowroom: 2, onHandWarehouse: 6 },
         { sku: "BED-PLAT-K", name: "King", size: "King", priceCents: 74900, costCents: 34000, onHandShowroom: 1, onHandWarehouse: 4 },
@@ -234,6 +237,7 @@ async function main() {
       categorySlug: "beds",
       brand: "Big Ed's Select",
       description: "Upholstered king headboard and frame with nailhead trim.",
+      image: "/bedroom.webp",
       variants: [
         { sku: "BED-UPH-KNG", name: "King", size: "King", priceCents: 84900, costCents: 39000, onHandShowroom: 0, onHandWarehouse: 3 },
       ],
@@ -244,6 +248,7 @@ async function main() {
       categorySlug: "mattresses",
       brand: "RestWell",
       description: "Medium-firm hybrid with cooling gel foam layer.",
+      image: "/mattresses.webp",
       variants: [
         { sku: "MAT-HYB-Q", name: "Queen", size: "Queen", priceCents: 69900, costCents: 31000, onHandShowroom: 2, onHandWarehouse: 10 },
         { sku: "MAT-HYB-K", name: "King", size: "King", priceCents: 89900, costCents: 41000, onHandShowroom: 1, onHandWarehouse: 7 },
@@ -255,6 +260,7 @@ async function main() {
       categorySlug: "dining",
       brand: "Apex",
       description: "Solid-wood table with six upholstered chairs.",
+      image: "/dining_set.webp",
       variants: [
         { sku: "DIN-6PC-OAK", name: "Oak", color: "Oak", priceCents: 129900, costCents: 61000, onHandShowroom: 1, onHandWarehouse: 2 },
       ],
@@ -265,6 +271,7 @@ async function main() {
       categorySlug: "sofas",
       brand: "Big Ed's Select",
       description: "Timeless rolled-arm sofa in stain-resistant fabric.",
+      image: "/sofa.webp",
       variants: [
         { sku: "SOF-CLS-BGE", name: "Beige", color: "Beige", priceCents: 59900, costCents: 27000, onHandShowroom: 3, onHandWarehouse: 8 },
         { sku: "SOF-CLS-NVY", name: "Navy", color: "Navy", priceCents: 59900, costCents: 27000, onHandShowroom: 1, onHandWarehouse: 5 },
@@ -285,6 +292,24 @@ async function main() {
         categoryId: categories[productDef.categorySlug].id,
       },
     });
+
+    if (productDef.image) {
+      const existingImage = await prisma.productImage.findFirst({
+        where: { productId: product.id, sortOrder: 0 },
+      });
+      if (existingImage) {
+        await prisma.productImage.update({
+          where: { id: existingImage.id },
+          data: { url: productDef.image, altText: productDef.name },
+        });
+      } else {
+        await prisma.productImage.create({
+          data: { productId: product.id, url: productDef.image, altText: productDef.name, sortOrder: 0 },
+        });
+      }
+    } else {
+      await prisma.productImage.deleteMany({ where: { productId: product.id } });
+    }
 
     for (const v of productDef.variants) {
       const variant = await prisma.variant.upsert({

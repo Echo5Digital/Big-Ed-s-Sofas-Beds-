@@ -8,9 +8,18 @@ import { normalizeProductForCard } from "@/lib/api/normalize";
 
 const FEATURED_COUNT = 6;
 
+// Platform Bed Frame has no product photography yet (see
+// docs/requirements/open-questions.md — "Blocks: Real catalog data"), so it's
+// excluded from this curated homepage row until a photo is supplied. Fetch a
+// few extra to backfill the slot without starving the grid.
+const EXCLUDED_SLUGS = new Set(["platform-bed-frame"]);
+
 export default async function FeaturedProducts() {
-  const { products: rawProducts } = await getProducts({ pageSize: FEATURED_COUNT });
-  const featured = rawProducts.map(normalizeProductForCard);
+  const { products: rawProducts } = await getProducts({ pageSize: FEATURED_COUNT + EXCLUDED_SLUGS.size });
+  const featured = rawProducts
+    .filter((p) => !EXCLUDED_SLUGS.has(p.slug))
+    .slice(0, FEATURED_COUNT)
+    .map(normalizeProductForCard);
 
   return (
     <section className="bg-brand-cream py-12 sm:py-16">

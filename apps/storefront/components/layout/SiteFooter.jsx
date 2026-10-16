@@ -112,7 +112,18 @@ export default function SiteFooter() {
 
       <div className="border-t border-white/10">
         <Container className="flex flex-col items-center justify-between gap-3 py-5 text-xs text-white/50 sm:flex-row">
-          <p>&copy; {COPYRIGHT_YEAR} Big Ed&rsquo;s Sofas &amp; Beds. All rights reserved.</p>
+          <p>
+            &copy; {COPYRIGHT_YEAR} Big Ed&rsquo;s Sofas &amp; Beds with{" "}
+            <a
+              href="https://www.echo5digital.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-brand-gold"
+            >
+              Echo5 Digital
+            </a>
+            . All rights reserved.
+          </p>
           <ul className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1">
             {siteConfig.footerLegalLinks.map((link) => (
               <li key={link.label}>

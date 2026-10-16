@@ -5,7 +5,7 @@ import StarRating from "@/components/ui/StarRating";
 
 export default function TestimonialsSection() {
   return (
-    <section className="bg-brand-cream py-14 sm:py-16">
+    <section className="bg-white py-14 sm:py-16">
       <Container>
         <h2 className="font-serif-heading text-center text-2xl font-bold tracking-tight text-brand-charcoal sm:text-3xl">
           What Our Customers Say

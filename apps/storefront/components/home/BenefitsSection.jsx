@@ -1,6 +1,8 @@
 import Image from "next/image";
+import { ArrowRight } from "lucide-react";
 import { benefits } from "@/lib/mock-data/site-config";
 import Container from "@/components/ui/Container";
+import Button from "@/components/ui/Button";
 
 const STICKERS = {
   showroom: "/Big Ed’s Local Showroom Mascot Sticker.webp",
@@ -46,10 +48,14 @@ export default function BenefitsSection() {
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
-          {benefits.map((benefit) => (
+          {benefits.map((benefit, index) => (
             <div
               key={benefit.id}
-              className="relative aspect-2/3 w-full transition-transform hover:-translate-y-1"
+              className={`relative aspect-2/3 w-full max-w-50 transition-transform hover:-translate-y-1 sm:max-w-none ${
+                index === benefits.length - 1 && benefits.length % 2 !== 0
+                  ? "col-span-2 mx-auto sm:col-span-1 sm:mx-0"
+                  : ""
+              }`}
             >
               <Image
                 src={STICKERS[benefit.id]}
@@ -60,6 +66,12 @@ export default function BenefitsSection() {
               />
             </div>
           ))}
+        </div>
+
+        <div className="flex justify-center">
+          <Button href="/contact" variant="gold" size="lg" icon={ArrowRight}>
+            Contact Us
+          </Button>
         </div>
       </Container>
     </section>
