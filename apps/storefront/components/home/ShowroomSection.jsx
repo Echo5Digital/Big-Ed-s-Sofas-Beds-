@@ -11,45 +11,31 @@ const features = [
 
 export default function ShowroomSection() {
   return (
-    <section className="bg-brand-cream py-14 sm:py-16">
-      <Container className="grid grid-cols-1 items-center gap-10 lg:grid-cols-2 lg:gap-16">
-        <div className="relative">
-          <div className="relative aspect-4/3 w-full overflow-hidden rounded-2xl shadow-md">
-            <Image
-              src="/images/showroom/showroom-interior-main.jpg"
-              alt="Leather sectional sofa on display in the Big Ed's Sofas & Beds showroom"
-              fill
-              sizes="(max-width: 1024px) 100vw, 50vw"
-              className="object-cover"
-            />
-          </div>
-          <div className="absolute -bottom-8 -right-4 hidden w-48 -rotate-3 overflow-hidden rounded-xl border-4 border-white shadow-lg sm:block md:w-56">
-            <div className="relative aspect-4/3">
-              <Image
-                src="https://images.unsplash.com/photo-1567016432779-094069958ea5?w=500&h=375&fit=crop&q=80"
-                alt="Showroom interior with furniture on display"
-                fill
-                sizes="224px"
-                className="object-cover"
-              />
-            </div>
-          </div>
-        </div>
+    <section className="relative flex min-h-100 items-center overflow-hidden bg-brand-charcoal py-14 sm:min-h-125 sm:py-20">
+      <Image
+        src="/Big_Ed’s_Sofas_Beds.webp"
+        alt="Big Ed's Sofas & Beds storefront exterior"
+        fill
+        sizes="100vw"
+        className="object-cover"
+      />
+      <div className="absolute inset-0 bg-brand-charcoal/70 sm:bg-linear-to-r sm:from-brand-charcoal sm:via-brand-charcoal/85 sm:to-brand-charcoal/40" />
 
-        <div className="flex flex-col items-start gap-4 pt-6 lg:pt-0">
-          <h2 className="font-serif-heading text-2xl font-bold tracking-tight text-brand-charcoal sm:text-3xl">
+      <Container className="relative z-10">
+        <div className="flex max-w-xl flex-col items-start gap-4 text-left">
+          <h2 className="font-serif-heading text-2xl font-bold tracking-tight text-white sm:text-3xl">
             Visit Our Showroom
           </h2>
-          <p className="text-base font-semibold text-brand-red-dark">One Location. A Bigger Selection.</p>
-          <p className="text-sm text-brand-charcoal/70 sm:text-base">
+          <p className="text-base font-semibold text-brand-gold">One Location. A Bigger Selection.</p>
+          <p className="text-sm text-white/80 sm:text-base">
             Explore a wide selection of sofas, sectionals, bedroom sets, mattresses, recliners,
             dining sets and more &mdash; all in one place.
           </p>
 
           <ul className="mt-2 flex flex-col gap-3">
             {features.map(({ id, label, icon: Icon }) => (
-              <li key={id} className="flex items-center gap-3 text-sm font-semibold text-brand-charcoal">
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-gold/25 text-brand-gold-dark">
+              <li key={id} className="flex items-center gap-3 text-sm font-semibold text-white">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-gold/25 text-brand-gold">
                   <Icon className="size-4.5" aria-hidden="true" />
                 </span>
                 {label}
@@ -57,7 +43,7 @@ export default function ShowroomSection() {
             ))}
           </ul>
 
-          <Button href="/contact" variant="primary" size="lg" icon={MapPin} iconPosition="left" className="mt-4">
+          <Button href="/contact" variant="gold" size="lg" icon={MapPin} iconPosition="left" className="mt-4">
             Get Directions
           </Button>
         </div>

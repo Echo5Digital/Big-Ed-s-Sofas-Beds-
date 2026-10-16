@@ -29,10 +29,6 @@ export default function DealsBanner() {
         </div>
 
         <div className="flex w-full flex-col items-center gap-5 text-center text-white md:w-[42%] md:shrink-0 md:items-start md:text-left lg:w-[38%]">
-          <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-brand-gold/15 px-3 py-1 text-xs font-bold tracking-wide text-brand-gold uppercase ring-1 ring-brand-gold/40">
-            Storewide Savings
-          </span>
-
           <h2 className="font-serif-heading text-3xl leading-tight font-bold tracking-tight text-white sm:text-4xl">
             Comfort for
             <br />
