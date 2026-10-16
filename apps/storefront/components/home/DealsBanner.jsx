@@ -1,16 +1,18 @@
 import Image from "next/image";
-import Link from "next/link";
-import { ArrowRight, Sofa, Grid3x3, Armchair, BedDouble, Bed, UtensilsCrossed } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import Container from "@/components/ui/Container";
 import Button from "@/components/ui/Button";
 
+// Natural dimensions from each source file — same oval-badge treatment as
+// ShowroomSection's feature icons (fixed height, width scales to the real
+// aspect ratio instead of being squashed into a square).
 const categories = [
-  { name: "Sofas", slug: "sofas", icon: Sofa, color: "bg-brand-red" },
-  { name: "Sectionals", slug: "sectionals", icon: Grid3x3, color: "bg-blue-600" },
-  { name: "Recliners", slug: "recliners", icon: Armchair, color: "bg-green-600" },
-  { name: "Beds", slug: "bedroom", icon: BedDouble, color: "bg-purple-600" },
-  { name: "Mattresses", slug: "mattresses", icon: Bed, color: "bg-orange-500" },
-  { name: "Dining Sets", slug: "dining", icon: UtensilsCrossed, color: "bg-teal-600" },
+  { name: "Sofas", slug: "sofas", icon: "/sofa_icon.png", width: 441, height: 256 },
+  { name: "Sectionals", slug: "sectionals", icon: "/sectionals_icon.png", width: 422, height: 239 },
+  { name: "Recliners", slug: "recliners", icon: "/recliners_icon.png", width: 428, height: 264 },
+  { name: "Beds", slug: "bedroom", icon: "/beds_icon.png", width: 427, height: 250 },
+  { name: "Mattresses", slug: "mattresses", icon: "/mattresses_icon.png", width: 434, height: 246 },
+  { name: "Dining Sets", slug: "dining", icon: "/dining_set_icon.png", width: 441, height: 251 },
 ];
 
 export default function DealsBanner() {
@@ -38,21 +40,11 @@ export default function DealsBanner() {
             Shop our most popular categories and find your perfect fit, backed by great prices every day.
           </p>
 
-          <ul className="grid w-full grid-cols-2 gap-3 sm:gap-4">
-            {categories.map(({ name, slug, icon: Icon, color }) => (
-              <li key={slug}>
-                <Link
-                  href={`/shop/${slug}`}
-                  className="flex items-center gap-3 rounded-2xl bg-white px-3 py-2.5 text-left shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-gold sm:px-4 sm:py-3"
-                >
-                  <span className={`flex size-9 shrink-0 items-center justify-center rounded-full text-white sm:size-10 ${color}`}>
-                    <Icon className="size-4.5 shrink-0 sm:size-5" aria-hidden="true" />
-                  </span>
-                  <span className="flex flex-1 items-center justify-between gap-1 text-sm font-bold text-brand-charcoal sm:text-base">
-                    {name}
-                    <ArrowRight className="size-4 shrink-0 text-brand-charcoal/50" aria-hidden="true" />
-                  </span>
-                </Link>
+          <ul className="flex w-full flex-col gap-3">
+            {categories.map(({ name, slug, icon, width, height }) => (
+              <li key={slug} className="flex items-center gap-3">
+                <Image src={icon} alt="" width={width} height={height} className="h-9 w-auto shrink-0 sm:h-10" />
+                <span className="text-sm font-bold text-white sm:text-base">{name}</span>
               </li>
             ))}
           </ul>
