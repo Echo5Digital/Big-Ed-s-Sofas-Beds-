@@ -24,7 +24,6 @@ export default function DealsBanner() {
             fill
             sizes="(max-width: 768px) 100vw, 60vw"
             className="object-contain object-center"
-            priority
           />
         </div>
 

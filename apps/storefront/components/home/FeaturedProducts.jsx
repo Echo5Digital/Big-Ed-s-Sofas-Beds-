@@ -3,19 +3,21 @@ import { ArrowRight } from "lucide-react";
 import Container from "@/components/ui/Container";
 import SectionHeading from "@/components/ui/SectionHeading";
 import ProductCard from "@/components/home/ProductCard";
-import { getProducts } from "@/lib/api/catalog";
 import { normalizeProductForCard } from "@/lib/api/normalize";
 
-const FEATURED_COUNT = 6;
+export const FEATURED_COUNT = 6;
 
 // Platform Bed Frame has no product photography yet (see
 // docs/requirements/open-questions.md — "Blocks: Real catalog data"), so it's
-// excluded from this curated homepage row until a photo is supplied. Fetch a
-// few extra to backfill the slot without starving the grid.
+// excluded from this curated homepage row until a photo is supplied. The
+// page fetches a few extra (see app/page.jsx) to backfill the slot without
+// starving the grid.
 const EXCLUDED_SLUGS = new Set(["platform-bed-frame"]);
+export const EXCLUDED_SLUG_COUNT = EXCLUDED_SLUGS.size;
 
-export default async function FeaturedProducts() {
-  const { products: rawProducts } = await getProducts({ pageSize: FEATURED_COUNT + EXCLUDED_SLUGS.size });
+// Takes already-fetched products (see app/page.jsx) so the homepage can
+// fetch this and CategoryGrid's data concurrently instead of waterfalling.
+export default function FeaturedProducts({ products: rawProducts }) {
   const featured = rawProducts
     .filter((p) => !EXCLUDED_SLUGS.has(p.slug))
     .slice(0, FEATURED_COUNT)

@@ -27,7 +27,6 @@ export default function BenefitsSection() {
         src="/BigEdsSofas&Beds.webp"
         alt=""
         fill
-        priority
         sizes="100vw"
         className="object-cover"
       />

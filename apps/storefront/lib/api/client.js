@@ -15,14 +15,20 @@ class ApiClientError extends Error {
 
 async function request(path, options = {}) {
   const url = `${API_BASE}/api${path}`;
+  const { next, ...rest } = options;
   const response = await fetch(url, {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...options.headers,
+      ...rest.headers,
     },
-    ...options,
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    ...rest,
+    body: rest.body ? JSON.stringify(rest.body) : undefined,
+    // Omit `cache`/`next` entirely by default so GETs stay live (fetch's own
+    // default is "no-store" once any request in the app opts into caching —
+    // callers that can tolerate staleness pass `next` explicitly, e.g. the
+    // homepage's category/featured-product teasers; see app/page.jsx).
+    ...(next ? { next } : {}),
   });
 
   const isJson = response.headers.get("content-type")?.includes("application/json");
@@ -36,7 +42,7 @@ async function request(path, options = {}) {
 }
 
 export const api = {
-  get: (path) => request(path, { method: "GET" }),
+  get: (path, options) => request(path, { method: "GET", ...options }),
   post: (path, body) => request(path, { method: "POST", body }),
   patch: (path, body) => request(path, { method: "PATCH", body }),
   delete: (path) => request(path, { method: "DELETE" }),

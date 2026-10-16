@@ -27,20 +27,29 @@ const loginLimiter = rateLimit({
   message: { error: { message: "Too many login attempts. Try again later." } },
 });
 
+// Must mirror requireAuth's shape exactly (roles + permissions) — the login
+// and refresh responses are what the admin/POS clients seed their auth
+// context from, and a thinner shape here means hasPermission() silently
+// evaluates false for every permission until a later /auth/me refetch.
 function toPublicUser(user) {
+  const permissions = new Set(
+    user.roles.flatMap((ur) => ur.role.permissions.map((rp) => rp.permission.key))
+  );
+
   return {
     id: user.id,
     email: user.email,
     firstName: user.firstName,
     lastName: user.lastName,
     roles: user.roles.map((ur) => ur.role.name),
+    permissions: Array.from(permissions),
   };
 }
 
 async function loadUserWithRoles(userId) {
   return prisma.user.findUnique({
     where: { id: userId },
-    include: { roles: { include: { role: true } } },
+    include: { roles: { include: { role: { include: { permissions: { include: { permission: true } } } } } } },
   });
 }
 
@@ -53,7 +62,7 @@ router.post(
 
     const user = await prisma.user.findUnique({
       where: { email },
-      include: { roles: { include: { role: true } } },
+      include: { roles: { include: { role: { include: { permissions: { include: { permission: true } } } } } } },
     });
 
     if (!user || !user.isActive) {

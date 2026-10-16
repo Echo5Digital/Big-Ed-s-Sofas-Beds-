@@ -19,23 +19,21 @@ export default function ShowroomSection() {
         sizes="100vw"
         className="object-cover"
       />
-      <div className="absolute inset-0 bg-brand-charcoal/70 sm:bg-linear-to-r sm:from-brand-charcoal sm:via-brand-charcoal/85 sm:to-brand-charcoal/40" />
-
       <Container className="relative z-10">
-        <div className="flex max-w-xl flex-col items-start gap-4 text-left">
+        <div className="flex max-w-xl flex-col items-start gap-4 text-left [text-shadow:0_2px_10px_rgb(0_0_0_/_0.85),0_1px_3px_rgb(0_0_0_/_0.9)]">
           <h2 className="font-serif-heading text-2xl font-bold tracking-tight text-white sm:text-3xl">
             Visit Our Showroom
           </h2>
           <p className="text-base font-semibold text-brand-gold">One Location. A Bigger Selection.</p>
-          <p className="text-sm text-white/80 sm:text-base">
-            Explore a wide selection of sofas, sectionals, bedroom sets, mattresses, recliners,
-            dining sets and more &mdash; all in one place.
+          <p className="text-sm text-white sm:text-base">
+            Explore a wide selection of sofas, sectionals, bedroom sets,
+            <br className="hidden sm:block" /> mattresses, recliners, dining sets and more &mdash; all in one place.
           </p>
 
           <ul className="mt-2 flex flex-col gap-3">
             {features.map(({ id, label, icon: Icon }) => (
               <li key={id} className="flex items-center gap-3 text-sm font-semibold text-white">
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-gold/25 text-brand-gold">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-gold/90 text-brand-charcoal shadow-[0_2px_8px_rgb(0_0_0_/_0.6)]">
                   <Icon className="size-4.5" aria-hidden="true" />
                 </span>
                 {label}
@@ -43,7 +41,14 @@ export default function ShowroomSection() {
             ))}
           </ul>
 
-          <Button href="/contact" variant="gold" size="lg" icon={MapPin} iconPosition="left" className="mt-4">
+          <Button
+            href="/contact"
+            variant="gold"
+            size="lg"
+            icon={MapPin}
+            iconPosition="left"
+            className="mt-4 text-shadow-none"
+          >
             Get Directions
           </Button>
         </div>
