@@ -110,29 +110,6 @@ export default async function ProductDetailPage({ params }) {
 
           <ProductAttributes product={product} />
 
-          {defaultVariant?.dimensions && (
-            <dl className="grid grid-cols-3 gap-3 rounded-xl border border-brand-charcoal/10 bg-white p-4 text-center">
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-brand-charcoal/50">Width</dt>
-                <dd className="mt-1 text-sm font-bold text-brand-charcoal">
-                  {defaultVariant.dimensions.widthInches}&quot;
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-brand-charcoal/50">Height</dt>
-                <dd className="mt-1 text-sm font-bold text-brand-charcoal">
-                  {defaultVariant.dimensions.heightInches}&quot;
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-wide text-brand-charcoal/50">Depth</dt>
-                <dd className="mt-1 text-sm font-bold text-brand-charcoal">
-                  {defaultVariant.dimensions.depthInches}&quot;
-                </dd>
-              </div>
-            </dl>
-          )}
-
           <ProductPurchasePanel product={product} />
         </div>
       </Container>

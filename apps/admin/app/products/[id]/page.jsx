@@ -69,7 +69,10 @@ function EditProductContent() {
         setColor(product.color ?? "");
         setMaterial(product.material ?? "");
         setDimensions(product.dimensions ?? "");
-        setImages(product.images.map((img) => ({ url: img.url, altText: img.altText })));
+        // _key gives each image a stable React key independent of its array
+        // index — see ProductImagePicker.jsx for why index-based keys break
+        // position badges across a reorder. Stripped before submit below.
+        setImages(product.images.map((img, i) => ({ url: img.url, altText: img.altText, _key: `loaded-${i}` })));
         // Primary category first, then any secondary tags — mirrors how the
         // New Product form reads this same list back apart on submit.
         setCategoryIds([
@@ -104,7 +107,7 @@ function EditProductContent() {
         color: color || null,
         material: material || null,
         dimensions: dimensions || null,
-        images,
+        images: images.map(({ url, altText }) => ({ url, altText })),
         variants: [{ sku, name, priceCents: Math.round(Number(priceCents) * 100) }],
       });
       router.push("/products");

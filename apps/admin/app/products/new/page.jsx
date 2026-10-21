@@ -72,7 +72,7 @@ function NewProductContent() {
         color: color || undefined,
         material: material || undefined,
         dimensions: dimensions || undefined,
-        images: images.length ? images : undefined,
+        images: images.length ? images.map(({ url, altText }) => ({ url, altText })) : undefined,
         // One sellable variant per product today — no separate "variant"
         // concept is exposed in this form, so its name mirrors the product
         // name (the API still requires every product to have a variant).

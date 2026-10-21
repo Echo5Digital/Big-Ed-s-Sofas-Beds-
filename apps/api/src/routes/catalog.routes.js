@@ -237,6 +237,19 @@ router.post(
       include: PRODUCT_INCLUDE,
     });
 
+    // Every variant needs a StockBalance row to show up on the Inventory
+    // page at all — without one there's nothing for a manager to "Adjust"
+    // stock against. This creates the row at onHand: 0 only; it is not a
+    // stock receipt (no StockMovement is written), so a brand-new product
+    // correctly stays "out of stock" until someone actually receives it.
+    const locations = await prisma.location.findMany({ where: { isActive: true }, select: { id: true } });
+    if (locations.length > 0) {
+      await prisma.stockBalance.createMany({
+        data: product.variants.flatMap((v) => locations.map((loc) => ({ variantId: v.id, locationId: loc.id }))),
+        skipDuplicates: true,
+      });
+    }
+
     res.status(201).json({ product: serializeProduct(product) });
   })
 );
