@@ -25,7 +25,7 @@ export async function generateMetadata({ params }) {
   }
   return {
     title: `${stripInlineMarkdown(product.name)} | Big Ed's Sofas & Beds`,
-    description: product.description,
+    description: product.description ? stripInlineMarkdown(product.description) : null,
   };
 }
 
@@ -74,19 +74,19 @@ export default async function ProductDetailPage({ params }) {
         <ProductImageGallery images={product.images} name={plainName} inStock={inStock} />
 
         <div className="flex flex-col gap-4">
-          <div>
-            <h1 className="font-display text-2xl font-bold text-brand-charcoal sm:text-3xl">
-              <InlineMarkdown text={product.name} />
-            </h1>
-            <p className="mt-1 text-xs font-medium uppercase tracking-wide text-brand-charcoal/50">
+          <h1 className="font-display text-2xl font-bold text-brand-charcoal sm:text-3xl">
+            <InlineMarkdown text={product.name} />
+          </h1>
+
+          <div className="flex items-center justify-between gap-3 border-b border-brand-charcoal/10 pb-4">
+            <Price
+              price={defaultVariant ? defaultVariant.priceCents / 100 : 0}
+              compareAtPrice={defaultVariant?.compareAtCents ? defaultVariant.compareAtCents / 100 : null}
+            />
+            <p className="text-xs font-medium uppercase tracking-wide text-brand-charcoal/50">
               SKU: {defaultVariant?.sku}
             </p>
           </div>
-
-          <Price
-            price={defaultVariant ? defaultVariant.priceCents / 100 : 0}
-            compareAtPrice={defaultVariant?.compareAtCents ? defaultVariant.compareAtCents / 100 : null}
-          />
 
           <div
             className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-sm font-medium ${
@@ -140,8 +140,8 @@ export default async function ProductDetailPage({ params }) {
       {product.description && (
         <Container className="mt-10">
           <h2 className="font-display text-xl font-semibold text-brand-charcoal sm:text-2xl">Description</h2>
-          <p className="mt-3 max-w-3xl text-sm leading-relaxed text-brand-charcoal/75 sm:text-base">
-            {product.description}
+          <p className="mt-3 max-w-3xl whitespace-pre-line text-sm leading-relaxed text-brand-charcoal/75 sm:text-base">
+            <InlineMarkdown text={product.description} />
           </p>
         </Container>
       )}
