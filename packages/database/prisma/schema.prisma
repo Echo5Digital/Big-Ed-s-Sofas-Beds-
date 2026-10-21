@@ -26,37 +26,37 @@ enum RoleName {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  passwordHash String
-  firstName    String
-  lastName     String
-  isActive     Boolean  @default(true)
-  roles        UserRole[]
-  auditLogs    AuditLog[]
-  purchaseOrdersCreated PurchaseOrder[] @relation("POCreatedBy")
-  purchaseOrdersApproved PurchaseOrder[] @relation("POApprovedBy")
-  goodsReceipts GoodsReceipt[]
-  stockMovements StockMovement[]
+  id                     String            @id @default(uuid())
+  email                  String            @unique
+  passwordHash           String
+  firstName              String
+  lastName               String
+  isActive               Boolean           @default(true)
+  roles                  UserRole[]
+  auditLogs              AuditLog[]
+  purchaseOrdersCreated  PurchaseOrder[]   @relation("POCreatedBy")
+  purchaseOrdersApproved PurchaseOrder[]   @relation("POApprovedBy")
+  goodsReceipts          GoodsReceipt[]
+  stockMovements         StockMovement[]
   registerSessionsOpened RegisterSession[]
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
 
   @@index([email])
 }
 
 model Role {
-  id          String       @id @default(uuid())
-  name        RoleName     @unique
+  id          String           @id @default(uuid())
+  name        RoleName         @unique
   description String?
   permissions RolePermission[]
   users       UserRole[]
-  createdAt   DateTime     @default(now())
+  createdAt   DateTime         @default(now())
 }
 
 model Permission {
-  id          String       @id @default(uuid())
-  key         String       @unique // e.g. "inventory:adjust", "purchasing:approve"
+  id          String           @id @default(uuid())
+  key         String           @unique // e.g. "inventory:adjust", "purchasing:approve"
   description String?
   roles       RolePermission[]
 }
@@ -83,7 +83,7 @@ model AuditLog {
   id         String   @id @default(uuid())
   userId     String?
   user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  action     String   // e.g. "stock.adjust", "po.approve", "order.refund"
+  action     String // e.g. "stock.adjust", "po.approve", "order.refund"
   entityType String
   entityId   String
   reasonCode String?
@@ -100,19 +100,35 @@ model AuditLog {
 // ---------------------------------------------------------------------------
 
 model Category {
-  id        String     @id @default(uuid())
-  name      String
-  slug      String     @unique
-  image     String?
-  parentId  String?
-  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children  Category[] @relation("CategoryTree")
-  products  Product[]
-  sortOrder Int        @default(0)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id          String            @id @default(uuid())
+  name        String
+  slug        String            @unique
+  image       String?
+  parentId    String?
+  parent      Category?         @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Category[]        @relation("CategoryTree")
+  products    Product[]
+  productTags ProductCategory[]
+  sortOrder   Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 
   @@index([slug])
+}
+
+// Secondary categories a product also appears under, beyond its primary
+// Product.categoryId. A product's primary category drives admin-list display
+// and the canonical breadcrumb; this join table is purely additive for
+// "also show this product on these other category pages."
+model ProductCategory {
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@id([productId, categoryId])
+  @@index([categoryId])
 }
 
 enum ProductStatus {
@@ -122,18 +138,26 @@ enum ProductStatus {
 }
 
 model Product {
-  id          String        @id @default(uuid())
-  name        String
-  slug        String        @unique
-  description String?
-  categoryId  String?
-  category    Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  brand       String?
-  status      ProductStatus @default(DRAFT)
-  variants    Variant[]
-  images      ProductImage[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id           String            @id @default(uuid())
+  name         String
+  slug         String            @unique
+  description  String?
+  categoryId   String?
+  category     Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  categoryTags ProductCategory[]
+  brand        String?
+  // Product-level display attributes shown on the storefront detail page.
+  // Each is optional and hidden from the live page when not set — distinct
+  // from Variant.color/size, which vary per sellable SKU.
+  itemName     String?
+  color        String?
+  material     String?
+  dimensions   String?
+  status       ProductStatus     @default(DRAFT)
+  variants     Variant[]
+  images       ProductImage[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
 
   @@index([slug])
   @@index([categoryId])
@@ -141,30 +165,30 @@ model Product {
 }
 
 model Variant {
-  id              String   @id @default(uuid())
-  productId       String
-  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  sku             String   @unique
-  name            String   // e.g. "Charcoal / Queen"
-  color           String?
-  size            String?
-  widthInches     Decimal? @db.Decimal(8, 2)
-  heightInches    Decimal? @db.Decimal(8, 2)
-  depthInches     Decimal? @db.Decimal(8, 2)
-  weightLbs       Decimal? @db.Decimal(8, 2)
-  priceCents      Int      // current selling price, in cents (USD)
-  compareAtCents  Int?
-  costCents       Int?     // last known supplier cost, in cents
-  isActive        Boolean  @default(true)
-  priceHistory    PriceHistory[]
-  stockBalances   StockBalance[]
-  stockMovements  StockMovement[]
-  reservations    Reservation[]
-  transfers       Transfer[]
-  orderLines      OrderLine[]
-  poLines         POLine[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String          @id @default(uuid())
+  productId      String
+  product        Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku            String          @unique
+  name           String // e.g. "Charcoal / Queen"
+  color          String?
+  size           String?
+  widthInches    Decimal?        @db.Decimal(8, 2)
+  heightInches   Decimal?        @db.Decimal(8, 2)
+  depthInches    Decimal?        @db.Decimal(8, 2)
+  weightLbs      Decimal?        @db.Decimal(8, 2)
+  priceCents     Int // current selling price, in cents (USD)
+  compareAtCents Int?
+  costCents      Int? // last known supplier cost, in cents
+  isActive       Boolean         @default(true)
+  priceHistory   PriceHistory[]
+  stockBalances  StockBalance[]
+  stockMovements StockMovement[]
+  reservations   Reservation[]
+  transfers      Transfer[]
+  orderLines     OrderLine[]
+  poLines        POLine[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   @@index([productId])
   @@index([sku])
@@ -183,13 +207,13 @@ model ProductImage {
 }
 
 model PriceHistory {
-  id         String   @id @default(uuid())
-  variantId  String
-  variant    Variant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
-  priceCents Int
-  costCents  Int?
+  id          String   @id @default(uuid())
+  variantId   String
+  variant     Variant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  priceCents  Int
+  costCents   Int?
   effectiveAt DateTime @default(now())
-  changedBy  String?
+  changedBy   String?
 
   @@index([variantId])
 }
@@ -204,19 +228,19 @@ enum LocationType {
 }
 
 model Location {
-  id        String        @id @default(uuid())
-  name      String
-  type      LocationType
-  isActive  Boolean       @default(true)
+  id            String          @id @default(uuid())
+  name          String
+  type          LocationType
+  isActive      Boolean         @default(true)
   stockBalances StockBalance[]
-  movements StockMovement[]
-  reservations Reservation[]
-  transfersFrom Transfer[] @relation("TransferFrom")
-  transfersTo   Transfer[] @relation("TransferTo")
-  counts    Count[]
+  movements     StockMovement[]
+  reservations  Reservation[]
+  transfersFrom Transfer[]      @relation("TransferFrom")
+  transfersTo   Transfer[]      @relation("TransferTo")
+  counts        Count[]
   goodsReceipts GoodsReceipt[]
-  registers Register[]
-  createdAt DateTime      @default(now())
+  registers     Register[]
+  createdAt     DateTime        @default(now())
 
   @@index([type])
 }
@@ -225,15 +249,15 @@ model Location {
 // are derived from StockMovement; this table is a materialized convenience
 // cache that every mutating operation updates inside the same transaction.
 model StockBalance {
-  id               String   @id @default(uuid())
-  variantId        String
-  variant          Variant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
-  locationId       String
-  location         Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  onHand           Int      @default(0) // physical units present at location
-  reserved         Int      @default(0) // active (non-expired) reservations
-  quarantined      Int      @default(0) // damaged / unsellable, excluded from ATS
-  updatedAt        DateTime @updatedAt
+  id          String   @id @default(uuid())
+  variantId   String
+  variant     Variant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  locationId  String
+  location    Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  onHand      Int      @default(0) // physical units present at location
+  reserved    Int      @default(0) // active (non-expired) reservations
+  quarantined Int      @default(0) // damaged / unsellable, excluded from ATS
+  updatedAt   DateTime @updatedAt
 
   @@unique([variantId, locationId])
   @@index([variantId])
@@ -257,19 +281,19 @@ enum StockMovementType {
 // made via new compensating movements, per the PDF's "immutable movement
 // history, reversible adjustments via compensating events" rule.
 model StockMovement {
-  id             String            @id @default(uuid())
-  variantId      String
-  variant        Variant           @relation(fields: [variantId], references: [id], onDelete: Restrict)
-  locationId     String
-  location       Location          @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  type           StockMovementType
-  quantity       Int               // always positive; direction implied by type
-  reasonCode     String?
-  referenceType  String?           // "Order" | "GoodsReceipt" | "Transfer" | "Count" | "Reservation"
-  referenceId    String?
-  performedById  String?
-  performedBy    User?             @relation(fields: [performedById], references: [id], onDelete: SetNull)
-  createdAt      DateTime          @default(now())
+  id            String            @id @default(uuid())
+  variantId     String
+  variant       Variant           @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  locationId    String
+  location      Location          @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  type          StockMovementType
+  quantity      Int // always positive; direction implied by type
+  reasonCode    String?
+  referenceType String? // "Order" | "GoodsReceipt" | "Transfer" | "Count" | "Reservation"
+  referenceId   String?
+  performedById String?
+  performedBy   User?             @relation(fields: [performedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime          @default(now())
 
   @@index([variantId, locationId])
   @@index([referenceType, referenceId])
@@ -287,18 +311,18 @@ enum ReservationStatus {
 // "reservation expiry" requirement; a background sweep (or lazy check at
 // read-time) transitions ACTIVE -> EXPIRED and releases the held quantity.
 model Reservation {
-  id          String            @id @default(uuid())
-  variantId   String
-  variant     Variant           @relation(fields: [variantId], references: [id], onDelete: Restrict)
-  locationId  String
-  location    Location          @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  orderId     String?
-  order       Order?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  quantity    Int
-  status      ReservationStatus @default(ACTIVE)
-  expiresAt   DateTime
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id         String            @id @default(uuid())
+  variantId  String
+  variant    Variant           @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  locationId String
+  location   Location          @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  orderId    String?
+  order      Order?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  quantity   Int
+  status     ReservationStatus @default(ACTIVE)
+  expiresAt  DateTime
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
 
   @@index([variantId, locationId, status])
   @@index([orderId])
@@ -313,18 +337,18 @@ enum TransferStatus {
 }
 
 model Transfer {
-  id            String         @id @default(uuid())
-  variantId     String
-  variant       Variant        @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  id             String         @id @default(uuid())
+  variantId      String
+  variant        Variant        @relation(fields: [variantId], references: [id], onDelete: Restrict)
   fromLocationId String
-  fromLocation  Location       @relation("TransferFrom", fields: [fromLocationId], references: [id], onDelete: Restrict)
-  toLocationId  String
-  toLocation    Location       @relation("TransferTo", fields: [toLocationId], references: [id], onDelete: Restrict)
-  quantity      Int
-  status        TransferStatus @default(PENDING)
-  notes         String?
-  createdAt     DateTime       @default(now())
-  completedAt   DateTime?
+  fromLocation   Location       @relation("TransferFrom", fields: [fromLocationId], references: [id], onDelete: Restrict)
+  toLocationId   String
+  toLocation     Location       @relation("TransferTo", fields: [toLocationId], references: [id], onDelete: Restrict)
+  quantity       Int
+  status         TransferStatus @default(PENDING)
+  notes          String?
+  createdAt      DateTime       @default(now())
+  completedAt    DateTime?
 
   @@index([variantId])
   @@index([status])
@@ -337,25 +361,25 @@ enum CountStatus {
 }
 
 model Count {
-  id         String      @id @default(uuid())
-  locationId String
-  location   Location    @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  status     CountStatus @default(OPEN)
-  notes      String?
-  lines      CountLine[]
-  createdAt  DateTime    @default(now())
+  id          String      @id @default(uuid())
+  locationId  String
+  location    Location    @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  status      CountStatus @default(OPEN)
+  notes       String?
+  lines       CountLine[]
+  createdAt   DateTime    @default(now())
   completedAt DateTime?
 
   @@index([locationId])
 }
 
 model CountLine {
-  id         String  @id @default(uuid())
-  countId    String
-  count      Count   @relation(fields: [countId], references: [id], onDelete: Cascade)
-  variantId  String
+  id          String @id @default(uuid())
+  countId     String
+  count       Count  @relation(fields: [countId], references: [id], onDelete: Cascade)
+  variantId   String
   expectedQty Int
-  countedQty Int?
+  countedQty  Int?
   discrepancy Int?
 
   @@index([countId])
@@ -386,18 +410,18 @@ enum AddressType {
 }
 
 model Address {
-  id          String      @id @default(uuid())
-  customerId  String
-  customer    Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  type        AddressType
-  line1       String
-  line2       String?
-  city        String
-  state       String
-  postalCode  String
-  country     String      @default("US")
-  isDefault   Boolean     @default(false)
-  createdAt   DateTime    @default(now())
+  id         String      @id @default(uuid())
+  customerId String
+  customer   Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  type       AddressType
+  line1      String
+  line2      String?
+  city       String
+  state      String
+  postalCode String
+  country    String      @default("US")
+  isDefault  Boolean     @default(false)
+  createdAt  DateTime    @default(now())
 
   @@index([customerId])
 }
@@ -438,20 +462,20 @@ enum FulfillmentMethod {
 }
 
 model Order {
-  id                String            @id @default(uuid())
-  orderNumber       String            @unique // human-friendly sequential display number
+  id                String             @id @default(uuid())
+  orderNumber       String             @unique // human-friendly sequential display number
   channel           OrderChannel
   customerId        String?
-  customer          Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  status            OrderStatus       @default(DRAFT)
-  paymentStatus     PaymentStatus     @default(UNPAID)
-  fulfillmentStatus FulfillmentStatus @default(UNALLOCATED)
+  customer          Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  status            OrderStatus        @default(DRAFT)
+  paymentStatus     PaymentStatus      @default(UNPAID)
+  fulfillmentStatus FulfillmentStatus  @default(UNALLOCATED)
   fulfillmentMethod FulfillmentMethod?
-  subtotalCents     Int               @default(0)
-  taxCents          Int               @default(0)
-  deliveryFeeCents  Int               @default(0)
-  discountCents     Int               @default(0)
-  totalCents        Int               @default(0)
+  subtotalCents     Int                @default(0)
+  taxCents          Int                @default(0)
+  deliveryFeeCents  Int                @default(0)
+  discountCents     Int                @default(0)
+  totalCents        Int                @default(0)
   deliveryAddressId String?
   deliveryNotes     String?
   assemblyNotes     String?
@@ -464,8 +488,8 @@ model Order {
   pickups           Pickup[]
   statusHistory     StatusHistory[]
   receipts          Receipt[]
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
   @@index([customerId])
   @@index([status])
@@ -512,36 +536,36 @@ enum PaymentStatusDetail {
 // pending means paid; payment confirmation and provider event idempotency
 // are required."
 model Payment {
-  id               String              @id @default(uuid())
-  orderId          String
-  order            Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  method           PaymentMethod
-  status           PaymentStatusDetail @default(PENDING)
-  amountCents      Int
-  providerName     String?
-  providerRef      String?
-  providerEventId  String?             @unique
-  failureReason    String?
-  events           ProviderEvent[]
-  refunds          Refund[]
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  id              String              @id @default(uuid())
+  orderId         String
+  order           Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method          PaymentMethod
+  status          PaymentStatusDetail @default(PENDING)
+  amountCents     Int
+  providerName    String?
+  providerRef     String?
+  providerEventId String?             @unique
+  failureReason   String?
+  events          ProviderEvent[]
+  refunds         Refund[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
   @@index([orderId])
   @@index([status])
 }
 
 model Refund {
-  id          String   @id @default(uuid())
-  orderId     String
-  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  paymentId   String?
-  payment     Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-  amountCents Int
-  reasonCode  String
-  notes       String?
+  id            String   @id @default(uuid())
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  paymentId     String?
+  payment       Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  amountCents   Int
+  reasonCode    String
+  notes         String?
   processedById String?
-  createdAt   DateTime @default(now())
+  createdAt     DateTime @default(now())
 
   @@index([orderId])
 }
@@ -549,15 +573,15 @@ model Refund {
 // Raw inbound webhook/provider events, kept for idempotency + audit, keyed on
 // the provider's own event id so duplicate webhook deliveries are no-ops.
 model ProviderEvent {
-  id            String   @id @default(uuid())
-  paymentId     String?
-  payment       Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-  providerName  String
-  eventId       String   @unique
-  eventType     String
-  payload       Json
-  processedAt   DateTime?
-  createdAt     DateTime @default(now())
+  id           String    @id @default(uuid())
+  paymentId    String?
+  payment      Payment?  @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  providerName String
+  eventId      String    @unique
+  eventType    String
+  payload      Json
+  processedAt  DateTime?
+  createdAt    DateTime  @default(now())
 
   @@index([paymentId])
   @@index([eventId])
@@ -587,20 +611,20 @@ enum RegisterSessionStatus {
 }
 
 model RegisterSession {
-  id              String                 @id @default(uuid())
-  registerId      String
-  register        Register               @relation(fields: [registerId], references: [id], onDelete: Restrict)
-  openedById      String?
-  openedBy        User?                  @relation(fields: [openedById], references: [id], onDelete: SetNull)
-  status          RegisterSessionStatus  @default(OPEN)
-  openingCashCents Int                   @default(0)
-  closingCashCents Int?
+  id                String                @id @default(uuid())
+  registerId        String
+  register          Register              @relation(fields: [registerId], references: [id], onDelete: Restrict)
+  openedById        String?
+  openedBy          User?                 @relation(fields: [openedById], references: [id], onDelete: SetNull)
+  status            RegisterSessionStatus @default(OPEN)
+  openingCashCents  Int                   @default(0)
+  closingCashCents  Int?
   expectedCashCents Int?
-  discrepancyCents Int?
-  cashMovements   CashMovement[]
-  receipts        Receipt[]
-  openedAt        DateTime               @default(now())
-  closedAt        DateTime?
+  discrepancyCents  Int?
+  cashMovements     CashMovement[]
+  receipts          Receipt[]
+  openedAt          DateTime              @default(now())
+  closedAt          DateTime?
 
   @@index([registerId])
   @@index([status])
@@ -645,17 +669,17 @@ model Receipt {
 // ---------------------------------------------------------------------------
 
 model Supplier {
-  id            String          @id @default(uuid())
-  name          String
-  contactName   String?
-  email         String?
-  phone         String?
-  leadTimeDays  Int?
-  notes         String?
-  isActive      Boolean         @default(true)
+  id             String          @id @default(uuid())
+  name           String
+  contactName    String?
+  email          String?
+  phone          String?
+  leadTimeDays   Int?
+  notes          String?
+  isActive       Boolean         @default(true)
   purchaseOrders PurchaseOrder[]
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 }
 
 enum PurchaseOrderStatus {
@@ -669,23 +693,23 @@ enum PurchaseOrderStatus {
 }
 
 model PurchaseOrder {
-  id              String              @id @default(uuid())
-  poNumber        String              @unique
-  supplierId      String
-  supplier        Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  status          PurchaseOrderStatus @default(DRAFT)
-  locationId      String
-  expectedDate    DateTime?
-  notes           String?
-  createdById     String?
-  createdBy       User?               @relation("POCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  approvedById    String?
-  approvedBy      User?               @relation("POApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  approvedAt      DateTime?
-  lines           POLine[]
-  goodsReceipts   GoodsReceipt[]
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  id            String              @id @default(uuid())
+  poNumber      String              @unique
+  supplierId    String
+  supplier      Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  status        PurchaseOrderStatus @default(DRAFT)
+  locationId    String
+  expectedDate  DateTime?
+  notes         String?
+  createdById   String?
+  createdBy     User?               @relation("POCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  approvedById  String?
+  approvedBy    User?               @relation("POApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt    DateTime?
+  lines         POLine[]
+  goodsReceipts GoodsReceipt[]
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
 
   @@index([supplierId])
   @@index([status])
@@ -693,18 +717,18 @@ model PurchaseOrder {
 }
 
 model POLine {
-  id               String        @id @default(uuid())
-  purchaseOrderId  String
-  purchaseOrder    PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  variantId        String
-  variant          Variant       @relation(fields: [variantId], references: [id], onDelete: Restrict)
-  skuSnapshot      String
-  expectedQty      Int
-  receivedQty      Int           @default(0)
-  unitCostCents    Int
-  taxCents         Int           @default(0)
-  freightCents     Int           @default(0)
-  receiptLines     ReceiptLine[]
+  id              String        @id @default(uuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  variantId       String
+  variant         Variant       @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  skuSnapshot     String
+  expectedQty     Int
+  receivedQty     Int           @default(0)
+  unitCostCents   Int
+  taxCents        Int           @default(0)
+  freightCents    Int           @default(0)
+  receiptLines    ReceiptLine[]
 
   @@index([purchaseOrderId])
   @@index([variantId])
@@ -746,27 +770,27 @@ model ReceiptLine {
 // ---------------------------------------------------------------------------
 
 model Delivery {
-  id             String    @id @default(uuid())
-  orderId        String
-  order          Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  addressId      String?
-  feeCents       Int       @default(0)
-  scheduledDate  DateTime?
-  deliveredAt    DateTime?
-  notes          String?
-  createdAt      DateTime  @default(now())
+  id            String    @id @default(uuid())
+  orderId       String
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  addressId     String?
+  feeCents      Int       @default(0)
+  scheduledDate DateTime?
+  deliveredAt   DateTime?
+  notes         String?
+  createdAt     DateTime  @default(now())
 
   @@index([orderId])
 }
 
 model Pickup {
-  id           String    @id @default(uuid())
-  orderId      String
-  order        Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id            String    @id @default(uuid())
+  orderId       String
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
   scheduledDate DateTime?
-  pickedUpAt   DateTime?
-  notes        String?
-  createdAt    DateTime  @default(now())
+  pickedUpAt    DateTime?
+  notes         String?
+  createdAt     DateTime  @default(now())
 
   @@index([orderId])
 }
@@ -775,7 +799,7 @@ model StatusHistory {
   id        String   @id @default(uuid())
   orderId   String
   order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  field     String   // "status" | "paymentStatus" | "fulfillmentStatus"
+  field     String // "status" | "paymentStatus" | "fulfillmentStatus"
   fromValue String?
   toValue   String
   note      String?

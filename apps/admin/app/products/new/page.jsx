@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, PlusCircle } from "lucide-react";
 import RequireAuth from "@/components/layout/RequireAuth";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import ProductNameInput from "@/components/products/ProductNameInput";
+import ProductImagePicker from "@/components/products/ProductImagePicker";
+import CategoryMultiSelect from "@/components/products/CategoryMultiSelect";
 import { api, ApiClientError } from "@/lib/api/client";
 
 function slugify(value) {
@@ -17,21 +19,22 @@ function slugify(value) {
     .replace(/(^-|-$)/g, "");
 }
 
-function emptyVariant() {
-  return { sku: "", name: "", priceCents: "", color: "", size: "" };
-}
-
 function NewProductContent() {
   const router = useRouter();
   const [categories, setCategories] = useState([]);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
-  const [brand, setBrand] = useState("");
-  const [categoryId, setCategoryId] = useState("");
+  const [categoryIds, setCategoryIds] = useState([]);
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("DRAFT");
-  const [variants, setVariants] = useState([emptyVariant()]);
+  const [sku, setSku] = useState("");
+  const [priceCents, setPriceCents] = useState("");
+  const [itemName, setItemName] = useState("");
+  const [color, setColor] = useState("");
+  const [material, setMaterial] = useState("");
+  const [dimensions, setDimensions] = useState("");
+  const [images, setImages] = useState([]);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -47,38 +50,33 @@ function NewProductContent() {
     if (!slugEdited) setSlug(slugify(value));
   }
 
-  function updateVariant(index, field, value) {
-    setVariants((prev) => prev.map((v, i) => (i === index ? { ...v, [field]: value } : v)));
-  }
-
-  function addVariant() {
-    setVariants((prev) => [...prev, emptyVariant()]);
-  }
-
-  function removeVariant(index) {
-    setVariants((prev) => prev.filter((_, i) => i !== index));
-  }
-
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
 
     try {
+      // The first checked category is the primary categoryId; the rest ride
+      // along as categoryIds — the API dedupes and stores them in the
+      // ProductCategory join table. See catalog.routes.js POST /products.
+      const [primaryCategoryId, ...secondaryCategoryIds] = categoryIds;
+
       await api.post("/catalog/products", {
         name,
         slug,
-        brand: brand || undefined,
-        categoryId: categoryId || undefined,
+        categoryId: primaryCategoryId || undefined,
+        categoryIds: secondaryCategoryIds,
         description: description || undefined,
         status,
-        variants: variants.map((v) => ({
-          sku: v.sku,
-          name: v.name,
-          color: v.color || undefined,
-          size: v.size || undefined,
-          priceCents: Math.round(Number(v.priceCents) * 100),
-        })),
+        itemName: itemName || undefined,
+        color: color || undefined,
+        material: material || undefined,
+        dimensions: dimensions || undefined,
+        images: images.length ? images : undefined,
+        // One sellable variant per product today — no separate "variant"
+        // concept is exposed in this form, so its name mirrors the product
+        // name (the API still requires every product to have a variant).
+        variants: [{ sku, name, priceCents: Math.round(Number(priceCents) * 100) }],
       });
       router.push("/products");
     } catch (err) {
@@ -90,23 +88,13 @@ function NewProductContent() {
 
   return (
     <div>
-      <PageHeader title="New Product" subtitle="Add a product and its sellable variants" />
+      <PageHeader title="New Product" subtitle="Add a product to the catalog" />
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-6">
         <Card className="flex flex-col gap-4">
+          <h2 className="font-display text-base font-bold text-brand-charcoal">Basics</h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="name" className="text-sm font-medium text-brand-charcoal">
-                Product name
-              </label>
-              <input
-                id="name"
-                required
-                value={name}
-                onChange={(e) => handleNameChange(e.target.value)}
-                className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-              />
-            </div>
+            <ProductNameInput id="name" value={name} onChange={handleNameChange} />
 
             <div className="flex flex-col gap-1.5">
               <label htmlFor="slug" className="text-sm font-medium text-brand-charcoal">
@@ -125,34 +113,32 @@ function NewProductContent() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="brand" className="text-sm font-medium text-brand-charcoal">
-                Brand
+              <label htmlFor="primarySku" className="text-sm font-medium text-brand-charcoal">
+                SKU
               </label>
               <input
-                id="brand"
-                value={brand}
-                onChange={(e) => setBrand(e.target.value)}
-                className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+                id="primarySku"
+                required
+                value={sku}
+                onChange={(e) => setSku(e.target.value)}
+                className="rounded-lg border border-black/15 px-3 py-2 text-sm font-mono focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="category" className="text-sm font-medium text-brand-charcoal">
-                Category
+              <label htmlFor="primaryPrice" className="text-sm font-medium text-brand-charcoal">
+                Price (USD)
               </label>
-              <select
-                id="category"
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
+              <input
+                id="primaryPrice"
+                required
+                type="number"
+                min="0"
+                step="0.01"
+                value={priceCents}
+                onChange={(e) => setPriceCents(e.target.value)}
                 className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-              >
-                <option value="">Select a category</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -170,7 +156,58 @@ function NewProductContent() {
                 <option value="ARCHIVED">Archived</option>
               </select>
             </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="itemName" className="text-sm font-medium text-brand-charcoal">
+                Item Name
+              </label>
+              <input
+                id="itemName"
+                value={itemName}
+                onChange={(e) => setItemName(e.target.value)}
+                className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="itemColor" className="text-sm font-medium text-brand-charcoal">
+                Color
+              </label>
+              <input
+                id="itemColor"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="material" className="text-sm font-medium text-brand-charcoal">
+                Material
+              </label>
+              <input
+                id="material"
+                value={material}
+                onChange={(e) => setMaterial(e.target.value)}
+                className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="itemDimensions" className="text-sm font-medium text-brand-charcoal">
+                Dimensions
+              </label>
+              <input
+                id="itemDimensions"
+                placeholder={'e.g. 84"W x 38"D x 36"H'}
+                value={dimensions}
+                onChange={(e) => setDimensions(e.target.value)}
+                className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+              />
+            </div>
           </div>
+
+          <p className="text-xs text-brand-charcoal/60">
+            Item Name, Color, Material, and Dimensions are shown on the storefront product page. Leave
+            any blank to hide it from the live page.
+          </p>
 
           <div className="flex flex-col gap-1.5">
             <label htmlFor="description" className="text-sm font-medium text-brand-charcoal">
@@ -187,77 +224,19 @@ function NewProductContent() {
         </Card>
 
         <Card className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-display text-base font-bold text-brand-charcoal">Variants</h2>
-            <Button type="button" variant="outline" size="sm" icon={PlusCircle} onClick={addVariant}>
-              Add variant
-            </Button>
-          </div>
+          <h2 className="font-display text-base font-bold text-brand-charcoal">Categories</h2>
+          <CategoryMultiSelect categories={categories} selectedIds={categoryIds} onChange={setCategoryIds} />
+        </Card>
 
-          <div className="flex flex-col gap-4">
-            {variants.map((variant, index) => (
-              <div key={index} className="grid grid-cols-2 gap-3 rounded-lg border border-black/10 p-3 sm:grid-cols-6">
-                <div className="col-span-2 flex flex-col gap-1 sm:col-span-2">
-                  <label className="text-xs font-medium text-brand-charcoal/70">SKU</label>
-                  <input
-                    required
-                    value={variant.sku}
-                    onChange={(e) => updateVariant(index, "sku", e.target.value)}
-                    className="rounded-lg border border-black/15 px-2.5 py-1.5 text-sm font-mono focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-                  />
-                </div>
-                <div className="col-span-2 flex flex-col gap-1 sm:col-span-1">
-                  <label className="text-xs font-medium text-brand-charcoal/70">Variant name</label>
-                  <input
-                    required
-                    value={variant.name}
-                    onChange={(e) => updateVariant(index, "name", e.target.value)}
-                    className="rounded-lg border border-black/15 px-2.5 py-1.5 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-brand-charcoal/70">Color</label>
-                  <input
-                    value={variant.color}
-                    onChange={(e) => updateVariant(index, "color", e.target.value)}
-                    className="rounded-lg border border-black/15 px-2.5 py-1.5 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-brand-charcoal/70">Size</label>
-                  <input
-                    value={variant.size}
-                    onChange={(e) => updateVariant(index, "size", e.target.value)}
-                    className="rounded-lg border border-black/15 px-2.5 py-1.5 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-brand-charcoal/70">Price (USD)</label>
-                  <input
-                    required
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={variant.priceCents}
-                    onChange={(e) => updateVariant(index, "priceCents", e.target.value)}
-                    className="rounded-lg border border-black/15 px-2.5 py-1.5 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-                  />
-                </div>
-                <div className="flex items-end justify-end">
-                  {variants.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeVariant(index)}
-                      aria-label="Remove variant"
-                      className="rounded-lg p-2 text-red-600 hover:bg-red-50"
-                    >
-                      <Trash2 className="size-4" aria-hidden="true" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+        <Card className="flex flex-col gap-4">
+          <div>
+            <h2 className="font-display text-base font-bold text-brand-charcoal">Images</h2>
+            <p className="text-xs text-brand-charcoal/60">
+              The first image is the hero/thumbnail shown when buying; all images also appear in the
+              gallery section below the description.
+            </p>
           </div>
+          <ProductImagePicker images={images} onChange={setImages} />
         </Card>
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}

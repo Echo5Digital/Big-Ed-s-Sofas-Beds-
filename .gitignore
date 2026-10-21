@@ -47,6 +47,9 @@ next-env.d.ts
 # prisma
 packages/database/generated/
 
+# admin-uploaded product images (local-disk dev storage — see apps/api/README.md)
+apps/api/uploads/
+
 # logs
 *.log
 

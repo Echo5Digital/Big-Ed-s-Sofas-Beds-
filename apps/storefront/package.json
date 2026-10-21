@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@big-eds/ui": "workspace:*",
     "@stripe/react-stripe-js": "^7.0.0",
     "@stripe/stripe-js": "^10.1.0",
     "lucide-react": "^0.475.0",

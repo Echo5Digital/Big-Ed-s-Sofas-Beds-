@@ -1,8 +1,10 @@
+// Live catalog data, never stale-cached — see app/page.jsx for rationale.
+export const instant = false;
+
 import Link from "next/link";
 import Container from "@/components/ui/Container";
 import Breadcrumbs from "@/components/ui/Breadcrumbs";
-import { categories, shopGroups } from "@/lib/mock-data/categories";
-import { products } from "@/lib/mock-data/products";
+import { getCategories, getProducts } from "@/lib/api/catalog";
 import { blogPosts } from "@/lib/mock-data/blog";
 
 export const metadata = {
@@ -27,7 +29,7 @@ function SitemapSection({ title, links }) {
   );
 }
 
-export default function SitemapPage() {
+export default async function SitemapPage() {
   const mainPages = [
     { label: "Home", href: "/" },
     { label: "Shop All", href: "/shop" },
@@ -46,9 +48,17 @@ export default function SitemapPage() {
     { label: "Wishlist", href: "/wishlist" },
   ];
 
-  const shopByRoom = shopGroups.map((group) => ({ label: group.name, href: `/shop/${group.slug}` }));
-  const shopByCategory = categories.map((category) => ({ label: category.name, href: `/shop/${category.slug}` }));
-  const productLinks = products.map((product) => ({ label: product.name, href: `/products/${product.slug}` }));
+  const [allCategories, { products: allProducts }] = await Promise.all([
+    getCategories(),
+    getProducts({ pageSize: 100 }),
+  ]);
+  const shopByRoom = allCategories
+    .filter((c) => !c.parentId)
+    .map((group) => ({ label: group.name, href: `/shop/${group.slug}` }));
+  const shopByCategory = allCategories
+    .filter((c) => c.parentId)
+    .map((category) => ({ label: category.name, href: `/shop/${category.slug}` }));
+  const productLinks = allProducts.map((product) => ({ label: product.name, href: `/products/${product.slug}` }));
   const blogLinks = blogPosts.map((post) => ({ label: post.title, href: `/blog/${post.slug}` }));
 
   const legalPages = [

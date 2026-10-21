@@ -28,14 +28,62 @@ export const siteConfig = {
     youtube: "#",
     tiktok: "#",
   },
-  // NOTE: these hrefs now point to real demo routes built for this storefront.
-  // Labels and ordering reflect the intended final navigation structure.
+  // Hrefs point at real Category.slug values seeded in packages/database/prisma/seed.js.
+  // Top-level groups with children render as dropdown/mega-menus; items with no
+  // children (Deals, Financing, About, Contact) render as plain links.
   nav: [
-    { label: "Living Room", href: "/shop/living-room" },
-    { label: "Bedroom", href: "/shop/bedroom" },
-    { label: "Mattresses", href: "/shop/mattresses" },
-    { label: "Dining", href: "/shop/dining" },
-    { label: "Deals", href: "/deals" },
+    {
+      label: "Living Room",
+      href: "/shop/living-room",
+      children: [
+        { label: "Stationary Sofa & Loveseats", href: "/shop/stationary-sofas-loveseats" },
+        { label: "Stationary Sectionals", href: "/shop/stationary-sectionals" },
+        { label: "Reclining Sofa & Loveseats", href: "/shop/reclining-sofas-loveseats" },
+        { label: "Reclining Sectionals", href: "/shop/reclining-sectionals" },
+        { label: "Recliners & Lift Chairs", href: "/shop/recliners-lift-chairs" },
+        { label: "Sleepers & Futons", href: "/shop/sleepers-futons" },
+        { label: "Occasional Tables", href: "/shop/occasional-tables" },
+        { label: "TV Stands", href: "/shop/tv-stands" },
+      ],
+    },
+    {
+      label: "Bedroom",
+      href: "/shop/bedroom",
+      children: [
+        { label: "Beds", href: "/shop/beds" },
+        { label: "Bedroom Furniture", href: "/shop/bedroom-furniture" },
+        { label: "Mattresses", href: "/shop/mattresses" },
+        { label: "Daybeds", href: "/shop/daybeds" },
+        { label: "Bunk Beds", href: "/shop/bunk-beds" },
+        { label: "Vanities & Mirrors", href: "/shop/vanities-mirrors" },
+      ],
+    },
+    {
+      label: "Dining",
+      href: "/shop/dining",
+      children: [
+        { label: "Dining Room Furniture", href: "/shop/dining-room-furniture" },
+        { label: "Barstools", href: "/shop/barstools" },
+      ],
+    },
+    {
+      label: "Office",
+      href: "/shop/office",
+      children: [{ label: "Office & Bookcase", href: "/shop/office-bookcase" }],
+    },
+    {
+      label: "Accessories",
+      href: "/shop/accessories",
+      children: [{ label: "Home Accessories", href: "/shop/home-accessories" }],
+    },
+    {
+      label: "Deals",
+      href: "/deals",
+      children: [
+        { label: "New Arrivals", href: "/deals?filter=new-arrivals" },
+        { label: "Closeout Specials", href: "/deals?filter=closeout" },
+      ],
+    },
     { label: "Financing", href: "/financing" },
     { label: "About", href: "/about" },
     { label: "Contact", href: "/contact" },
@@ -43,8 +91,9 @@ export const siteConfig = {
   footerQuickLinks: [
     { label: "Living Room", href: "/shop/living-room" },
     { label: "Bedroom", href: "/shop/bedroom" },
-    { label: "Mattresses", href: "/shop/mattresses" },
     { label: "Dining", href: "/shop/dining" },
+    { label: "Office", href: "/shop/office" },
+    { label: "Accessories", href: "/shop/accessories" },
     { label: "Deals", href: "/deals" },
   ],
   footerCompanyLinks: [

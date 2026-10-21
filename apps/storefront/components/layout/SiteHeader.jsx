@@ -1,14 +1,79 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Heart, User, ShoppingBag, Menu, ArrowRight, MapPin } from "lucide-react";
+import { Heart, User, ShoppingBag, Menu, ArrowRight, MapPin, ChevronDown } from "lucide-react";
 import { siteConfig } from "@/lib/mock-data/site-config";
 import { useDemoCart } from "@/components/layout/DemoCartProvider";
 import SearchBox from "@/components/layout/SearchBox";
 import MobileNavigation from "@/components/layout/MobileNavigation";
 import Button from "@/components/ui/Button";
+
+function NavItem({ item }) {
+  const [open, setOpen] = useState(false);
+  const closeTimer = useRef(null);
+
+  function openNow() {
+    clearTimeout(closeTimer.current);
+    setOpen(true);
+  }
+
+  function closeSoon() {
+    clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setOpen(false), 120);
+  }
+
+  const hasChildren = Boolean(item.children?.length);
+
+  return (
+    <li
+      className="relative"
+      onMouseEnter={hasChildren ? openNow : undefined}
+      onMouseLeave={hasChildren ? closeSoon : undefined}
+    >
+      <Link
+        href={item.href}
+        aria-haspopup={hasChildren ? "true" : undefined}
+        aria-expanded={hasChildren ? open : undefined}
+        onFocus={hasChildren ? openNow : undefined}
+        onClick={() => setOpen(false)}
+        className={`flex items-center gap-0.5 rounded px-0.5 py-1.5 hover:text-brand-red-dark focus-visible:outline-2 focus-visible:outline-brand-red xl:gap-1 xl:px-1 ${
+          item.label === "Deals" ? "text-brand-red" : ""
+        }`}
+      >
+        {item.label}
+        {hasChildren && <ChevronDown className="size-3.5" aria-hidden="true" />}
+      </Link>
+
+      {hasChildren && (
+        <div
+          role="menu"
+          onMouseEnter={openNow}
+          onMouseLeave={closeSoon}
+          className={`absolute left-1/2 top-full z-50 w-64 -translate-x-1/2 pt-2 transition ${
+            open ? "visible translate-y-0 opacity-100" : "invisible -translate-y-1 opacity-0"
+          }`}
+        >
+          <ul className="flex flex-col gap-0.5 rounded-xl border border-brand-charcoal/10 bg-white p-2 text-left text-[13px] font-medium normal-case text-brand-charcoal shadow-lg">
+            {item.children.map((child) => (
+              <li key={child.label}>
+                <Link
+                  href={child.href}
+                  role="menuitem"
+                  onClick={() => setOpen(false)}
+                  className="block rounded-lg px-3 py-2 hover:bg-brand-charcoal/5 hover:text-brand-red-dark focus-visible:outline-2 focus-visible:outline-brand-red"
+                >
+                  {child.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </li>
+  );
+}
 
 export default function SiteHeader() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -29,25 +94,16 @@ export default function SiteHeader() {
         </Link>
 
         <nav aria-label="Primary" className="hidden min-w-0 flex-1 lg:block">
-          <ul className="flex items-center justify-center gap-1 whitespace-nowrap text-[13px] font-semibold text-brand-charcoal xl:gap-3 xl:text-sm">
+          <ul className="flex items-center justify-center gap-0.5 whitespace-nowrap text-[12px] font-semibold text-brand-charcoal xl:gap-2.5 xl:text-sm">
             {siteConfig.nav.map((item) => (
-              <li key={item.label}>
-                <Link
-                  href={item.href}
-                  className={`flex items-center rounded px-1 py-1.5 hover:text-brand-red-dark focus-visible:outline-2 focus-visible:outline-brand-red ${
-                    item.label === "Deals" ? "text-brand-red" : ""
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              </li>
+              <NavItem key={item.label} item={item} />
             ))}
           </ul>
         </nav>
 
         <div className="ml-auto hidden shrink-0 flex-col items-end gap-2 lg:flex">
           <div className="flex items-center gap-1.5">
-            <div className="w-40 xl:w-56 2xl:w-64">
+            <div className="hidden 2xl:block 2xl:w-64">
               <SearchBox />
             </div>
             <Link

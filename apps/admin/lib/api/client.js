@@ -35,11 +35,33 @@ async function request(path, options = {}) {
   return payload;
 }
 
+async function upload(path, formData) {
+  const url = `${API_BASE}/api${path}`;
+  // No Content-Type header: the browser sets multipart/form-data with the
+  // correct boundary itself. Setting it manually (as request() does for
+  // JSON) would omit the boundary and the server couldn't parse the body.
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+
+  const isJson = response.headers.get("content-type")?.includes("application/json");
+  const payload = isJson ? await response.json() : null;
+
+  if (!response.ok) {
+    throw new ApiClientError(payload?.error?.message || "Upload failed", response.status, payload?.error?.details);
+  }
+
+  return payload;
+}
+
 export const api = {
   get: (path) => request(path, { method: "GET" }),
   post: (path, body) => request(path, { method: "POST", body }),
   patch: (path, body) => request(path, { method: "PATCH", body }),
   delete: (path) => request(path, { method: "DELETE" }),
+  upload,
 };
 
 export { ApiClientError };

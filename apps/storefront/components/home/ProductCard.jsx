@@ -4,8 +4,10 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ShoppingCart, Check, Heart } from "lucide-react";
+import { stripInlineMarkdown } from "@big-eds/ui";
 import StarRating from "@/components/ui/StarRating";
 import Price from "@/components/ui/Price";
+import InlineMarkdown from "@/components/ui/InlineMarkdown";
 import { useDemoCart } from "@/components/layout/DemoCartProvider";
 
 const BADGE_STYLES = {
@@ -18,6 +20,7 @@ export default function ProductCard({ product }) {
   const { addToCart, wishlistIds, toggleWishlist } = useDemoCart();
   const [justAdded, setJustAdded] = useState(false);
   const isWishlisted = wishlistIds.includes(product.id);
+  const plainName = stripInlineMarkdown(product.name);
 
   function handleAddToCart() {
     addToCart(product);
@@ -35,7 +38,7 @@ export default function ProductCard({ product }) {
           {product.image && (
             <Image
               src={product.image}
-              alt={product.name}
+              alt={plainName}
               fill
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
               className="object-cover"
@@ -53,7 +56,7 @@ export default function ProductCard({ product }) {
           type="button"
           onClick={() => toggleWishlist(product.id)}
           aria-pressed={isWishlisted}
-          aria-label={isWishlisted ? `Remove ${product.name} from wishlist` : `Add ${product.name} to wishlist`}
+          aria-label={isWishlisted ? `Remove ${plainName} from wishlist` : `Add ${plainName} to wishlist`}
           className="absolute right-2.5 top-2.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-white/90 text-brand-charcoal shadow-sm hover:text-brand-red focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red"
         >
           <Heart
@@ -71,7 +74,7 @@ export default function ProductCard({ product }) {
           href={`/products/${product.slug}`}
           className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold text-brand-charcoal hover:text-brand-red-dark focus-visible:outline-none"
         >
-          {product.name}
+          <InlineMarkdown text={product.name} />
         </Link>
         {typeof product.rating === "number" && (
           <StarRating rating={product.rating} reviewCount={product.reviewCount} />

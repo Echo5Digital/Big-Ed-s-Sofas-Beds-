@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Minus, Plus, ShoppingCart, Check, Truck, Store } from "lucide-react";
+import { stripInlineMarkdown } from "@big-eds/ui";
 import { useDemoCart } from "@/components/layout/DemoCartProvider";
 
 export default function ProductPurchasePanel({ product }) {
@@ -25,7 +26,7 @@ export default function ProductPurchasePanel({ product }) {
         id: product.id,
         variantId: selectedVariant.id,
         slug: product.slug,
-        name: `${product.name} — ${selectedVariant.name}`,
+        name: `${stripInlineMarkdown(product.name)} — ${selectedVariant.name}`,
         image: product.images[0]?.url ?? null,
         price: selectedVariant.priceCents / 100,
       },

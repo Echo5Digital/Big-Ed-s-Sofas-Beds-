@@ -35,14 +35,32 @@ const variantCreateSchema = z.object({
   costCents: z.number().int().nonnegative().optional().nullable(),
 });
 
+const productImageInputSchema = z.object({
+  url: z.string().url(),
+  altText: z.string().max(200).optional().nullable(),
+});
+
 const productCreateSchema = z.object({
+  // Supports a lightweight inline markdown subset (**bold**, _italic_) —
+  // rendered safely by packages/ui's parseInlineMarkdown, never as raw HTML.
   name: z.string().min(1).max(200),
   slug: z.string().min(1).max(220).regex(/^[a-z0-9-]+$/, "lowercase letters, numbers, hyphens only"),
   description: z.string().max(4000).optional().nullable(),
+  // Primary category (drives the admin list column + canonical breadcrumb).
   categoryId: z.string().uuid().optional().nullable(),
+  // Additional categories this product should also appear under — see the
+  // ProductCategory join table. Deduplicated against categoryId server-side.
+  categoryIds: z.array(z.string().uuid()).optional(),
   brand: z.string().max(120).optional().nullable(),
+  // Product-level display attributes, each hidden from the live storefront
+  // page when unset. Distinct from Variant.color/size (which vary per SKU).
+  itemName: z.string().max(160).optional().nullable(),
+  color: z.string().max(80).optional().nullable(),
+  material: z.string().max(120).optional().nullable(),
+  dimensions: z.string().max(160).optional().nullable(),
   status: z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]).optional(),
   variants: z.array(variantCreateSchema).min(1),
+  images: z.array(productImageInputSchema).optional(),
 });
 
 const productUpdateSchema = productCreateSchema.partial().extend({
@@ -230,6 +248,7 @@ module.exports = {
   loginSchema,
   categoryCreateSchema,
   variantCreateSchema,
+  productImageInputSchema,
   productCreateSchema,
   productUpdateSchema,
   stockAdjustSchema,

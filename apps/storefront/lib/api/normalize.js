@@ -17,6 +17,7 @@ export function normalizeProductForCard(product) {
     price: variant ? variant.priceCents / 100 : 0,
     compareAtPrice: variant?.compareAtCents ? variant.compareAtCents / 100 : null,
     category: product.category?.slug ?? null,
+    createdAt: product.createdAt ?? null,
     badge: totalAvailable <= 0 ? "OUT OF STOCK" : null,
     totalAvailable,
     rating: null,
