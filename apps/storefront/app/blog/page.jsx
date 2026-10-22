@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowRight, Calendar, Clock } from "lucide-react";
 import Container from "@/components/ui/Container";
 import Breadcrumbs from "@/components/ui/Breadcrumbs";
+import PageHero from "@/components/ui/PageHero";
 import { blogPosts } from "@/lib/mock-data/blog";
 
 export const metadata = {
@@ -20,18 +21,16 @@ function formatDate(dateString) {
 
 export default function BlogIndexPage() {
   return (
-    <div className="py-8 sm:py-10">
-      <Container>
+    <div className="pb-10">
+      <PageHero
+        title="Furniture Care & Buying Guides"
+        subtitle="Practical tips for choosing, measuring, and caring for furniture and mattresses."
+      />
+
+      <Container className="mt-8">
         <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Blog" }]} />
 
-        <h1 className="mt-4 font-display text-3xl font-bold text-brand-charcoal sm:text-4xl">
-          Furniture Care &amp; Buying Guides
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm text-brand-charcoal/70 sm:text-base">
-          Practical tips for choosing, measuring, and caring for furniture and mattresses.
-        </p>
-
-        <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2">
+        <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2">
           {blogPosts.map((post) => (
             <Link
               key={post.slug}

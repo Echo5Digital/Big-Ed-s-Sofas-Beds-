@@ -2,6 +2,7 @@ import Image from "next/image";
 import { CreditCard, Calendar, ShieldCheck, HelpCircle } from "lucide-react";
 import Container from "@/components/ui/Container";
 import Breadcrumbs from "@/components/ui/Breadcrumbs";
+import PageHero from "@/components/ui/PageHero";
 import { financingProviders } from "@/lib/mock-data/site-config";
 
 export const metadata = {
@@ -52,23 +53,16 @@ const faqs = [
 
 export default function FinancingPage() {
   return (
-    <div className="py-8 sm:py-10">
-      <Container>
+    <div className="pb-10">
+      <PageHero
+        title="Comfort Today. Pay Your Way."
+        subtitle="Big Ed's works with multiple financing partners to help make quality furniture fit your budget. Specific terms, rates, and approval are determined by each financing provider, not by Big Ed's — ask our showroom team which options are currently available."
+      />
+
+      <Container className="mt-8">
         <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Financing" }]} />
 
-        <div className="mt-4 max-w-2xl">
-          <h1 className="font-display text-3xl font-bold text-brand-charcoal sm:text-4xl">
-            Comfort Today. Pay Your Way.
-          </h1>
-          <p className="mt-3 text-sm text-brand-charcoal/70 sm:text-base">
-            Big Ed&rsquo;s works with multiple financing partners to help make quality furniture fit
-            your budget. Specific terms, rates, and approval are determined by each financing
-            provider, not by Big Ed&rsquo;s &mdash; ask our showroom team which options are currently
-            available.
-          </p>
-        </div>
-
-        <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
           {highlights.map(({ icon: Icon, title, description }) => (
             <div key={title} className="rounded-xl border border-brand-charcoal/10 bg-white p-5">
               <Icon className="size-7 text-brand-red" aria-hidden="true" strokeWidth={1.75} />

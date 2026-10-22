@@ -293,6 +293,7 @@ async function expireStaleReservations() {
 }
 
 module.exports = {
+  getOrCreateBalance,
   adjustStock,
   transferStock,
   reserveStock,

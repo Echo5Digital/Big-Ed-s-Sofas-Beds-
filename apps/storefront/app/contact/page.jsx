@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { MapPin, Phone, Clock, Mail } from "lucide-react";
 import Container from "@/components/ui/Container";
 import Breadcrumbs from "@/components/ui/Breadcrumbs";
+import PageHero from "@/components/ui/PageHero";
 import { siteConfig } from "@/lib/mock-data/site-config";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -38,19 +39,16 @@ export default function ContactPage() {
   }
 
   return (
-    <div className="py-8 sm:py-10">
-      <Container>
+    <div className="pb-10">
+      <PageHero
+        title="Contact Us"
+        subtitle="Have a question about a product, delivery, or financing? Send us a message or stop by the showroom — we're happy to help."
+      />
+
+      <Container className="mt-8">
         <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Contact" }]} />
 
-        <h1 className="mt-4 font-display text-3xl font-bold text-brand-charcoal sm:text-4xl">
-          Contact Us
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm text-brand-charcoal/70 sm:text-base">
-          Have a question about a product, delivery, or financing? Send us a message or stop by the
-          showroom &mdash; we&rsquo;re happy to help.
-        </p>
-
-        <div className="mt-8 grid grid-cols-1 gap-10 lg:grid-cols-5 lg:gap-12">
+        <div className="mt-6 grid grid-cols-1 gap-10 lg:grid-cols-5 lg:gap-12">
           <div className="lg:col-span-3">
             <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4 rounded-xl border border-brand-charcoal/10 bg-white p-5 sm:p-6">
               <div>

@@ -4,10 +4,14 @@ export const instant = false;
 import Link from "next/link";
 import Container from "@/components/ui/Container";
 import Breadcrumbs from "@/components/ui/Breadcrumbs";
+import Pagination from "@/components/ui/Pagination";
+import PageHero from "@/components/ui/PageHero";
 import ProductCard from "@/components/home/ProductCard";
-import CategoryCard from "@/components/home/CategoryCard";
-import { getCategories, getProducts } from "@/lib/api/catalog";
+import { getProducts } from "@/lib/api/catalog";
 import { normalizeProductForCard } from "@/lib/api/normalize";
+
+// 20 per page, laid out 4 columns x 5 rows on desktop (see the grid below).
+const PAGE_SIZE = 20;
 
 export const metadata = {
   title: "Shop All Furniture | Big Ed's Sofas & Beds",
@@ -15,37 +19,24 @@ export const metadata = {
     "Browse every category at Big Ed's Sofas & Beds — sofas, sectionals, recliners, bedroom sets, mattresses and dining sets.",
 };
 
-export default async function ShopAllPage() {
-  const [categories, { products: rawProducts }] = await Promise.all([
-    getCategories(),
-    getProducts({ pageSize: 100 }),
-  ]);
+export default async function ShopAllPage({ searchParams }) {
+  const { page: pageParam } = await searchParams;
+  const page = Math.max(1, Number(pageParam) || 1);
+
+  const { products: rawProducts, pagination } = await getProducts({ page, pageSize: PAGE_SIZE });
   const products = rawProducts.map(normalizeProductForCard);
+  const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.pageSize));
   return (
-    <div className="py-8 sm:py-10">
-      <Container>
+    <div className="pb-10">
+      <PageHero
+        title="Shop All Furniture"
+        subtitle="Quality furniture for every room, at prices built for real budgets."
+      />
+
+      <Container className="mt-8">
         <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Shop All" }]} />
 
-        <div className="mt-4 flex flex-col gap-2">
-          <h1 className="font-display text-3xl font-bold text-brand-charcoal sm:text-4xl">
-            Shop All Furniture
-          </h1>
-          <p className="max-w-2xl text-sm text-brand-charcoal/70 sm:text-base">
-            Quality furniture for every room, at prices built for real budgets. Browse by category
-            below, or scroll through our full product lineup.
-          </p>
-        </div>
-
-        <div className="mt-8">
-          <h2 className="font-display text-xl font-semibold text-brand-charcoal">Shop by Category</h2>
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {categories.map((category) => (
-              <CategoryCard key={category.id} category={category} />
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-12">
+        <div className="mt-6">
           <div className="flex items-center justify-between gap-4">
             <h2 className="font-display text-xl font-semibold text-brand-charcoal">All Products</h2>
             <Link href="/deals" className="text-sm font-semibold text-brand-red-dark hover:underline">
@@ -57,6 +48,7 @@ export default async function ShopAllPage() {
               <ProductCard key={product.id} product={product} />
             ))}
           </div>
+          <Pagination page={page} totalPages={totalPages} basePath="/shop" />
         </div>
       </Container>
     </div>

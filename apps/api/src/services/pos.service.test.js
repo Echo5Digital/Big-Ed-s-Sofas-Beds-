@@ -312,4 +312,52 @@ describe("pos.service", () => {
 
     await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
   });
+
+  it("never lets two concurrent refunds on the same order jointly exceed the order total", async () => {
+    await seedStock(5);
+    const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+    const sale = await posService.ringSale({
+      registerSessionId: session.id,
+      lines: [{ variantId: variant.id, quantity: 1 }],
+      tenderMethod: "CASH",
+      tenderedCents: 50000,
+      performedById: null,
+    });
+
+    // Fire two refunds for the full order total at the same time — without
+    // the order-row lock in pos.service.js's refund(), both could read the
+    // same refundedSoFar=0 snapshot, both pass the "<=  order total" check,
+    // and both commit, refunding 100000 against a 50000 order.
+    const results = await Promise.allSettled([
+      posService.refund({
+        registerSessionId: session.id,
+        orderId: sale.order.id,
+        amountCents: 50000,
+        reasonCode: "test_concurrent_a",
+        performedById: null,
+      }),
+      posService.refund({
+        registerSessionId: session.id,
+        orderId: sale.order.id,
+        amountCents: 50000,
+        reasonCode: "test_concurrent_b",
+        performedById: null,
+      }),
+    ]);
+
+    const succeeded = results.filter((r) => r.status === "fulfilled");
+    const failed = results.filter((r) => r.status === "rejected");
+    expect(succeeded.length).toBe(1);
+    expect(failed.length).toBe(1);
+    expect(failed[0].reason.message).toMatch(/exceed the order total/);
+
+    const totalRefunded = await prisma.refund.aggregate({
+      where: { orderId: sale.order.id },
+      _sum: { amountCents: true },
+    });
+    expect(totalRefunded._sum.amountCents).toBe(50000);
+
+    await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
+  });
 });

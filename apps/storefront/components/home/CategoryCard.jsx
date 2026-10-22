@@ -1,6 +1,17 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronRight, Sofa, BedDouble, Bed, UtensilsCrossed, Armchair, LayoutGrid, Grid3x3 } from "lucide-react";
+import {
+  ChevronRight,
+  Sofa,
+  BedDouble,
+  Bed,
+  UtensilsCrossed,
+  Armchair,
+  LayoutGrid,
+  Grid3x3,
+  Briefcase,
+  Sparkles,
+} from "lucide-react";
 
 // Real category photography, supplied for the homepage's featured categories.
 // Matched by slug — see packages/database/prisma/seed.js for the category
@@ -12,17 +23,22 @@ const CATEGORY_PHOTOS = {
   bedroom: "/bedroom.webp",
   mattresses: "/mattresses.webp",
   dining: "/dining_set.webp",
+  "living-room": "/living_room.webp",
+  office: "/office.webp",
+  accessories: "/accessories.webp",
 };
 
-// Other categories (e.g. Living Room, Beds — shown on /shop but not in the
-// homepage's featured six) have no supplied photography yet (see
-// docs/requirements/open-questions.md — "Blocks: Real catalog data"), so
-// they fall back to a themed icon instead of a placeholder/broken image.
+// Other categories (e.g. Beds — shown on /shop) have no supplied
+// photography yet (see docs/requirements/open-questions.md — "Blocks: Real
+// catalog data"), so they fall back to a themed icon instead of a
+// placeholder/broken image.
 const CATEGORY_ICONS = {
   "living-room": Sofa,
   bedroom: BedDouble,
   mattresses: Bed,
   dining: UtensilsCrossed,
+  office: Briefcase,
+  accessories: Sparkles,
   sofas: Sofa,
   sectionals: Grid3x3,
   recliners: Armchair,

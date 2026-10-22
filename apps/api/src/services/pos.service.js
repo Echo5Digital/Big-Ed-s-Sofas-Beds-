@@ -177,8 +177,9 @@ async function ringSale({
   const reservationFailures = [];
   const convertedLineVariantIds = [];
   for (const line of lines) {
+    let reservation;
     try {
-      const reservation = await inventoryService.reserveStock({
+      reservation = await inventoryService.reserveStock({
         variantId: line.variantId,
         locationId,
         quantity: line.quantity,
@@ -191,6 +192,17 @@ async function ringSale({
       });
       convertedLineVariantIds.push(line.variantId);
     } catch {
+      // reserveStock can succeed (stock already locked into `reserved`) even
+      // when the immediately-following convertReservationToSale throws (a
+      // transient DB error, a lookup race, etc). Without releasing it here,
+      // that reservation stays ACTIVE and the unit stays stuck in
+      // StockBalance.reserved — unavailable to sell anywhere, online or in
+      // another register — until its TTL lazily expires. Only the lines
+      // tracked in convertedLineVariantIds are rolled back below, which never
+      // covered this reserved-but-not-converted case.
+      if (reservation) {
+        await inventoryService.releaseReservation(reservation.id).catch(() => {});
+      }
       reservationFailures.push(line.variantId);
       break;
     }
@@ -331,20 +343,29 @@ async function refund({ registerSessionId, orderId, amountCents, reasonCode, not
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { lines: true } });
   if (!order) throw new NotFoundError("Order not found");
 
-  const alreadyRefunded = await prisma.refund.aggregate({
-    where: { orderId },
-    _sum: { amountCents: true },
-  });
-  const refundedSoFar = alreadyRefunded._sum.amountCents || 0;
-  if (refundedSoFar + amountCents > order.totalCents) {
-    throw new ConflictError("Refund amount would exceed the order total", {
-      orderTotalCents: order.totalCents,
-      alreadyRefundedCents: refundedSoFar,
-      requestedCents: amountCents,
-    });
-  }
-
   const result = await prisma.$transaction(async (tx) => {
+    // Lock the order row before re-reading how much has already been
+    // refunded, so two concurrent refund requests for the same order
+    // serialize instead of both reading the same refundedSoFar snapshot and
+    // both passing the cap check — without this lock, two refunds submitted
+    // at the same time (a double-submit, or two staff ringing up the same
+    // return) could each independently pass "refundedSoFar + amountCents <=
+    // totalCents" and jointly refund more than was ever actually paid.
+    await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+
+    const alreadyRefunded = await tx.refund.aggregate({
+      where: { orderId },
+      _sum: { amountCents: true },
+    });
+    const refundedSoFar = alreadyRefunded._sum.amountCents || 0;
+    if (refundedSoFar + amountCents > order.totalCents) {
+      throw new ConflictError("Refund amount would exceed the order total", {
+        orderTotalCents: order.totalCents,
+        alreadyRefundedCents: refundedSoFar,
+        requestedCents: amountCents,
+      });
+    }
+
     const refundRecord = await tx.refund.create({
       data: {
         orderId,

@@ -5,7 +5,7 @@ const { LOW_STOCK_THRESHOLD } = require("@big-eds/config");
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
-const { NotFoundError } = require("../lib/errors");
+const { NotFoundError, ConflictError } = require("../lib/errors");
 const inventoryService = require("../services/inventory.service");
 
 const router = express.Router();
@@ -158,10 +158,17 @@ router.post(
   requirePermission("inventory:adjust"),
   validateBody(countSubmitSchema),
   asyncHandler(async (req, res) => {
-    const count = await prisma.count.findUnique({ where: { id: req.params.id }, include: { lines: true } });
-    if (!count) throw new NotFoundError("Count not found");
-
     const result = await prisma.$transaction(async (tx) => {
+      // Re-fetch inside the transaction (not reused from an earlier
+      // findUnique outside it) so a retried/duplicate submit of the same
+      // count sees the COMPLETED status set by a prior call and is rejected
+      // instead of re-applying every discrepancy a second time.
+      const count = await tx.count.findUnique({ where: { id: req.params.id }, include: { lines: true } });
+      if (!count) throw new NotFoundError("Count not found");
+      if (count.status !== "OPEN") {
+        throw new ConflictError("This count has already been submitted", { status: count.status });
+      }
+
       for (const submitted of req.body.lines) {
         const line = count.lines.find((l) => l.id === submitted.lineId);
         if (!line) continue;
@@ -176,15 +183,17 @@ router.post(
           const type = discrepancy > 0 ? "ADJUSTMENT_INCREASE" : "ADJUSTMENT_DECREASE";
           const quantity = Math.abs(discrepancy);
 
-          const balance = await tx.stockBalance.upsert({
-            where: { variantId_locationId: { variantId: line.variantId, locationId: count.locationId } },
-            update: {},
-            create: { variantId: line.variantId, locationId: count.locationId },
-          });
+          // getOrCreateBalance takes a row-level SELECT ... FOR UPDATE lock
+          // before this transaction mutates onHand — the same protection
+          // adjustStock() uses elsewhere, needed here because a concurrent
+          // manual adjustment or another count submission could otherwise
+          // race with this read-then-write.
+          const balance = await inventoryService.getOrCreateBalance(tx, line.variantId, count.locationId);
+          const nextOnHand = type === "ADJUSTMENT_INCREASE" ? balance.onHand + quantity : balance.onHand - quantity;
 
           await tx.stockBalance.update({
             where: { id: balance.id },
-            data: { onHand: type === "ADJUSTMENT_INCREASE" ? { increment: quantity } : { decrement: quantity } },
+            data: { onHand: nextOnHand },
           });
 
           await tx.stockMovement.create({

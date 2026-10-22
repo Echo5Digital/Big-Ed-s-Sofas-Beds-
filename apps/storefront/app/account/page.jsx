@@ -4,6 +4,7 @@ import { useState } from "react";
 import { User, Info } from "lucide-react";
 import Container from "@/components/ui/Container";
 import Breadcrumbs from "@/components/ui/Breadcrumbs";
+import PageHero from "@/components/ui/PageHero";
 
 export default function AccountPage() {
   const [submitted, setSubmitted] = useState(false);
@@ -14,17 +15,19 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="py-8 sm:py-10">
-      <Container className="max-w-md">
+    <div className="pb-10">
+      <PageHero title="Account" showMascot={false} />
+
+      <Container className="mt-8 max-w-md">
         <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Account" }]} />
 
         <div className="mt-6 rounded-2xl border border-brand-charcoal/10 bg-white p-6 sm:p-8">
           <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-brand-red/10 text-brand-red">
             <User className="size-6" aria-hidden="true" />
           </span>
-          <h1 className="mt-4 text-center font-display text-2xl font-bold text-brand-charcoal">
+          <h2 className="mt-4 text-center font-display text-2xl font-bold text-brand-charcoal">
             Sign In to Your Account
-          </h1>
+          </h2>
           <p className="mt-1 text-center text-sm text-brand-charcoal/60">
             Track orders, save favorites, and check out faster.
           </p>

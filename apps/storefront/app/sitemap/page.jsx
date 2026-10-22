@@ -4,6 +4,7 @@ export const instant = false;
 import Link from "next/link";
 import Container from "@/components/ui/Container";
 import Breadcrumbs from "@/components/ui/Breadcrumbs";
+import PageHero from "@/components/ui/PageHero";
 import { getCategories, getProducts } from "@/lib/api/catalog";
 import { blogPosts } from "@/lib/mock-data/blog";
 
@@ -70,18 +71,13 @@ export default async function SitemapPage() {
   ];
 
   return (
-    <div className="py-8 sm:py-10">
-      <Container>
+    <div className="pb-10">
+      <PageHero title="Site Map" subtitle="A full listing of every page on the Big Ed's Sofas & Beds website." showMascot={false} />
+
+      <Container className="mt-8">
         <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Site Map" }]} />
 
-        <h1 className="mt-4 font-display text-3xl font-bold text-brand-charcoal sm:text-4xl">
-          Site Map
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm text-brand-charcoal/70 sm:text-base">
-          A full listing of every page on the Big Ed&rsquo;s Sofas &amp; Beds website.
-        </p>
-
-        <div className="mt-8 grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-6 grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-3">
           <SitemapSection title="Main Pages" links={mainPages} />
           <SitemapSection title="Shop by Room" links={shopByRoom} />
           <SitemapSection title="Shop by Category" links={shopByCategory} />

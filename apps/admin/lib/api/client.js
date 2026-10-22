@@ -75,7 +75,10 @@ async function upload(path, formData, isRetry = false) {
     body: formData,
   });
 
-  if (response.status === 401 && !isRetry) {
+  // Same /auth/* guard as request() — never intercept a failed call against
+  // an auth endpoint itself, or a failed login/refresh would trigger a
+  // spurious refresh that masks the real error.
+  if (response.status === 401 && !isRetry && !path.startsWith("/auth/")) {
     const refreshResponse = await refreshAccessToken();
     if (refreshResponse.ok) {
       return upload(path, formData, true);

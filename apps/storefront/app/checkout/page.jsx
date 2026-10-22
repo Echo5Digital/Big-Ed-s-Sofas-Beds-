@@ -9,6 +9,7 @@ import { Truck, Store, ClipboardCheck, ShoppingBag } from "lucide-react";
 import Container from "@/components/ui/Container";
 import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import EmptyState from "@/components/ui/EmptyState";
+import PageHero from "@/components/ui/PageHero";
 import { useDemoCart } from "@/components/layout/DemoCartProvider";
 import { formatCurrency } from "@/utils/formatCurrency";
 import { api, ApiClientError } from "@/lib/api/client";
@@ -77,8 +78,9 @@ export default function CheckoutPage() {
 
   if (cartItems.length === 0 && checkoutState === "form") {
     return (
-      <div className="py-8 sm:py-10">
-        <Container>
+      <div className="pb-10">
+        <PageHero title="Checkout" showMascot={false} />
+        <Container className="mt-8">
           <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Checkout" }]} />
           <div className="mt-8">
             <EmptyState
@@ -123,15 +125,14 @@ export default function CheckoutPage() {
 
   if (checkoutState === "payment" && clientSecret) {
     return (
-      <div className="py-8 sm:py-10">
-        <Container>
+      <div className="pb-10">
+        <PageHero
+          title="Payment"
+          subtitle={`Order ${order?.orderNumber} — ${formatCurrency((order?.totalCents ?? 0) / 100)}`}
+          showMascot={false}
+        />
+        <Container className="mt-8">
           <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Cart", href: "/cart" }, { label: "Checkout" }]} />
-          <h1 className="mt-4 font-display text-3xl font-bold text-brand-charcoal sm:text-4xl">
-            Payment
-          </h1>
-          <p className="mt-1 text-sm text-brand-charcoal/60">
-            Order {order?.orderNumber} — {formatCurrency((order?.totalCents ?? 0) / 100)}
-          </p>
 
           <div className="mt-6 max-w-lg">
             {stripePromise ? (
@@ -156,13 +157,10 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="pb-24 pt-8 sm:py-10">
-      <Container>
+    <div className="pb-24">
+      <PageHero title="Checkout" showMascot={false} />
+      <Container className="mt-8">
         <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Cart", href: "/cart" }, { label: "Checkout" }]} />
-
-        <h1 className="mt-4 font-display text-3xl font-bold text-brand-charcoal sm:text-4xl">
-          Checkout
-        </h1>
 
         {error && (
           <p role="alert" className="mt-3 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">

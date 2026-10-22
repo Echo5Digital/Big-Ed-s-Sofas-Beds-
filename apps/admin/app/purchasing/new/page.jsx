@@ -181,7 +181,7 @@ function NewPurchaseOrderContent() {
                   className="rounded-lg border border-black/15 px-2.5 py-1.5 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
                 />
               </div>
-              <div className="flex items-end justify-end">
+              <div className="col-span-2 flex items-center justify-end sm:col-span-1 sm:items-end">
                 {lines.length > 1 && (
                   <button
                     type="button"

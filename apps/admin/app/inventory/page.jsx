@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { ArrowLeftRight, SlidersHorizontal } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowLeftRight, Search, SlidersHorizontal } from "lucide-react";
 import RequireAuth from "@/components/layout/RequireAuth";
 import PageHeader from "@/components/ui/PageHeader";
 import DataTable from "@/components/ui/DataTable";
@@ -226,6 +226,7 @@ function InventoryContent() {
   const [balances, setBalances] = useState(null);
   const [locations, setLocations] = useState([]);
   const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [search, setSearch] = useState("");
   const [error, setError] = useState(null);
   const [adjustTarget, setAdjustTarget] = useState(null);
   const [transferTarget, setTransferTarget] = useState(null);
@@ -248,6 +249,15 @@ function InventoryContent() {
       .then((data) => setLocations(data.locations))
       .catch(() => setLocations([]));
   }, []);
+
+  const filteredBalances = useMemo(() => {
+    if (!balances) return balances;
+    const query = search.trim().toLowerCase();
+    if (!query) return balances;
+    return balances.filter(
+      (b) => b.sku.toLowerCase().includes(query) || b.productName.toLowerCase().includes(query)
+    );
+  }, [balances, search]);
 
   const columns = [
     { key: "sku", header: "SKU" },
@@ -278,7 +288,7 @@ function InventoryContent() {
           <button
             type="button"
             onClick={() => setAdjustTarget(r)}
-            className="inline-flex items-center gap-1 rounded-full border border-black/15 px-2.5 py-1 text-xs font-semibold hover:bg-gray-50"
+            className="inline-flex min-h-9 items-center gap-1 rounded-full border border-black/15 px-3 py-1.5 text-xs font-semibold hover:bg-gray-50"
           >
             <SlidersHorizontal className="size-3.5" aria-hidden="true" />
             Adjust
@@ -286,7 +296,7 @@ function InventoryContent() {
           <button
             type="button"
             onClick={() => setTransferTarget(r)}
-            className="inline-flex items-center gap-1 rounded-full border border-black/15 px-2.5 py-1 text-xs font-semibold hover:bg-gray-50"
+            className="inline-flex min-h-9 items-center gap-1 rounded-full border border-black/15 px-3 py-1.5 text-xs font-semibold hover:bg-gray-50"
           >
             <ArrowLeftRight className="size-3.5" aria-hidden="true" />
             Transfer
@@ -316,7 +326,28 @@ function InventoryContent() {
 
       {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-      <DataTable columns={columns} rows={balances} emptyMessage="No stock balances found." />
+      <div className="relative mb-4 sm:max-w-xs">
+        <Search
+          className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-brand-charcoal/40"
+          aria-hidden="true"
+        />
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by SKU or name"
+          aria-label="Search inventory by SKU or name"
+          className="w-full rounded-lg border border-black/15 py-2 pl-9 pr-3 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+        />
+      </div>
+
+      <DataTable
+        columns={columns}
+        rows={filteredBalances}
+        emptyMessage={
+          balances && balances.length > 0 ? "No stock balances match your search." : "No stock balances found."
+        }
+      />
 
       <AdjustModal
         open={Boolean(adjustTarget)}

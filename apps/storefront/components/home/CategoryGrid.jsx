@@ -1,10 +1,11 @@
 import Container from "@/components/ui/Container";
 import CategoryCard from "@/components/home/CategoryCard";
 
-// Homepage "Shop by Category" teaser shows a curated subset in a fixed
-// order, not the full catalog list (that's what /shop is for) — matches
-// product slugs from packages/database/prisma/seed.js.
-const FEATURED_SLUGS = ["sofas", "sectionals", "recliners", "bedroom", "mattresses", "dining"];
+// Homepage "Shop by Category" teaser mirrors the top nav's five top-level
+// categories (Living Room, Bedroom, Dining, Office, Accessories) — see
+// packages/database/prisma/seed.js's categoryGroupDefs and
+// components/layout/SiteHeader.jsx's nav links.
+const FEATURED_SLUGS = ["living-room", "bedroom", "dining", "office", "accessories"];
 
 // Takes already-fetched categories (see app/page.jsx) so the homepage can
 // fetch this and FeaturedProducts' data concurrently instead of waterfalling.
@@ -15,7 +16,7 @@ export default function CategoryGrid({ categories }) {
   return (
     <section aria-label="Shop by category" className="bg-brand-cream py-10 sm:py-14">
       <Container>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
           {featured.map((category) => (
             <CategoryCard key={category.id} category={category} />
           ))}

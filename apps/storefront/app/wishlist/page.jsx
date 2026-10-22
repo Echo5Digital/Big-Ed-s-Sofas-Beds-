@@ -5,6 +5,7 @@ import { Heart } from "lucide-react";
 import Container from "@/components/ui/Container";
 import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import EmptyState from "@/components/ui/EmptyState";
+import PageHero from "@/components/ui/PageHero";
 import ProductCard from "@/components/home/ProductCard";
 import { useDemoCart } from "@/components/layout/DemoCartProvider";
 import { getProducts } from "@/lib/api/catalog";
@@ -23,13 +24,11 @@ export default function WishlistPage() {
   const wishlistProducts = products.filter((product) => wishlistIds.includes(product.id));
 
   return (
-    <div className="py-8 sm:py-10">
-      <Container>
-        <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Wishlist" }]} />
+    <div className="pb-10">
+      <PageHero title="Your Wishlist" showMascot={false} />
 
-        <h1 className="mt-4 font-display text-3xl font-bold text-brand-charcoal sm:text-4xl">
-          Your Wishlist
-        </h1>
+      <Container className="mt-8">
+        <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Wishlist" }]} />
 
         <div className="mt-6">
           {wishlistProducts.length > 0 ? (

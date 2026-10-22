@@ -7,6 +7,7 @@ import Container from "@/components/ui/Container";
 import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import EmptyState from "@/components/ui/EmptyState";
 import Button from "@/components/ui/Button";
+import PageHero from "@/components/ui/PageHero";
 import { useDemoCart } from "@/components/layout/DemoCartProvider";
 import { formatCurrency } from "@/utils/formatCurrency";
 
@@ -14,13 +15,11 @@ export default function CartPage() {
   const { cartItems, cartSubtotal, updateQuantity, removeFromCart } = useDemoCart();
 
   return (
-    <div className="py-8 sm:py-10">
-      <Container>
-        <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Cart" }]} />
+    <div className="pb-10">
+      <PageHero title="Your Cart" showMascot={false} />
 
-        <h1 className="mt-4 font-display text-3xl font-bold text-brand-charcoal sm:text-4xl">
-          Your Cart
-        </h1>
+      <Container className="mt-8">
+        <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Cart" }]} />
 
         {cartItems.length === 0 ? (
           <div className="mt-8">

@@ -26,8 +26,19 @@ router.post(
 
     // Record the event before handling it. eventId is unique — a duplicate
     // delivery (Stripe retries on anything but a 2xx) hits a P2002 conflict
-    // here, which means this event was already processed: acknowledge with
-    // 200 and do nothing further, rather than re-applying the side effects.
+    // here. That only means this exact event row already exists, NOT that it
+    // was necessarily fully handled: if a prior delivery crashed partway
+    // through handlePaymentSucceeded/handlePaymentFailed (e.g. a transient DB
+    // error converting one of several reservations), processedAt was never
+    // set, and short-circuiting here unconditionally would permanently strand
+    // the order — Stripe believes the event was acknowledged and will not
+    // retry again, but the order's payment/fulfillment status and remaining
+    // reservations were never finished. So: only skip re-processing when the
+    // existing row shows the event was already fully handled (processedAt
+    // set); otherwise fall through and (re-)run the handler. Both handlers
+    // are safe to re-run — they only act on reservations still ACTIVE, so an
+    // already-converted/released reservation from a partial prior attempt is
+    // simply skipped, not re-applied.
     try {
       await prisma.providerEvent.create({
         data: {
@@ -39,9 +50,14 @@ router.post(
       });
     } catch (err) {
       if (err?.code === "P2002") {
-        return res.status(200).json({ received: true, duplicate: true });
+        const existing = await prisma.providerEvent.findUnique({ where: { eventId: event.id } });
+        if (existing?.processedAt) {
+          return res.status(200).json({ received: true, duplicate: true });
+        }
+        // Fall through to (re-)run the handler below for this not-yet-fully-processed event.
+      } else {
+        throw err;
       }
-      throw err;
     }
 
     if (event.type === "payment_intent.succeeded") {
