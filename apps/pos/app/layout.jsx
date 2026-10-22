@@ -18,6 +18,11 @@ export const metadata = {
   title: "Big Ed POS — Cashier",
   description: "In-store checkout for Big Ed's Sofas & Beds.",
   robots: { index: false, follow: false },
+  icons: {
+    icon: "/Big_ed_favicon.webp",
+    shortcut: "/Big_ed_favicon.webp",
+    apple: "/Big_ed_favicon.webp",
+  },
 };
 
 export const viewport = {

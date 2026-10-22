@@ -17,6 +17,11 @@ export const metadata = {
   title: "Big Ed OS — Retail Operations",
   description: "Staff dashboard for catalog, inventory, and purchasing at Big Ed's Sofas & Beds.",
   robots: { index: false, follow: false },
+  icons: {
+    icon: "/Big_ed_favicon.webp",
+    shortcut: "/Big_ed_favicon.webp",
+    apple: "/Big_ed_favicon.webp",
+  },
 };
 
 export default function RootLayout({ children }) {
