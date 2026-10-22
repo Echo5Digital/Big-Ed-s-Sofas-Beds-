@@ -15,6 +15,8 @@ export default function ProductImagePicker({ images, onChange }) {
   const [urlError, setUrlError] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
+  const [dragIndex, setDragIndex] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
   const fileInputRef = useRef(null);
 
   function addUrl() {
@@ -64,11 +66,31 @@ export default function ProductImagePicker({ images, onChange }) {
   }
 
   function moveTo(fromIndex, toIndex) {
-    if (toIndex < 0 || toIndex >= images.length) return;
+    if (toIndex < 0 || toIndex >= images.length || fromIndex === toIndex) return;
     const next = [...images];
     const [moved] = next.splice(fromIndex, 1);
     next.splice(toIndex, 0, moved);
     onChange(next);
+  }
+
+  function handleDragStart(index) {
+    setDragIndex(index);
+  }
+
+  function handleDragOver(e, index) {
+    e.preventDefault();
+    if (index !== dragOverIndex) setDragOverIndex(index);
+  }
+
+  function handleDrop(index) {
+    if (dragIndex !== null) moveTo(dragIndex, index);
+    setDragIndex(null);
+    setDragOverIndex(null);
+  }
+
+  function handleDragEnd() {
+    setDragIndex(null);
+    setDragOverIndex(null);
   }
 
   return (
@@ -125,43 +147,36 @@ export default function ProductImagePicker({ images, onChange }) {
       {images.length > 0 && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {images.map((img, index) => (
-            <div key={img._key ?? `${img.url}-${index}`} className="flex flex-col gap-1.5">
-              <div className="relative overflow-hidden rounded-lg border border-black/10">
-                <div className="relative aspect-square bg-black/5">
-                  <Image src={img.url} alt="" fill sizes="200px" className="object-cover" unoptimized />
-                </div>
-                <span className="absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                  {index === 0 ? "Hero" : `#${index + 1}`}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => removeAt(index)}
-                  aria-label="Remove image"
-                  className="absolute right-1 top-1 flex size-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-red-600"
-                >
-                  <X className="size-4" aria-hidden="true" />
-                </button>
+            <div
+              key={img._key ?? `${img.url}-${index}`}
+              draggable
+              onDragStart={() => handleDragStart(index)}
+              onDragOver={(e) => handleDragOver(e, index)}
+              onDrop={() => handleDrop(index)}
+              onDragEnd={handleDragEnd}
+              className={`relative cursor-grab overflow-hidden rounded-lg border active:cursor-grabbing ${
+                dragOverIndex === index && dragIndex !== index
+                  ? "border-brand-red border-dashed"
+                  : "border-black/10"
+              } ${dragIndex === index ? "opacity-40" : ""}`}
+            >
+              <div className="relative aspect-square bg-black/5">
+                <Image src={img.url} alt="" fill sizes="200px" className="object-cover" unoptimized />
               </div>
-              <div className="flex items-center justify-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => moveTo(index, index - 1)}
-                  disabled={index === 0}
-                  aria-label="Move earlier"
-                  className="flex size-9 items-center justify-center rounded-lg border border-black/15 text-brand-charcoal hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-30"
-                >
-                  <GripVertical className="size-4 -rotate-90" aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => moveTo(index, index + 1)}
-                  disabled={index === images.length - 1}
-                  aria-label="Move later"
-                  className="flex size-9 items-center justify-center rounded-lg border border-black/15 text-brand-charcoal hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-30"
-                >
-                  <GripVertical className="size-4 rotate-90" aria-hidden="true" />
-                </button>
-              </div>
+              <span className="absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                {index === 0 ? "Hero" : `#${index + 1}`}
+              </span>
+              <span className="absolute bottom-1.5 left-1.5 flex size-7 items-center justify-center rounded-full bg-black/60 text-white">
+                <GripVertical className="size-4" aria-hidden="true" />
+              </span>
+              <button
+                type="button"
+                onClick={() => removeAt(index)}
+                aria-label="Remove image"
+                className="absolute right-1 top-1 flex size-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-red-600"
+              >
+                <X className="size-4" aria-hidden="true" />
+              </button>
             </div>
           ))}
         </div>

@@ -17,6 +17,23 @@ function AdjustModal({ open, onClose, balance, onDone }) {
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // The modal stays mounted between opens (see <AdjustModal> below), so
+  // without this its fields would carry over from whatever row was adjusted
+  // last — e.g. opening Adjust on a new row would silently show the previous
+  // row's quantity and reason code, risking an adjustment on the wrong row
+  // going through with stale values.
+  function resetForm() {
+    setType("ADJUSTMENT_INCREASE");
+    setQuantity("");
+    setReasonCode("");
+    setError(null);
+  }
+
+  function handleClose() {
+    resetForm();
+    onClose();
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
@@ -29,6 +46,7 @@ function AdjustModal({ open, onClose, balance, onDone }) {
         quantity: Number(quantity),
         reasonCode,
       });
+      resetForm();
       onDone();
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "Failed to adjust stock.");
@@ -40,10 +58,10 @@ function AdjustModal({ open, onClose, balance, onDone }) {
   if (!balance) return null;
 
   return (
-    <Modal open={open} onClose={onClose} title={`Adjust Stock — ${balance.sku}`}>
+    <Modal open={open} onClose={handleClose} title={`Adjust Stock — ${balance.sku}`}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <p className="text-sm text-brand-charcoal/60">
-          {balance.productName} — {balance.variantName} at {balance.locationName}. Currently {balance.onHand} on hand.
+          {balance.productName} at {balance.locationName}. Currently {balance.onHand} on hand.
         </p>
 
         <div className="flex flex-col gap-1.5">
@@ -87,7 +105,7 @@ function AdjustModal({ open, onClose, balance, onDone }) {
           <Button type="submit" disabled={submitting}>
             {submitting ? "Saving…" : "Save Adjustment"}
           </Button>
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={handleClose}>
             Cancel
           </Button>
         </div>
@@ -105,6 +123,22 @@ function TransferModal({ open, onClose, balance, locations, onDone }) {
 
   const destinations = locations.filter((l) => l.id !== balance?.locationId);
 
+  // Same reasoning as AdjustModal.resetForm: this modal stays mounted
+  // between opens, so without resetting, the destination/quantity/notes from
+  // the last transfer would silently reappear when transferring a different
+  // row's stock.
+  function resetForm() {
+    setToLocationId("");
+    setQuantity("");
+    setNotes("");
+    setError(null);
+  }
+
+  function handleClose() {
+    resetForm();
+    onClose();
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
@@ -117,6 +151,7 @@ function TransferModal({ open, onClose, balance, locations, onDone }) {
         quantity: Number(quantity),
         notes: notes || undefined,
       });
+      resetForm();
       onDone();
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "Failed to transfer stock.");
@@ -128,7 +163,7 @@ function TransferModal({ open, onClose, balance, locations, onDone }) {
   if (!balance) return null;
 
   return (
-    <Modal open={open} onClose={onClose} title={`Transfer Stock — ${balance.sku}`}>
+    <Modal open={open} onClose={handleClose} title={`Transfer Stock — ${balance.sku}`}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <p className="text-sm text-brand-charcoal/60">
           From {balance.locationName}. Available to sell: {balance.availableToSell}.
@@ -178,7 +213,7 @@ function TransferModal({ open, onClose, balance, locations, onDone }) {
           <Button type="submit" disabled={submitting}>
             {submitting ? "Transferring…" : "Transfer"}
           </Button>
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={handleClose}>
             Cancel
           </Button>
         </div>
@@ -216,7 +251,7 @@ function InventoryContent() {
 
   const columns = [
     { key: "sku", header: "SKU" },
-    { key: "productName", header: "Product", render: (r) => `${r.productName} — ${r.variantName}` },
+    { key: "productName", header: "Product", render: (r) => r.productName },
     { key: "locationName", header: "Location" },
     { key: "onHand", header: "On Hand" },
     { key: "reserved", header: "Reserved" },

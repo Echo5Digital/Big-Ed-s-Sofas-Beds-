@@ -9,6 +9,7 @@ import Button from "@/components/ui/Button";
 import ProductNameInput from "@/components/products/ProductNameInput";
 import ProductImagePicker from "@/components/products/ProductImagePicker";
 import CategoryMultiSelect from "@/components/products/CategoryMultiSelect";
+import ProductInitialStockInputs from "@/components/products/ProductInitialStockInputs";
 import { api, ApiClientError } from "@/lib/api/client";
 
 function slugify(value) {
@@ -22,6 +23,8 @@ function slugify(value) {
 function NewProductContent() {
   const router = useRouter();
   const [categories, setCategories] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const [stockQuantities, setStockQuantities] = useState({});
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
@@ -45,6 +48,13 @@ function NewProductContent() {
       .catch(() => setCategories([]));
   }, []);
 
+  useEffect(() => {
+    api
+      .get("/inventory/locations")
+      .then((data) => setLocations(data.locations.filter((l) => l.isActive)))
+      .catch(() => setLocations([]));
+  }, []);
+
   function handleNameChange(value) {
     setName(value);
     if (!slugEdited) setSlug(slugify(value));
@@ -60,6 +70,14 @@ function NewProductContent() {
       // along as categoryIds — the API dedupes and stores them in the
       // ProductCategory join table. See catalog.routes.js POST /products.
       const [primaryCategoryId, ...secondaryCategoryIds] = categoryIds;
+
+      // Entirely optional: blank/zero counts are simply omitted, so a
+      // product can be created with no stock and received later as normal.
+      const initialStock = Object.fromEntries(
+        Object.entries(stockQuantities)
+          .map(([locationId, value]) => [locationId, Number(value)])
+          .filter(([, qty]) => Number.isInteger(qty) && qty > 0)
+      );
 
       await api.post("/catalog/products", {
         name,
@@ -77,6 +95,7 @@ function NewProductContent() {
         // concept is exposed in this form, so its name mirrors the product
         // name (the API still requires every product to have a variant).
         variants: [{ sku, name, priceCents: Math.round(Number(priceCents) * 100) }],
+        initialStock: Object.keys(initialStock).length ? initialStock : undefined,
       });
       router.push("/products");
     } catch (err) {
@@ -221,6 +240,18 @@ function NewProductContent() {
               className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
             />
           </div>
+        </Card>
+
+        <Card className="flex flex-col gap-4">
+          <div>
+            <h2 className="font-display text-base font-bold text-brand-charcoal">Inventory</h2>
+            <p className="text-xs text-brand-charcoal/60">
+              Optional. Enter an on-hand count for any location to receive stock immediately — this
+              creates a real stock receipt, the same as using Adjust on the Inventory page. Leave blank
+              to create the product with no stock and receive it later.
+            </p>
+          </div>
+          <ProductInitialStockInputs locations={locations} quantities={stockQuantities} onChange={setStockQuantities} />
         </Card>
 
         <Card className="flex flex-col gap-4">

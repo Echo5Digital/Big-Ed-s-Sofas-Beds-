@@ -29,13 +29,19 @@ router.get(
 
     await inventoryService.expireStaleReservations();
 
+    // Sorted by product/SKU/location, not by recency: sorting by updatedAt
+    // made every row jump to the top of the table the moment it was adjusted
+    // or transferred, so saving a change made the row you were just looking
+    // at disappear from view and reappear elsewhere — confusing during the
+    // normal adjust-and-verify flow. A stable sort keeps a row in the same
+    // place before and after editing it.
     const balances = await prisma.stockBalance.findMany({
       where: locationId ? { locationId: String(locationId) } : undefined,
       include: {
         variant: { include: { product: true } },
         location: true,
       },
-      orderBy: { updatedAt: "desc" },
+      orderBy: [{ variant: { product: { name: "asc" } } }, { variant: { sku: "asc" } }, { location: { name: "asc" } }],
     });
 
     const shaped = balances.map((b) => {

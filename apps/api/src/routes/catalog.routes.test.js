@@ -1,4 +1,5 @@
 const { prisma } = require("@big-eds/database");
+const inventoryService = require("../services/inventory.service");
 
 // Runs against the real dev database (same convention as auth.routes.test.js
 // and pos.service.test.js — no Prisma mock layer). Regression test for a bug
@@ -64,6 +65,75 @@ describe("catalog.routes — POST /products StockBalance atomicity", () => {
 
     expect(balances.length).toBe(activeLocationCount);
     expect(balances.some((b) => b.locationId === location.id)).toBe(true);
+  });
+});
+
+// Covers the New Product form's optional "Inventory" section: a count
+// entered for a location at creation time must become a real stock receipt
+// (StockMovement + AuditLog, via the same inventoryService.adjustStock() the
+// Inventory page's "Adjust" button uses), not a cosmetic StockBalance.onHand
+// value written directly — see catalog.routes.js POST /products.
+describe("catalog.routes — POST /products initial stock", () => {
+  let location;
+  let product;
+
+  beforeAll(async () => {
+    location = await prisma.location.create({
+      data: { name: "Initial Stock Test Location", type: "WAREHOUSE", isActive: true },
+    });
+
+    const slug = `initial-stock-test-${Date.now()}`;
+    const sku = `INITIAL-STOCK-TEST-${Date.now()}`;
+
+    // Mirrors catalog.routes.js: product/variant/StockBalance(onHand: 0)
+    // created transactionally, then initialStock applied via adjustStock —
+    // exactly what POST /products does when initialStock is submitted.
+    product = await prisma.$transaction(async (tx) => {
+      const created = await tx.product.create({
+        data: {
+          name: "Initial Stock Test Product",
+          slug,
+          status: "ACTIVE",
+          variants: { create: [{ sku, name: "Initial Stock Test Product", priceCents: 1000 }] },
+        },
+        include: { variants: true },
+      });
+      await tx.stockBalance.create({ data: { variantId: created.variants[0].id, locationId: location.id } });
+      return created;
+    });
+
+    await inventoryService.adjustStock({
+      variantId: product.variants[0].id,
+      locationId: location.id,
+      type: "ADJUSTMENT_INCREASE",
+      quantity: 4,
+      reasonCode: "initial_stock",
+      performedById: null,
+    });
+  });
+
+  afterAll(async () => {
+    const variantId = product.variants[0].id;
+    await prisma.stockMovement.deleteMany({ where: { variantId } });
+    await prisma.stockBalance.deleteMany({ where: { variantId } });
+    await prisma.variant.deleteMany({ where: { productId: product.id } });
+    await prisma.product.delete({ where: { id: product.id } });
+    await prisma.location.delete({ where: { id: location.id } });
+  });
+
+  it("sets StockBalance.onHand to the entered count", async () => {
+    const balance = await prisma.stockBalance.findUnique({
+      where: { variantId_locationId: { variantId: product.variants[0].id, locationId: location.id } },
+    });
+    expect(balance.onHand).toBe(4);
+  });
+
+  it("writes a real StockMovement row, not just a silent onHand update", async () => {
+    const movements = await prisma.stockMovement.findMany({ where: { variantId: product.variants[0].id } });
+    expect(movements.length).toBe(1);
+    expect(movements[0].type).toBe("ADJUSTMENT_INCREASE");
+    expect(movements[0].quantity).toBe(4);
+    expect(movements[0].reasonCode).toBe("initial_stock");
   });
 });
 

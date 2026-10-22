@@ -64,6 +64,13 @@ const productCreateSchema = z.object({
   status: z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]).optional(),
   variants: z.array(variantCreateSchema).min(1),
   images: z.array(productImageInputSchema).optional(),
+  // Optional initial on-hand count per location, keyed by Location.id, e.g.
+  // { "<showroomId>": 2, "<warehouseId>": 5 }. Applied via the same
+  // inventoryService.adjustStock() used by the Inventory page's manual
+  // "Adjust" action, so it writes a real StockMovement/AuditLog row rather
+  // than silently setting StockBalance.onHand — this is a real stock receipt
+  // at creation time, not a cosmetic display number.
+  initialStock: z.record(z.string().uuid(), z.number().int().nonnegative()).optional(),
 });
 
 // Variant identity on update must travel by id, not sku — sku is the field

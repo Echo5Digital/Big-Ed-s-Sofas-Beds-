@@ -7,6 +7,7 @@ const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
 const { NotFoundError, ValidationError } = require("../lib/errors");
 const cloudinary = require("../lib/cloudinary");
+const inventoryService = require("../services/inventory.service");
 
 const router = express.Router();
 
@@ -222,7 +223,7 @@ router.post(
   requirePermission("catalog:write"),
   validateBody(productCreateSchema),
   asyncHandler(async (req, res) => {
-    const { variants, images, categoryIds, ...productData } = req.body;
+    const { variants, images, categoryIds, initialStock, ...productData } = req.body;
     // Secondary categories are purely additive to the primary categoryId —
     // dedupe so the same category never appears as both, which would violate
     // the ProductCategory composite primary key.
@@ -263,7 +264,34 @@ router.post(
       return created;
     });
 
-    res.status(201).json({ product: serializeProduct(product) });
+    // Optional initial on-hand counts entered on the New Product form's
+    // Inventory section, keyed by Location.id. Applied as real stock
+    // receipts via the same adjustStock() the Inventory page's "Adjust"
+    // action uses — each writes a StockMovement + AuditLog row, same as any
+    // other stock mutation, rather than silently setting onHand. Runs after
+    // (not inside) the product-creation transaction since adjustStock has
+    // its own transaction and locking; the StockBalance rows it needs
+    // already exist at onHand: 0 from the step above.
+    const stockEntries = Object.entries(initialStock ?? {}).filter(([, qty]) => qty > 0);
+    if (stockEntries.length > 0) {
+      const variantId = product.variants[0].id;
+      for (const [locationId, quantity] of stockEntries) {
+        await inventoryService.adjustStock({
+          variantId,
+          locationId,
+          type: "ADJUSTMENT_INCREASE",
+          quantity,
+          reasonCode: "initial_stock",
+          performedById: req.user.id,
+        });
+      }
+    }
+
+    const finalProduct = stockEntries.length > 0
+      ? await prisma.product.findUniqueOrThrow({ where: { id: product.id }, include: PRODUCT_INCLUDE })
+      : product;
+
+    res.status(201).json({ product: serializeProduct(finalProduct) });
   })
 );
 
