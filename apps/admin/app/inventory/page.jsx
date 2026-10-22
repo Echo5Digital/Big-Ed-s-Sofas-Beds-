@@ -244,7 +244,7 @@ function InventoryContent() {
 
   useEffect(() => {
     api
-      .get("/inventory/locations")
+      .getCached("/inventory/locations")
       .then((data) => setLocations(data.locations))
       .catch(() => setLocations([]));
   }, []);

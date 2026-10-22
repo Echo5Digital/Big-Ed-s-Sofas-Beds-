@@ -43,14 +43,14 @@ function NewProductContent() {
 
   useEffect(() => {
     api
-      .get("/catalog/categories")
+      .getCached("/catalog/categories")
       .then((data) => setCategories(data.categories))
       .catch(() => setCategories([]));
   }, []);
 
   useEffect(() => {
     api
-      .get("/inventory/locations")
+      .getCached("/inventory/locations")
       .then((data) => setLocations(data.locations.filter((l) => l.isActive)))
       .catch(() => setLocations([]));
   }, []);

@@ -43,7 +43,7 @@ function EditProductContent() {
 
   useEffect(() => {
     api
-      .get("/catalog/categories")
+      .getCached("/catalog/categories")
       .then((data) => setCategories(data.categories))
       .catch(() => setCategories([]));
   }, []);

@@ -28,7 +28,7 @@ function NewPurchaseOrderContent() {
 
   useEffect(() => {
     api.get("/purchasing/suppliers").then((data) => setSuppliers(data.suppliers)).catch(() => setSuppliers([]));
-    api.get("/inventory/locations").then((data) => setLocations(data.locations)).catch(() => setLocations([]));
+    api.getCached("/inventory/locations").then((data) => setLocations(data.locations)).catch(() => setLocations([]));
     api
       .get("/catalog/admin/products")
       .then((data) => setVariants(data.products.flatMap((p) => p.variants.map((v) => ({ ...v, productName: p.name })))))
