@@ -9,21 +9,13 @@ const nextConfig = {
         protocol: "https",
         hostname: "images.unsplash.com",
       },
-      // Admin-uploaded product images served from apps/api's local-disk
-      // /uploads route — see apps/api/src/routes/catalog.routes.js. Update
-      // this to the deployed API host for production uploads.
+      // Admin-uploaded product images are stored in Cloudinary — see
+      // apps/api/src/routes/catalog.routes.js.
       {
-        protocol: "http",
-        hostname: "localhost",
-        port: "4000",
-        pathname: "/uploads/**",
+        protocol: "https",
+        hostname: "res.cloudinary.com",
       },
     ],
-    // Next's SSRF guard blocks the image optimizer from fetching private/
-    // localhost IPs by default. Safe to allow here only because this rule is
-    // scoped to the exact localhost:4000 pattern above — the local API in
-    // dev — never a production host.
-    dangerouslyAllowLocalIP: true,
   },
   turbopack: {
     rules: {

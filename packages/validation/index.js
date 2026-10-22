@@ -37,6 +37,9 @@ const variantCreateSchema = z.object({
 
 const productImageInputSchema = z.object({
   url: z.string().url(),
+  // Present for images uploaded through the admin's Cloudinary upload
+  // endpoint; absent for images added by pasting an external URL directly.
+  publicId: z.string().max(300).optional().nullable(),
   altText: z.string().max(200).optional().nullable(),
 });
 
@@ -63,8 +66,14 @@ const productCreateSchema = z.object({
   images: z.array(productImageInputSchema).optional(),
 });
 
+// Variant identity on update must travel by id, not sku — sku is the field
+// being edited, so matching on its new value can never find the existing row.
+const variantUpdateSchema = variantCreateSchema.extend({
+  id: z.string().uuid().optional(),
+});
+
 const productUpdateSchema = productCreateSchema.partial().extend({
-  variants: z.array(variantCreateSchema).optional(),
+  variants: z.array(variantUpdateSchema).optional(),
 });
 
 // ---------------------------------------------------------------------------

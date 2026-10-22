@@ -1,5 +1,3 @@
-const path = require("path");
-const crypto = require("crypto");
 const express = require("express");
 const multer = require("multer");
 const { prisma } = require("@big-eds/database");
@@ -8,25 +6,18 @@ const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
 const { NotFoundError, ValidationError } = require("../lib/errors");
-const { env } = require("../lib/env");
+const cloudinary = require("../lib/cloudinary");
 
 const router = express.Router();
 
-// Local-disk storage for admin-uploaded product images. Dev-appropriate only:
-// on most production hosts (e.g. Render) local disk is ephemeral and wiped on
-// redeploy — swap for real object storage (S3/Cloudinary/etc.) before relying
-// on this in production. See docs/architecture/overview.md "not built yet".
-const UPLOAD_DIR = path.join(__dirname, "..", "..", "uploads", "products");
+// Admin-uploaded product images are stored in Cloudinary (not local disk —
+// local disk is ephemeral on most production hosts and is wiped on redeploy).
+// Multer here only buffers the multipart upload in memory before it's
+// streamed on to Cloudinary; nothing is written to the local filesystem.
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase();
-      cb(null, `${crypto.randomUUID()}${ext}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024, files: 10 },
   fileFilter: (req, file, cb) => {
     if (!ALLOWED_IMAGE_TYPES.has(file.mimetype)) {
@@ -35,6 +26,16 @@ const upload = multer({
     cb(null, true);
   },
 });
+
+function uploadBufferToCloudinary(buffer) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: "products", resource_type: "image" },
+      (err, result) => (err ? reject(err) : resolve(result))
+    );
+    stream.end(buffer);
+  });
+}
 
 const PRODUCT_INCLUDE = {
   category: true,
@@ -79,7 +80,7 @@ function serializeProduct(product) {
       name: tag.category.name,
       slug: tag.category.slug,
     })),
-    images: product.images.map((img) => ({ id: img.id, url: img.url, altText: img.altText })),
+    images: product.images.map((img) => ({ id: img.id, url: img.url, publicId: img.publicId, altText: img.altText })),
     variants: product.variants.map((v) => ({
       id: v.id,
       sku: v.sku,
@@ -205,8 +206,10 @@ router.post(
     if (files.length === 0) {
       throw new ValidationError({ images: "At least one image file is required" });
     }
-    const images = files.map((file) => ({
-      url: `${env.publicUrl}/uploads/products/${file.filename}`,
+    const uploaded = await Promise.all(files.map((file) => uploadBufferToCloudinary(file.buffer)));
+    const images = uploaded.map((result) => ({
+      url: result.secure_url,
+      publicId: result.public_id,
       altText: null,
     }));
     res.status(201).json({ images });
@@ -263,17 +266,21 @@ router.patch(
     const { variants, images, categoryIds, ...productData } = req.body;
 
     if (variants) {
-      // Partial updates only: adjust price/details on existing variants by
-      // SKU. Adding or removing variants on an existing product is not
-      // supported through this endpoint — that's a deliberately separate,
+      // Partial updates only: adjust price/sku/details on existing variants,
+      // matched by id. Adding or removing variants on an existing product is
+      // not supported through this endpoint — that's a deliberately separate,
       // more careful operation since it has stock/order-history implications.
+      //
+      // Must match by id, not sku: sku is itself an editable field here, so
+      // matching on the newly submitted sku can never find the existing row
+      // once it's been changed, silently dropping the update.
       await Promise.all(
         variants
-          .filter((v) => v.sku)
-          .map((v) =>
+          .filter((v) => v.id)
+          .map(({ id, ...data }) =>
             prisma.variant.updateMany({
-              where: { productId: req.params.id, sku: v.sku },
-              data: v,
+              where: { productId: req.params.id, id },
+              data,
             })
           )
       );

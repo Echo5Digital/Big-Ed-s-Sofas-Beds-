@@ -10,7 +10,6 @@ import Price from "@/components/ui/Price";
 import InlineMarkdown from "@/components/ui/InlineMarkdown";
 import ProductCard from "@/components/home/ProductCard";
 import ProductImageGallery from "@/components/products/ProductImageGallery";
-import ProductGallerySection from "@/components/products/ProductGallerySection";
 import ProductAttributes from "@/components/products/ProductAttributes";
 import ProductPurchasePanel from "@/components/products/ProductPurchasePanel";
 import { getProductBySlug, getProducts } from "@/lib/api/catalog";
@@ -120,15 +119,6 @@ export default async function ProductDetailPage({ params }) {
           <p className="mt-3 max-w-3xl whitespace-pre-line text-sm leading-relaxed text-brand-charcoal/75 sm:text-base">
             <InlineMarkdown text={product.description} />
           </p>
-        </Container>
-      )}
-
-      {product.images.length > 0 && (
-        <Container className="mt-10">
-          <h2 className="font-display text-xl font-semibold text-brand-charcoal sm:text-2xl">Gallery</h2>
-          <div className="mt-5">
-            <ProductGallerySection images={product.images} name={plainName} />
-          </div>
         </Container>
       )}
 

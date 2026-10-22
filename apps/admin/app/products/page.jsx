@@ -33,7 +33,7 @@ function ProductsContent() {
 
   const columns = [
     { key: "sku", header: "SKU", render: (r) => r.variant.sku },
-    { key: "name", header: "Product", render: (r) => `${r.product.name} — ${r.variant.name}` },
+    { key: "name", header: "Product", render: (r) => r.product.name },
     { key: "category", header: "Category", render: (r) => r.product.category?.name ?? "—" },
     { key: "price", header: "Price", render: (r) => formatCentsAsCurrency(r.variant.priceCents) },
     {

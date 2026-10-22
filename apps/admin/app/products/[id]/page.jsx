@@ -30,6 +30,7 @@ function EditProductContent() {
   const [categoryIds, setCategoryIds] = useState([]);
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("DRAFT");
+  const [variantId, setVariantId] = useState(null);
   const [sku, setSku] = useState("");
   const [priceCents, setPriceCents] = useState("");
   const [itemName, setItemName] = useState("");
@@ -63,6 +64,7 @@ function EditProductContent() {
         setSlug(product.slug);
         setDescription(product.description ?? "");
         setStatus(product.status);
+        setVariantId(variant?.id ?? null);
         setSku(variant?.sku ?? "");
         setPriceCents(variant ? (variant.priceCents / 100).toString() : "");
         setItemName(product.itemName ?? "");
@@ -72,7 +74,14 @@ function EditProductContent() {
         // _key gives each image a stable React key independent of its array
         // index — see ProductImagePicker.jsx for why index-based keys break
         // position badges across a reorder. Stripped before submit below.
-        setImages(product.images.map((img, i) => ({ url: img.url, altText: img.altText, _key: `loaded-${i}` })));
+        setImages(
+          product.images.map((img, i) => ({
+            url: img.url,
+            publicId: img.publicId,
+            altText: img.altText,
+            _key: `loaded-${i}`,
+          }))
+        );
         // Primary category first, then any secondary tags — mirrors how the
         // New Product form reads this same list back apart on submit.
         setCategoryIds([
@@ -107,8 +116,8 @@ function EditProductContent() {
         color: color || null,
         material: material || null,
         dimensions: dimensions || null,
-        images: images.map(({ url, altText }) => ({ url, altText })),
-        variants: [{ sku, name, priceCents: Math.round(Number(priceCents) * 100) }],
+        images: images.map(({ url, publicId, altText }) => ({ url, publicId, altText })),
+        variants: [{ id: variantId, sku, name, priceCents: Math.round(Number(priceCents) * 100) }],
       });
       router.push("/products");
     } catch (err) {

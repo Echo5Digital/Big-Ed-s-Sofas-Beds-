@@ -168,9 +168,10 @@ These are scope guardrails from the kickoff plan, not omissions:
 - **Delivery scheduling/routing** — the `Delivery`/`Pickup` tables exist;
   no admin UI manages them yet (explicit scope guardrail: "no... complex
   delivery routing in MVP").
-- **Object storage/CDN for images** — product images currently reference
-  Unsplash URLs (storefront demo data) or admin-entered URLs; no upload
-  pipeline exists yet.
+- **Object storage/CDN for images** — admin-uploaded product images are
+  stored in Cloudinary (see `apps/api/src/lib/cloudinary.js` and the
+  `POST /catalog/admin/images` route); products can also reference
+  admin-entered external URLs (e.g. Unsplash demo data) directly.
 
 ## Local development
 

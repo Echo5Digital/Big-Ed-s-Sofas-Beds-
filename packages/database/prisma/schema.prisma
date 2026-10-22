@@ -199,6 +199,10 @@ model ProductImage {
   productId String
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   url       String
+  // Cloudinary public id (e.g. "products/abc123") — needed to delete or
+  // transform this image via the Cloudinary API later. Null for images added
+  // by pasting an external URL directly, which Cloudinary doesn't manage.
+  publicId  String?
   altText   String?
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())

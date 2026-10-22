@@ -1,5 +1,3 @@
-const fs = require("fs");
-const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -7,8 +5,6 @@ const cookieParser = require("cookie-parser");
 const morgan = require("morgan");
 const { env } = require("./lib/env");
 const { errorHandler } = require("./middleware/errorHandler");
-
-const UPLOADS_DIR = path.join(__dirname, "..", "uploads");
 
 const authRoutes = require("./routes/auth.routes");
 const catalogRoutes = require("./routes/catalog.routes");
@@ -21,8 +17,6 @@ const webhooksRoutes = require("./routes/webhooks.routes");
 
 function createApp() {
   const app = express();
-
-  fs.mkdirSync(path.join(UPLOADS_DIR, "products"), { recursive: true });
 
   app.use(helmet());
   app.use(
@@ -42,19 +36,6 @@ function createApp() {
   }
 
   app.get("/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
-
-  // Serves admin-uploaded product images saved by catalog.routes.js's local-disk
-  // upload endpoint. Dev-appropriate only — see UPLOAD_DIR comment there.
-  // Helmet's default same-origin Cross-Origin-Resource-Policy would block the
-  // storefront/admin apps (different origins) from loading these images.
-  app.use(
-    "/uploads",
-    (req, res, next) => {
-      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-      next();
-    },
-    express.static(UPLOADS_DIR)
-  );
 
   app.use("/api/auth", authRoutes);
   app.use("/api/catalog", catalogRoutes);
