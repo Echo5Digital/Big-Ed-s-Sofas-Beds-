@@ -228,30 +228,40 @@ router.post(
     // the ProductCategory composite primary key.
     const secondaryCategoryIds = (categoryIds ?? []).filter((id) => id !== productData.categoryId);
 
-    const product = await prisma.product.create({
-      data: {
-        ...productData,
-        variants: { create: variants },
-        images: images ? { create: images.map((img, i) => ({ ...img, sortOrder: i })) } : undefined,
-        categoryTags: secondaryCategoryIds.length
-          ? { create: secondaryCategoryIds.map((categoryId) => ({ categoryId })) }
-          : undefined,
-      },
-      include: PRODUCT_INCLUDE,
-    });
-
-    // Every variant needs a StockBalance row to show up on the Inventory
-    // page at all — without one there's nothing for a manager to "Adjust"
-    // stock against. This creates the row at onHand: 0 only; it is not a
-    // stock receipt (no StockMovement is written), so a brand-new product
-    // correctly stays "out of stock" until someone actually receives it.
-    const locations = await prisma.location.findMany({ where: { isActive: true }, select: { id: true } });
-    if (locations.length > 0) {
-      await prisma.stockBalance.createMany({
-        data: product.variants.flatMap((v) => locations.map((loc) => ({ variantId: v.id, locationId: loc.id }))),
-        skipDuplicates: true,
+    // Product creation and its variants' StockBalance rows must commit
+    // together: without a StockBalance row a variant is invisible on the
+    // Inventory page and has no row for staff to adjust stock against, even
+    // though the product looks normal (and sellable-looking, showing
+    // "Available: 0") everywhere else. Two separate calls here previously let
+    // a transient failure between them commit the product but silently skip
+    // the stock rows — see docs/workflows/order-lifecycle.md.
+    const product = await prisma.$transaction(async (tx) => {
+      const created = await tx.product.create({
+        data: {
+          ...productData,
+          variants: { create: variants },
+          images: images ? { create: images.map((img, i) => ({ ...img, sortOrder: i })) } : undefined,
+          categoryTags: secondaryCategoryIds.length
+            ? { create: secondaryCategoryIds.map((categoryId) => ({ categoryId })) }
+            : undefined,
+        },
+        include: PRODUCT_INCLUDE,
       });
-    }
+
+      // Every variant needs a StockBalance row to show up on the Inventory
+      // page at all. This creates the row at onHand: 0 only; it is not a
+      // stock receipt (no StockMovement is written), so a brand-new product
+      // correctly stays "out of stock" until someone actually receives it.
+      const locations = await tx.location.findMany({ where: { isActive: true }, select: { id: true } });
+      if (locations.length > 0) {
+        await tx.stockBalance.createMany({
+          data: created.variants.flatMap((v) => locations.map((loc) => ({ variantId: v.id, locationId: loc.id }))),
+          skipDuplicates: true,
+        });
+      }
+
+      return created;
+    });
 
     res.status(201).json({ product: serializeProduct(product) });
   })
