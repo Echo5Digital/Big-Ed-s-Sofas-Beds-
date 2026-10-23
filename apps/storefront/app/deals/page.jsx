@@ -26,7 +26,7 @@ const NEW_ARRIVALS_LIMIT = 24;
 
 export default async function DealsPage({ searchParams }) {
   const { filter } = await searchParams;
-  const { products: rawProducts } = await getProducts({ pageSize: 100 });
+  const { products: rawProducts } = await getProducts({ pageSize: 100, sort: "oldest" });
   const allProducts = rawProducts.map(normalizeProductForCard);
 
   let deals = allProducts.filter((p) => p.compareAtPrice);

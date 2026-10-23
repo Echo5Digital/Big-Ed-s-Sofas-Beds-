@@ -50,7 +50,7 @@ export default async function ProductDetailPage({ params }) {
   const plainName = stripInlineMarkdown(product.name);
 
   const related = product.category
-    ? (await getProducts({ category: product.category.slug, pageSize: 5 })).products
+    ? (await getProducts({ category: product.category.slug, pageSize: 5, sort: "oldest" })).products
         .filter((p) => p.id !== product.id)
         .slice(0, 4)
         .map(normalizeProductForCard)

@@ -16,7 +16,7 @@ export default function WishlistPage() {
   const [products, setProducts] = useState([]);
 
   useEffect(() => {
-    getProducts({ pageSize: 100 })
+    getProducts({ pageSize: 100, sort: "oldest" })
       .then((data) => setProducts(data.products.map(normalizeProductForCard)))
       .catch(() => setProducts([]));
   }, []);

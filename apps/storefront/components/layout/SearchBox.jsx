@@ -21,7 +21,7 @@ export default function SearchBox({ className = "" }) {
   useEffect(() => {
     if (!trimmedQuery) return;
     const timeout = setTimeout(() => {
-      getProducts({ q: trimmedQuery, pageSize: 5 })
+      getProducts({ q: trimmedQuery, pageSize: 5, sort: "oldest" })
         .then((data) => setResults(data.products.map(normalizeProductForCard)))
         .catch(() => setResults([]));
     }, SEARCH_DEBOUNCE_MS);

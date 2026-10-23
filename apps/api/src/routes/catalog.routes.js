@@ -117,7 +117,7 @@ router.get(
 router.get(
   "/products",
   asyncHandler(async (req, res) => {
-    const { category, status, q, page = "1", pageSize = "24" } = req.query;
+    const { category, status, q, page = "1", pageSize = "24", sort } = req.query;
 
     const where = {
       ...(status ? { status } : { status: "ACTIVE" }),
@@ -140,12 +140,17 @@ router.get(
 
     const take = Math.min(100, Number(pageSize) || 24);
     const skip = (Math.max(1, Number(page) || 1) - 1) * take;
+    // Defaults to newest-first (unchanged behavior for existing callers, e.g.
+    // the homepage's curated "Featured Furniture" row). Pass ?sort=oldest for
+    // first-added-first ordering — used by the storefront's full listing
+    // pages (/shop, /shop/[category], /deals, /wishlist, search).
+    const orderBy = { createdAt: sort === "oldest" ? "asc" : "desc" };
 
     const [products, total] = await Promise.all([
       prisma.product.findMany({
         where,
         include: PRODUCT_INCLUDE,
-        orderBy: { createdAt: "desc" },
+        orderBy,
         take,
         skip,
       }),

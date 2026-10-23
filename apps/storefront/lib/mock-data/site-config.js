@@ -30,8 +30,10 @@ export const siteConfig = {
   },
   // Hrefs point at real Category.slug values seeded in packages/database/prisma/seed.js.
   // Top-level groups with children render as dropdown/mega-menus; items with no
-  // children (Deals, Financing, About, Contact) render as plain links.
+  // children (Deals, About) render as plain links. Financing and Contact are
+  // intentionally header-free — they only appear in the footer and on their own pages.
   nav: [
+    { label: "About", href: "/about" },
     {
       label: "Living Room",
       href: "/shop/living-room",
@@ -84,9 +86,6 @@ export const siteConfig = {
         { label: "Closeout Specials", href: "/deals?filter=closeout" },
       ],
     },
-    { label: "Financing", href: "/financing" },
-    { label: "About", href: "/about" },
-    { label: "Contact", href: "/contact" },
   ],
   footerQuickLinks: [
     { label: "Living Room", href: "/shop/living-room" },

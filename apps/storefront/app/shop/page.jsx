@@ -23,7 +23,7 @@ export default async function ShopAllPage({ searchParams }) {
   const { page: pageParam } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
 
-  const { products: rawProducts, pagination } = await getProducts({ page, pageSize: PAGE_SIZE });
+  const { products: rawProducts, pagination } = await getProducts({ page, pageSize: PAGE_SIZE, sort: "oldest" });
   const products = rawProducts.map(normalizeProductForCard);
   const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.pageSize));
   return (

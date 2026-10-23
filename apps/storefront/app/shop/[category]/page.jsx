@@ -28,7 +28,7 @@ async function resolveCategory(slug, page) {
   if (!category) return null;
 
   const children = categories.filter((c) => c.parentId === category.id);
-  const { products, pagination } = await getProducts({ category: slug, page, pageSize: PAGE_SIZE });
+  const { products, pagination } = await getProducts({ category: slug, page, pageSize: PAGE_SIZE, sort: "oldest" });
 
   return { category, children, products, pagination };
 }
