@@ -17,8 +17,11 @@ export default function RequireAuth({ children }) {
 
   if (status === "loading") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-100">
-        <p className="text-sm text-brand-charcoal/60">Loading…</p>
+      <div className="flex min-h-screen items-center justify-center bg-brand-cream/40">
+        <div className="flex flex-col items-center gap-3">
+          <span className="size-6 animate-spin rounded-full border-2 border-brand-charcoal/15 border-t-brand-red" aria-hidden="true" />
+          <p className="text-sm text-brand-charcoal/50">Loading…</p>
+        </div>
       </div>
     );
   }
@@ -29,8 +32,8 @@ export default function RequireAuth({ children }) {
 
   if (!hasPermission("pos:sell")) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4">
-        <div className="max-w-sm rounded-xl border border-black/10 bg-white p-6 text-center shadow-sm">
+      <div className="flex min-h-screen items-center justify-center bg-brand-cream/40 px-4">
+        <div className="max-w-sm rounded-2xl border border-black/6 bg-white p-6 text-center shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_-12px_rgba(0,0,0,0.12)]">
           <p className="font-display text-lg font-bold text-brand-charcoal">Not authorized</p>
           <p className="mt-2 text-sm text-brand-charcoal/60">
             Your account doesn&apos;t have POS cashier access. Ask a manager to grant the CASHIER role.
@@ -41,7 +44,7 @@ export default function RequireAuth({ children }) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-100">
+    <div className="flex min-h-screen flex-col bg-brand-cream/40">
       <TopBar />
       <main className="flex-1">{children}</main>
     </div>

@@ -1,8 +1,8 @@
 const VARIANTS = {
-  primary: "bg-brand-red text-white hover:bg-brand-red-dark",
-  gold: "bg-brand-gold text-brand-charcoal hover:bg-brand-gold-dark",
-  outline: "bg-white text-brand-charcoal border border-black/15 hover:bg-gray-50",
-  ghost: "bg-transparent text-brand-charcoal hover:bg-black/5",
+  primary: "bg-brand-red text-white shadow-sm shadow-brand-red/20 hover:bg-brand-red-dark active:scale-[0.98]",
+  gold: "bg-brand-gold text-brand-charcoal shadow-sm shadow-brand-gold/30 hover:bg-brand-gold-dark active:scale-[0.98]",
+  outline: "bg-white text-brand-charcoal border border-black/15 hover:border-black/25 hover:bg-brand-cream/60 active:scale-[0.98]",
+  ghost: "bg-transparent text-brand-charcoal hover:bg-black/5 active:scale-[0.98]",
 };
 
 const SIZES = {
@@ -26,7 +26,7 @@ export default function Button({
       type={type}
       disabled={disabled}
       onClick={onClick}
-      className={`inline-flex items-center justify-center gap-2 rounded-full font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${VARIANTS[variant]} ${SIZES[size]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-full font-semibold transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:active:scale-100 ${VARIANTS[variant]} ${SIZES[size]} ${className}`}
     >
       {Icon && <Icon className="size-4 shrink-0" aria-hidden="true" />}
       {children}

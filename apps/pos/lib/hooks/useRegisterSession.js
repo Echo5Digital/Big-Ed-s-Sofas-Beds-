@@ -35,31 +35,8 @@ export function RegisterSessionProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    const storedId = readStoredSessionId();
-    const lookup = storedId ? api.get(`/pos/sessions/${storedId}`) : Promise.resolve(null);
-
-    lookup
-      .then((data) => {
-        if (cancelled) return;
-        if (data?.session.status === "OPEN") {
-          setSession(data.session);
-          setStatus("open");
-        } else {
-          window.sessionStorage.removeItem(STORAGE_KEY);
-          setStatus("none");
-        }
-      })
-      .catch(() => {
-        if (cancelled) return;
-        window.sessionStorage.removeItem(STORAGE_KEY);
-        setStatus("none");
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    loadFromStorage();
+  }, [loadFromStorage]);
 
   const openSession = useCallback((newSession) => {
     window.sessionStorage.setItem(STORAGE_KEY, newSession.id);

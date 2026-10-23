@@ -53,10 +53,10 @@ export default function TenderModal({ open, onClose, subtotalCents, onConfirm, s
               key={key}
               type="button"
               onClick={() => setTenderMethod(key)}
-              className={`flex flex-col items-center gap-1.5 rounded-xl border p-3 text-xs font-semibold transition-colors ${
+              className={`flex flex-col items-center gap-1.5 rounded-xl border p-3 text-xs font-semibold transition-all duration-150 ${
                 tenderMethod === key
-                  ? "border-brand-red bg-brand-red/5 text-brand-red"
-                  : "border-black/10 text-brand-charcoal/70 hover:bg-gray-50"
+                  ? "border-brand-red bg-brand-red/5 text-brand-red shadow-sm ring-1 ring-brand-red/10"
+                  : "border-black/10 text-brand-charcoal/70 hover:border-black/20 hover:bg-brand-cream/50"
               }`}
             >
               <Icon className="size-5" aria-hidden="true" />
@@ -85,7 +85,7 @@ export default function TenderModal({ open, onClose, subtotalCents, onConfirm, s
               inputMode="decimal"
               value={discountAmount}
               onChange={(e) => setDiscountAmount(e.target.value)}
-              className="rounded-lg border border-black/15 px-3 py-3 text-base focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+              className="rounded-lg border border-black/15 px-3 py-3 text-base transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
             />
             {discountCents > 0 && (
               <input
@@ -93,7 +93,7 @@ export default function TenderModal({ open, onClose, subtotalCents, onConfirm, s
                 placeholder="Reason for discount (required)"
                 value={discountReasonCode}
                 onChange={(e) => setDiscountReasonCode(e.target.value)}
-                className="rounded-lg border border-black/15 px-3 py-3 text-base focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+                className="rounded-lg border border-black/15 px-3 py-3 text-base transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
               />
             )}
           </div>
@@ -112,7 +112,7 @@ export default function TenderModal({ open, onClose, subtotalCents, onConfirm, s
               inputMode="decimal"
               value={depositAmount}
               onChange={(e) => setDepositAmount(e.target.value)}
-              className="rounded-lg border border-black/15 px-3 py-3 text-base focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+              className="rounded-lg border border-black/15 px-3 py-3 text-base transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
             />
             <p className="text-xs text-brand-charcoal/50">Order total: {formatCents(totalCents)}</p>
           </div>
@@ -131,20 +131,24 @@ export default function TenderModal({ open, onClose, subtotalCents, onConfirm, s
               inputMode="decimal"
               value={tendered}
               onChange={(e) => setTendered(e.target.value)}
-              className="rounded-lg border border-black/15 px-3 py-3 text-base focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+              className="rounded-lg border border-black/15 px-3 py-3 text-base transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
             />
           </div>
         )}
 
-        <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2.5 text-sm">
-          <span className="text-brand-charcoal/70">Amount due</span>
-          <span className="font-semibold text-brand-charcoal">{formatCents(amountDueCents)}</span>
+        <div className="flex items-center justify-between rounded-lg bg-brand-cream/70 px-3 py-3 text-sm">
+          <span className="font-medium text-brand-charcoal/70">Amount due</span>
+          <span className="font-display text-base font-bold tabular-nums text-brand-charcoal">
+            {formatCents(amountDueCents)}
+          </span>
         </div>
 
         {tenderMethod === "CASH" && tenderedCents > 0 && (
-          <div className="flex items-center justify-between rounded-lg bg-green-50 px-3 py-2.5 text-sm">
-            <span className="text-green-800">Change due</span>
-            <span className="font-semibold text-green-800">{formatCents(changeDueCents)}</span>
+          <div className="flex items-center justify-between rounded-lg bg-green-50 px-3 py-3 text-sm">
+            <span className="font-medium text-green-800">Change due</span>
+            <span className="font-display text-base font-bold tabular-nums text-green-800">
+              {formatCents(changeDueCents)}
+            </span>
           </div>
         )}
 

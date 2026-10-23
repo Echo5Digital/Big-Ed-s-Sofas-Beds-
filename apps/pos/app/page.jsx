@@ -11,7 +11,10 @@ function PosHome() {
   if (status === "loading") {
     return (
       <div className="flex min-h-[calc(100vh-56px)] items-center justify-center">
-        <p className="text-sm text-brand-charcoal/60">Loading register…</p>
+        <div className="flex flex-col items-center gap-3">
+          <span className="size-6 animate-spin rounded-full border-2 border-brand-charcoal/15 border-t-brand-red" aria-hidden="true" />
+          <p className="text-sm text-brand-charcoal/50">Loading register…</p>
+        </div>
       </div>
     );
   }

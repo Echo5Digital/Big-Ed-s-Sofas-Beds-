@@ -13,16 +13,18 @@ export default function ReceiptView({ open, onClose, sale }) {
     <Modal open={open} onClose={onClose} title="Sale complete">
       <div className="flex flex-col gap-4">
         <div className="flex flex-col items-center gap-2 text-center">
-          <CheckCircle2 className="size-10 text-green-600" aria-hidden="true" />
-          <p className="font-display text-lg font-bold text-brand-charcoal">
+          <span className="flex size-14 items-center justify-center rounded-full bg-green-50">
+            <CheckCircle2 className="size-8 text-green-600" aria-hidden="true" />
+          </span>
+          <p className="font-display text-xl font-bold tabular-nums text-brand-charcoal">
             {formatCents(payment.amountCents)} {payment.method === "DEPOSIT" ? "deposit" : "paid"}
           </p>
-          <p className="text-sm text-brand-charcoal/60">
+          <p className="text-sm text-brand-charcoal/50">
             Receipt {receipt.receiptNumber} · Order {order.orderNumber}
           </p>
         </div>
 
-        <div className="rounded-xl border border-dashed border-black/15 p-4 font-mono text-xs text-brand-charcoal">
+        <div className="rounded-xl border border-dashed border-black/15 bg-brand-cream/30 p-4 font-mono text-xs text-brand-charcoal">
           <ul className="flex flex-col gap-1">
             {order.lines.map((line) => (
               <li key={line.id} className="flex justify-between gap-2">

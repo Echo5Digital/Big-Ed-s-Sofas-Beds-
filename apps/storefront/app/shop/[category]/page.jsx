@@ -10,7 +10,6 @@ import EmptyState from "@/components/ui/EmptyState";
 import Pagination from "@/components/ui/Pagination";
 import PageHero from "@/components/ui/PageHero";
 import ProductCard from "@/components/home/ProductCard";
-import CategoryCard from "@/components/home/CategoryCard";
 import { getCategories, getProducts } from "@/lib/api/catalog";
 import { normalizeProductForCard } from "@/lib/api/normalize";
 
@@ -58,7 +57,6 @@ export default async function ShopCategoryPage({ params, searchParams }) {
   const { category, children, products: rawProducts, pagination } = resolved;
   const products = rawProducts.map(normalizeProductForCard);
   const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.pageSize));
-  const allCategories = await getCategories();
 
   return (
     <div className="pb-10">
@@ -103,22 +101,6 @@ export default async function ShopCategoryPage({ params, searchParams }) {
             />
           )}
         </div>
-
-        {children.length === 0 && (
-          <div className="mt-12">
-            <h2 className="font-display text-lg font-semibold text-brand-charcoal">
-              Explore More Categories
-            </h2>
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              {allCategories
-                .filter((c) => c.slug !== category.slug)
-                .slice(0, 6)
-                .map((c) => (
-                  <CategoryCard key={c.id} category={c} />
-                ))}
-            </div>
-          </div>
-        )}
       </Container>
     </div>
   );

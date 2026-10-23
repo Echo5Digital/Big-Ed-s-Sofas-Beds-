@@ -36,10 +36,10 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-brand-navy px-4 py-12">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-xl">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-2xl">
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
-          <span className="flex size-12 items-center justify-center rounded-full bg-brand-gold/20 text-brand-gold">
-            <Lock className="size-6" aria-hidden="true" />
+          <span className="flex size-14 items-center justify-center rounded-full bg-brand-gold/15 text-brand-gold">
+            <Lock className="size-7" aria-hidden="true" />
           </span>
           <h1 className="font-display text-xl font-bold text-brand-charcoal">BIG ED POS</h1>
           <p className="text-sm text-brand-charcoal/60">Cashier sign in</p>
@@ -57,7 +57,7 @@ export default function LoginPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="rounded-lg border border-black/15 px-3 py-3 text-base focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+              className="rounded-lg border border-black/15 px-3 py-3 text-base transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
             />
           </div>
 
@@ -73,7 +73,7 @@ export default function LoginPage() {
               minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="rounded-lg border border-black/15 px-3 py-3 text-base focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+              className="rounded-lg border border-black/15 px-3 py-3 text-base transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
             />
           </div>
 

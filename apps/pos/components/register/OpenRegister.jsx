@@ -50,11 +50,11 @@ export default function OpenRegister() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-56px)] items-center justify-center px-4 py-10">
+    <div className="flex min-h-[calc(100vh-56px)] items-center justify-center bg-brand-cream/40 px-4 py-10">
       <Card className="w-full max-w-sm">
         <div className="mb-5 flex flex-col items-center gap-2 text-center">
-          <span className="flex size-12 items-center justify-center rounded-full bg-brand-gold/20 text-brand-gold-dark">
-            <DoorOpen className="size-6" aria-hidden="true" />
+          <span className="flex size-14 items-center justify-center rounded-full bg-brand-gold/15 text-brand-gold-dark">
+            <DoorOpen className="size-7" aria-hidden="true" />
           </span>
           <h1 className="font-display text-lg font-bold text-brand-charcoal">Open your register</h1>
           <p className="text-sm text-brand-charcoal/60">Count the starting cash drawer before your first sale.</p>
@@ -76,7 +76,7 @@ export default function OpenRegister() {
                 id="register"
                 value={registerId}
                 onChange={(e) => setRegisterId(e.target.value)}
-                className="rounded-lg border border-black/15 px-3 py-3 text-base focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+                className="rounded-lg border border-black/15 px-3 py-3 text-base transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
               >
                 {registers.map((r) => (
                   <option key={r.id} value={r.id} disabled={Boolean(r.openSessionId)}>
@@ -99,7 +99,7 @@ export default function OpenRegister() {
                 required
                 value={openingCash}
                 onChange={(e) => setOpeningCash(e.target.value)}
-                className="rounded-lg border border-black/15 px-3 py-3 text-base focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+                className="rounded-lg border border-black/15 px-3 py-3 text-base transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
               />
             </div>
 

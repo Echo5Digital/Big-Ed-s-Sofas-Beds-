@@ -44,20 +44,29 @@ export default function CloseRegister({ open, onClose }) {
       {result ? (
         <div className="flex flex-col gap-4">
           <div className="flex flex-col items-center gap-2 text-center">
-            <DoorClosed className="size-10 text-brand-charcoal/60" aria-hidden="true" />
+            <span className={`flex size-14 items-center justify-center rounded-full ${result.discrepancyCents === 0 ? "bg-green-50" : "bg-red-50"}`}>
+              <DoorClosed
+                className={`size-7 ${result.discrepancyCents === 0 ? "text-green-600" : "text-red-600"}`}
+                aria-hidden="true"
+              />
+            </span>
             <p className="font-display text-lg font-bold text-brand-charcoal">
               {result.discrepancyCents === 0 ? "Drawer balanced" : "Discrepancy recorded"}
             </p>
           </div>
-          <dl className="grid grid-cols-2 gap-y-2 rounded-xl bg-gray-50 p-4 text-sm">
+          <dl className="grid grid-cols-2 gap-y-2.5 rounded-xl bg-brand-cream/50 p-4 text-sm">
             <dt className="text-brand-charcoal/60">Opening cash</dt>
-            <dd className="text-right font-semibold">{formatCents(result.openingCashCents)}</dd>
+            <dd className="text-right font-semibold tabular-nums">{formatCents(result.openingCashCents)}</dd>
             <dt className="text-brand-charcoal/60">Expected cash</dt>
-            <dd className="text-right font-semibold">{formatCents(result.expectedCashCents)}</dd>
+            <dd className="text-right font-semibold tabular-nums">{formatCents(result.expectedCashCents)}</dd>
             <dt className="text-brand-charcoal/60">Counted cash</dt>
-            <dd className="text-right font-semibold">{formatCents(result.closingCashCents)}</dd>
-            <dt className="text-brand-charcoal/60">Discrepancy</dt>
-            <dd className={`text-right font-semibold ${result.discrepancyCents !== 0 ? "text-red-600" : "text-green-600"}`}>
+            <dd className="text-right font-semibold tabular-nums">{formatCents(result.closingCashCents)}</dd>
+            <dt className="mt-1 border-t border-black/10 pt-2.5 font-medium text-brand-charcoal/70">Discrepancy</dt>
+            <dd
+              className={`mt-1 border-t border-black/10 pt-2.5 text-right font-bold tabular-nums ${
+                result.discrepancyCents !== 0 ? "text-red-600" : "text-green-600"
+              }`}
+            >
               {formatCents(result.discrepancyCents)}
             </dd>
           </dl>
@@ -85,7 +94,7 @@ export default function CloseRegister({ open, onClose }) {
               required
               value={closingCash}
               onChange={(e) => setClosingCash(e.target.value)}
-              className="rounded-lg border border-black/15 px-3 py-3 text-base focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+              className="rounded-lg border border-black/15 px-3 py-3 text-base transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
             />
           </div>
 
