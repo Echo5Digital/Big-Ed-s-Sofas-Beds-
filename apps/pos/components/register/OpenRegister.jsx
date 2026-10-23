@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { DoorOpen } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { DoorOpen, LockOpen } from "lucide-react";
 import { api, ApiClientError } from "@/lib/api/client";
 import { useRegisterSession } from "@/lib/hooks/useRegisterSession";
 import Card from "../ui/Card";
 import Button from "../ui/Button";
+import CloseRegister from "./CloseRegister";
 
 export default function OpenRegister() {
   const { openSession } = useRegisterSession();
@@ -15,17 +16,43 @@ export default function OpenRegister() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [closingRegister, setClosingRegister] = useState(null);
 
-  useEffect(() => {
-    api
+  const loadRegisters = useCallback(() => {
+    return api
       .get("/pos/registers")
       .then((data) => {
         setRegisters(data.registers);
-        if (data.registers.length > 0) setRegisterId(data.registers[0].id);
+        setRegisterId((current) => {
+          if (current && data.registers.some((r) => r.id === current)) return current;
+          return data.registers[0]?.id ?? "";
+        });
       })
       .catch((err) => setError(err instanceof ApiClientError ? err.message : "Failed to load registers"))
       .finally(() => setLoading(false));
   }, []);
+
+  // Initial mount only — loading starts true via useState below, so there's
+  // no synchronous setState here. handleClosedStuckRegister() below re-calls
+  // loadRegisters() directly (not through this effect) to silently refresh
+  // the list after closing a stuck register, without flashing the
+  // full-page "Loading registers…" state again.
+  useEffect(() => {
+    loadRegisters();
+  }, [loadRegisters]);
+
+  const selectedRegister = registers.find((r) => r.id === registerId);
+
+  function handleCloseStuckRegister() {
+    if (!selectedRegister?.openSessionId) return;
+    setError(null);
+    setClosingRegister(selectedRegister);
+  }
+
+  function handleClosedStuckRegister() {
+    setClosingRegister(null);
+    loadRegisters();
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -86,6 +113,25 @@ export default function OpenRegister() {
               </select>
             </div>
 
+            {selectedRegister?.openSessionId && (
+              <div className="flex flex-col gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+                <p>
+                  This register is already open on another device or was never closed out from a previous shift.
+                  Close it before opening a new session.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  icon={LockOpen}
+                  onClick={handleCloseStuckRegister}
+                  className="self-start"
+                >
+                  Close this register
+                </Button>
+              </div>
+            )}
+
             <div className="flex flex-col gap-1.5">
               <label htmlFor="openingCash" className="text-sm font-medium text-brand-charcoal">
                 Opening cash ($)
@@ -109,11 +155,24 @@ export default function OpenRegister() {
               </p>
             )}
 
-            <Button type="submit" size="lg" disabled={submitting} className="w-full">
+            <Button
+              type="submit"
+              size="lg"
+              disabled={submitting || Boolean(selectedRegister?.openSessionId)}
+              className="w-full"
+            >
               {submitting ? "Opening…" : "Open register"}
             </Button>
           </form>
         )}
+
+        <CloseRegister
+          open={Boolean(closingRegister)}
+          onClose={() => setClosingRegister(null)}
+          registerSessionId={closingRegister?.openSessionId}
+          registerName={closingRegister?.name}
+          onClosed={handleClosedStuckRegister}
+        />
       </Card>
     </div>
   );

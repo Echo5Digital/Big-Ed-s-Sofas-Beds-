@@ -7,6 +7,7 @@ const { env } = require("./lib/env");
 const { errorHandler } = require("./middleware/errorHandler");
 
 const authRoutes = require("./routes/auth.routes");
+const usersRoutes = require("./routes/users.routes");
 const catalogRoutes = require("./routes/catalog.routes");
 const inventoryRoutes = require("./routes/inventory.routes");
 const purchasingRoutes = require("./routes/purchasing.routes");
@@ -38,6 +39,7 @@ function createApp() {
   app.get("/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
 
   app.use("/api/auth", authRoutes);
+  app.use("/api/users", usersRoutes);
   app.use("/api/catalog", catalogRoutes);
   app.use("/api/inventory", inventoryRoutes);
   app.use("/api/purchasing", purchasingRoutes);

@@ -9,6 +9,31 @@ const loginSchema = z.object({
   password: z.string().min(8),
 });
 
+// Mirrors the Prisma RoleName enum (packages/database/prisma/schema.prisma)
+// exactly. Kept as a plain literal list rather than importing the generated
+// Prisma client here, since packages/validation has no dependency on
+// packages/database today — these four values change rarely and are already
+// duplicated as plain strings elsewhere (seed.js, admin AppShell nav).
+const roleNameSchema = z.enum(["ADMIN", "MANAGER", "STAFF", "CASHIER"]);
+
+const userCreateSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8).max(200),
+  firstName: z.string().min(1).max(100),
+  lastName: z.string().min(1).max(100),
+  roleNames: z.array(roleNameSchema).min(1, "Select at least one role"),
+});
+
+const userUpdateSchema = z.object({
+  firstName: z.string().min(1).max(100).optional(),
+  lastName: z.string().min(1).max(100).optional(),
+  isActive: z.boolean().optional(),
+});
+
+const userRolesUpdateSchema = z.object({
+  roleNames: z.array(roleNameSchema).min(1, "Select at least one role"),
+});
+
 // ---------------------------------------------------------------------------
 // Catalog
 // ---------------------------------------------------------------------------
@@ -262,6 +287,9 @@ const posRefundSchema = z.object({
 
 module.exports = {
   loginSchema,
+  userCreateSchema,
+  userUpdateSchema,
+  userRolesUpdateSchema,
   categoryCreateSchema,
   variantCreateSchema,
   productImageInputSchema,

@@ -9,6 +9,7 @@ import {
   Boxes,
   ClipboardList,
   Users,
+  UserCog,
   ShoppingCart,
   Truck,
   BarChart3,
@@ -27,6 +28,7 @@ const NAV_ITEMS = [
   { label: "Orders", href: "/orders", icon: ShoppingCart, permission: "orders:read" },
   { label: "Deliveries", href: "/deliveries", icon: Truck, permission: "orders:read" },
   { label: "Reports", href: "/reports", icon: BarChart3, permission: "reports:read" },
+  { label: "Users", href: "/users", icon: UserCog, permission: "users:manage" },
   { label: "Settings", href: "/settings", icon: Settings, permission: null },
 ];
 
