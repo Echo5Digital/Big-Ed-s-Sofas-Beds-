@@ -5,13 +5,14 @@ export async function getCategories({ next } = {}) {
   return data.categories;
 }
 
-export async function getProducts({ category, q, page, pageSize, sort, next } = {}) {
+export async function getProducts({ category, q, page, pageSize, sort, deals, next } = {}) {
   const params = new URLSearchParams();
   if (category) params.set("category", category);
   if (q) params.set("q", q);
   if (page) params.set("page", String(page));
   if (pageSize) params.set("pageSize", String(pageSize));
   if (sort) params.set("sort", sort);
+  if (deals) params.set("deals", "true");
   const query = params.toString();
   const data = await api.get(`/catalog/products${query ? `?${query}` : ""}`, { next });
   return data;

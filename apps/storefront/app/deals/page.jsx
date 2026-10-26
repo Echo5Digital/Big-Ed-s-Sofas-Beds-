@@ -16,10 +16,8 @@ export const metadata = {
 };
 
 export default async function DealsPage() {
-  const { products: rawProducts } = await getProducts({ pageSize: 100, sort: "oldest" });
-  const allProducts = rawProducts.map(normalizeProductForCard);
-
-  const deals = allProducts.filter((p) => p.isDeal || p.compareAtPrice);
+  const { products: rawProducts } = await getProducts({ pageSize: 100, sort: "oldest", deals: true });
+  const deals = rawProducts.map(normalizeProductForCard);
 
   return (
     <div className="pb-10">

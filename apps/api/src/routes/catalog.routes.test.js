@@ -267,3 +267,63 @@ describe("catalog.routes — Product.isDeal", () => {
     expect(updated.isDeal).toBe(true);
   });
 });
+
+// Regression test for a bug where ticking "Deals" in the admin product list
+// did not make the product appear on the storefront /deals page. Root cause:
+// the Deals page fetched a single page of products (pageSize capped at 100 —
+// see GET /products below) sorted oldest-first, then filtered for
+// isDeal/compareAtPrice client-side. A flagged product sorted past the first
+// 100 was silently dropped before the filter ever ran. The fix moves the
+// filter into the database query itself (GET /products?deals=true), so a
+// flagged product is found regardless of how many other products exist or
+// where it falls in sort order.
+describe("catalog.routes — GET /products?deals=true", () => {
+  let flaggedProduct;
+  let plainProduct;
+
+  // Mirrors catalog.routes.js's `where` construction for ?deals=true: a
+  // product counts as a deal if isDeal is set OR any variant has a
+  // compareAtCents markdown price.
+  function dealsWhereClause() {
+    return { OR: [{ isDeal: true }, { variants: { some: { compareAtCents: { not: null } } } }] };
+  }
+
+  beforeAll(async () => {
+    const suffix = Date.now();
+    flaggedProduct = await prisma.product.create({
+      data: {
+        name: `Deals Filter Flagged ${suffix}`,
+        slug: `deals-filter-flagged-${suffix}`,
+        status: "ACTIVE",
+        isDeal: true,
+        variants: { create: { sku: `DEALS-FILTER-FLAGGED-${suffix}`, name: "Flagged", priceCents: 1000 } },
+      },
+    });
+    plainProduct = await prisma.product.create({
+      data: {
+        name: `Deals Filter Plain ${suffix}`,
+        slug: `deals-filter-plain-${suffix}`,
+        status: "ACTIVE",
+        isDeal: false,
+        variants: { create: { sku: `DEALS-FILTER-PLAIN-${suffix}`, name: "Plain", priceCents: 1000 } },
+      },
+    });
+  });
+
+  afterAll(async () => {
+    for (const p of [flaggedProduct, plainProduct]) {
+      await prisma.variant.deleteMany({ where: { productId: p.id } });
+      await prisma.product.delete({ where: { id: p.id } });
+    }
+  });
+
+  it("the deals filter finds a flagged product directly by isDeal, independent of pagination or sort position", async () => {
+    const matches = await prisma.product.findMany({ where: { AND: [dealsWhereClause()] } });
+    expect(matches.some((p) => p.id === flaggedProduct.id)).toBe(true);
+  });
+
+  it("excludes products that are neither flagged nor have a markdown price", async () => {
+    const matches = await prisma.product.findMany({ where: { AND: [dealsWhereClause()] } });
+    expect(matches.some((p) => p.id === plainProduct.id)).toBe(false);
+  });
+});

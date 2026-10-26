@@ -136,11 +136,21 @@ router.get(
 router.get(
   "/products",
   asyncHandler(async (req, res) => {
-    const { category, status, q, page = "1", pageSize = "24", sort } = req.query;
+    const { category, status, q, page = "1", pageSize = "24", sort, deals } = req.query;
 
     const where = {
       ...(status ? { status } : { status: "ACTIVE" }),
       AND: [
+        // Filtering server-side (rather than fetching a page of products and
+        // checking isDeal/compareAtPrice client-side, as the storefront's
+        // /deals page used to) matters because pageSize is capped at 100 —
+        // with more products than that, a deal-flagged product past the
+        // first page was silently invisible on the Deals page even though
+        // isDeal was true. A product counts as a deal if staff flagged it
+        // directly (isDeal) or any variant carries a markdown price.
+        ...(deals === "true"
+          ? [{ OR: [{ isDeal: true }, { variants: { some: { compareAtCents: { not: null } } } }] }]
+          : []),
         ...(category
           ? [{ OR: [{ category: { slug: category } }, { categoryTags: { some: { category: { slug: category } } } }] }]
           : []),
