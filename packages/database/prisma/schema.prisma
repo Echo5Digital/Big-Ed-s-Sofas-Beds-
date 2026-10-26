@@ -154,6 +154,9 @@ model Product {
   material     String?
   dimensions   String?
   status       ProductStatus     @default(DRAFT)
+  // Manually flagged by staff to appear on the storefront Deals page,
+  // independent of whether any variant has a compareAtCents markdown price.
+  isDeal       Boolean           @default(false)
   variants     Variant[]
   images       ProductImage[]
   createdAt    DateTime          @default(now())
@@ -162,6 +165,7 @@ model Product {
   @@index([slug])
   @@index([categoryId])
   @@index([status])
+  @@index([isDeal])
 }
 
 model Variant {

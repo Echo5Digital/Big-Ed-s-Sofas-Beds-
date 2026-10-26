@@ -1,7 +1,6 @@
 // Live catalog data, never stale-cached — see app/page.jsx for rationale.
 export const instant = false;
 
-import Link from "next/link";
 import { Tag } from "lucide-react";
 import Container from "@/components/ui/Container";
 import Breadcrumbs from "@/components/ui/Breadcrumbs";
@@ -16,28 +15,11 @@ export const metadata = {
   description: "Shop the best current markdowns on sofas, mattresses, bedroom sets and dining sets at Big Ed's Sofas & Beds.",
 };
 
-const FILTER_TABS = [
-  { key: null, label: "All Deals" },
-  { key: "new-arrivals", label: "New Arrivals" },
-  { key: "closeout", label: "Closeout Specials" },
-];
-
-const NEW_ARRIVALS_LIMIT = 24;
-
-export default async function DealsPage({ searchParams }) {
-  const { filter } = await searchParams;
+export default async function DealsPage() {
   const { products: rawProducts } = await getProducts({ pageSize: 100, sort: "oldest" });
   const allProducts = rawProducts.map(normalizeProductForCard);
 
-  let deals = allProducts.filter((p) => p.compareAtPrice);
-  if (filter === "new-arrivals") {
-    deals = allProducts
-      .filter((p) => p.createdAt)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, NEW_ARRIVALS_LIMIT);
-  } else if (filter === "closeout") {
-    deals = allProducts.filter((p) => p.compareAtPrice);
-  }
+  const deals = allProducts.filter((p) => p.isDeal || p.compareAtPrice);
 
   return (
     <div className="pb-10">
@@ -49,25 +31,6 @@ export default async function DealsPage({ searchParams }) {
 
       <Container className="mt-8">
         <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Deals" }]} />
-
-        <div className="mt-6 flex flex-wrap gap-2">
-          {FILTER_TABS.map((tab) => {
-            const isActive = (filter ?? null) === tab.key;
-            return (
-              <Link
-                key={tab.label}
-                href={tab.key ? `/deals?filter=${tab.key}` : "/deals"}
-                className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                  isActive
-                    ? "border-brand-red bg-brand-red text-white"
-                    : "border-brand-charcoal/15 bg-white text-brand-charcoal hover:border-brand-red hover:text-brand-red-dark"
-                }`}
-              >
-                {tab.label}
-              </Link>
-            );
-          })}
-        </div>
 
         <div className="mt-6">
           {deals.length > 0 ? (

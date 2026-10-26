@@ -87,6 +87,8 @@ const productCreateSchema = z.object({
   material: z.string().max(120).optional().nullable(),
   dimensions: z.string().max(160).optional().nullable(),
   status: z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]).optional(),
+  // Staff-controlled flag for inclusion on the storefront Deals page.
+  isDeal: z.boolean().optional(),
   variants: z.array(variantCreateSchema).min(1),
   images: z.array(productImageInputSchema).optional(),
   // Optional initial on-hand count per location, keyed by Location.id, e.g.

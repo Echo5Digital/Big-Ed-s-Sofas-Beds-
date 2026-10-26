@@ -33,6 +33,24 @@ function ProductsContent() {
       .catch(() => setCategories([]));
   }, []);
 
+  const [dealsPending, setDealsPending] = useState(() => new Set());
+
+  async function toggleDeal(product, nextValue) {
+    setDealsPending((prev) => new Set(prev).add(product.id));
+    try {
+      await api.patch(`/catalog/products/${product.id}`, { isDeal: nextValue });
+      setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, isDeal: nextValue } : p)));
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "Failed to update deal status.");
+    } finally {
+      setDealsPending((prev) => {
+        const next = new Set(prev);
+        next.delete(product.id);
+        return next;
+      });
+    }
+  }
+
   const rows = useMemo(() => {
     const allRows = (products ?? []).flatMap((product) =>
       product.variants.map((variant) => ({
@@ -54,7 +72,7 @@ function ProductsContent() {
   const columns = [
     { key: "sku", header: "SKU", render: (r) => r.variant.sku },
     { key: "name", header: "Product", render: (r) => r.product.name },
-    { key: "category", header: "Category", render: (r) => r.product.category?.name ?? "—" },
+    { key: "category", header: "Category", render: (r) => r.product.displayCategory?.name ?? "—" },
     { key: "price", header: "Price", render: (r) => formatCentsAsCurrency(r.variant.priceCents) },
     {
       key: "stock",
@@ -65,6 +83,20 @@ function ProductsContent() {
       key: "status",
       header: "Status",
       render: (r) => <Badge tone={STATUS_TONE[r.product.status]}>{r.product.status}</Badge>,
+    },
+    {
+      key: "deals",
+      header: "Deals",
+      render: (r) => (
+        <input
+          type="checkbox"
+          checked={Boolean(r.product.isDeal)}
+          disabled={dealsPending.has(r.product.id)}
+          onChange={(e) => toggleDeal(r.product, e.target.checked)}
+          aria-label={`Show ${r.product.name} on the Deals page`}
+          className="size-4 rounded border-black/30 text-brand-red focus:ring-brand-red disabled:opacity-50"
+        />
+      ),
     },
     {
       key: "actions",

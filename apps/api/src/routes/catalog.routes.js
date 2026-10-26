@@ -49,6 +49,23 @@ const PRODUCT_INCLUDE = {
   },
 };
 
+// The admin product list's Category column should show the most specific
+// (deepest) category a product belongs to, not necessarily whichever one
+// happens to be the primary categoryId — admins can check a parent and a
+// child together, and "primary" is just whichever was checked first (see
+// apps/admin/components/products/CategoryMultiSelect.jsx). A category with a
+// parentId is a subcategory; prefer the first subcategory found among the
+// primary + secondary tags, falling back to the primary category.
+function pickDisplayCategory(product) {
+  const candidates = [
+    ...(product.category ? [product.category] : []),
+    ...(product.categoryTags ?? []).map((tag) => tag.category),
+  ];
+  const subcategory = candidates.find((c) => c.parentId);
+  const chosen = subcategory ?? candidates[0] ?? null;
+  return chosen ? { id: chosen.id, name: chosen.name, slug: chosen.slug } : null;
+}
+
 function computeAvailability(variant) {
   const byLocation = variant.stockBalances.map((sb) => ({
     locationId: sb.locationId,
@@ -75,7 +92,9 @@ function serializeProduct(product) {
     material: product.material,
     dimensions: product.dimensions,
     status: product.status,
+    isDeal: product.isDeal,
     category: product.category ? { id: product.category.id, name: product.category.name, slug: product.category.slug } : null,
+    displayCategory: pickDisplayCategory(product),
     categories: (product.categoryTags ?? []).map((tag) => ({
       id: tag.category.id,
       name: tag.category.name,
@@ -373,3 +392,4 @@ router.get(
 );
 
 module.exports = router;
+module.exports.pickDisplayCategory = pickDisplayCategory;

@@ -1,5 +1,6 @@
 const { prisma } = require("@big-eds/database");
 const inventoryService = require("../services/inventory.service");
+const { pickDisplayCategory } = require("./catalog.routes");
 
 // Runs against the real dev database (same convention as auth.routes.test.js
 // and pos.service.test.js — no Prisma mock layer). Regression test for a bug
@@ -199,5 +200,70 @@ describe("catalog.routes — PATCH /products/:id variant lookup", () => {
     const reloaded = await prisma.variant.findUnique({ where: { id: variant.id } });
     expect(reloaded.sku).toBe(newSku);
     expect(reloaded.priceCents).toBe(1500);
+  });
+});
+
+// Regression test for a bug where the admin Products list's Category column
+// showed whichever category happened to land in Product.categoryId (the
+// "primary" category, which CategoryMultiSelect sets to whichever box was
+// checked first) even when a more specific subcategory was also selected —
+// e.g. showing "Bedroom" instead of "Beds". pickDisplayCategory should always
+// prefer a subcategory (parentId set) over a top-level category, regardless
+// of which one is marked primary.
+describe("catalog.routes — pickDisplayCategory", () => {
+  const parent = { id: "parent-1", name: "Bedroom", slug: "bedroom", parentId: null };
+  const child = { id: "child-1", name: "Beds", slug: "beds", parentId: "parent-1" };
+
+  it("prefers the subcategory when the primary category is a top-level parent", () => {
+    const product = { category: parent, categoryTags: [{ category: child }] };
+    expect(pickDisplayCategory(product)).toEqual({ id: child.id, name: child.name, slug: child.slug });
+  });
+
+  it("prefers the subcategory when it is the primary and the parent is a secondary tag", () => {
+    const product = { category: child, categoryTags: [{ category: parent }] };
+    expect(pickDisplayCategory(product)).toEqual({ id: child.id, name: child.name, slug: child.slug });
+  });
+
+  it("falls back to the primary (top-level) category when no subcategory is selected", () => {
+    const product = { category: parent, categoryTags: [] };
+    expect(pickDisplayCategory(product)).toEqual({ id: parent.id, name: parent.name, slug: parent.slug });
+  });
+
+  it("returns null when the product has no category at all", () => {
+    expect(pickDisplayCategory({ category: null, categoryTags: [] })).toBeNull();
+  });
+});
+
+// Covers the new admin "Deals" checkbox column: PATCH /products/:id with
+// { isDeal: true } must persist, and the storefront Deals page's product
+// filter should pick it up. isDeal defaults to false for existing/new
+// products that haven't been flagged.
+describe("catalog.routes — Product.isDeal", () => {
+  let product;
+
+  beforeAll(async () => {
+    product = await prisma.product.create({
+      data: {
+        name: "Deals Flag Test Product",
+        slug: `deals-flag-test-${Date.now()}`,
+        status: "DRAFT",
+        variants: { create: { sku: `DEALS-FLAG-TEST-${Date.now()}`, name: "Deals Flag Test Product", priceCents: 1000 } },
+      },
+      include: { variants: true },
+    });
+  });
+
+  afterAll(async () => {
+    await prisma.variant.deleteMany({ where: { productId: product.id } });
+    await prisma.product.delete({ where: { id: product.id } });
+  });
+
+  it("defaults to false", () => {
+    expect(product.isDeal).toBe(false);
+  });
+
+  it("persists true when toggled on, mirroring the admin listing checkbox", async () => {
+    const updated = await prisma.product.update({ where: { id: product.id }, data: { isDeal: true } });
+    expect(updated.isDeal).toBe(true);
   });
 });

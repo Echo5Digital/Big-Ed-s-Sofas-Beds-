@@ -81,10 +81,6 @@ export const siteConfig = {
     {
       label: "Deals",
       href: "/deals",
-      children: [
-        { label: "New Arrivals", href: "/deals?filter=new-arrivals" },
-        { label: "Closeout Specials", href: "/deals?filter=closeout" },
-      ],
     },
   ],
   footerQuickLinks: [
