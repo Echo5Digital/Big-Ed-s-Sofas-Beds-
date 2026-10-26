@@ -279,13 +279,14 @@ describe("catalog.routes — Product.isDeal", () => {
 // where it falls in sort order.
 describe("catalog.routes — GET /products?deals=true", () => {
   let flaggedProduct;
+  let markdownOnlyProduct;
   let plainProduct;
 
-  // Mirrors catalog.routes.js's `where` construction for ?deals=true: a
-  // product counts as a deal if isDeal is set OR any variant has a
-  // compareAtCents markdown price.
+  // Mirrors catalog.routes.js's `where` construction for ?deals=true: the
+  // Deals page shows only products staff have explicitly ticked — a markdown
+  // (compareAtCents) price alone does not qualify a product.
   function dealsWhereClause() {
-    return { OR: [{ isDeal: true }, { variants: { some: { compareAtCents: { not: null } } } }] };
+    return { isDeal: true };
   }
 
   beforeAll(async () => {
@@ -297,6 +298,18 @@ describe("catalog.routes — GET /products?deals=true", () => {
         status: "ACTIVE",
         isDeal: true,
         variants: { create: { sku: `DEALS-FILTER-FLAGGED-${suffix}`, name: "Flagged", priceCents: 1000 } },
+      },
+    });
+    // Has a markdown price but was never ticked — must NOT appear in Deals.
+    markdownOnlyProduct = await prisma.product.create({
+      data: {
+        name: `Deals Filter Markdown Only ${suffix}`,
+        slug: `deals-filter-markdown-only-${suffix}`,
+        status: "ACTIVE",
+        isDeal: false,
+        variants: {
+          create: { sku: `DEALS-FILTER-MARKDOWN-${suffix}`, name: "Markdown Only", priceCents: 800, compareAtCents: 1000 },
+        },
       },
     });
     plainProduct = await prisma.product.create({
@@ -311,7 +324,7 @@ describe("catalog.routes — GET /products?deals=true", () => {
   });
 
   afterAll(async () => {
-    for (const p of [flaggedProduct, plainProduct]) {
+    for (const p of [flaggedProduct, markdownOnlyProduct, plainProduct]) {
       await prisma.variant.deleteMany({ where: { productId: p.id } });
       await prisma.product.delete({ where: { id: p.id } });
     }
@@ -320,6 +333,11 @@ describe("catalog.routes — GET /products?deals=true", () => {
   it("the deals filter finds a flagged product directly by isDeal, independent of pagination or sort position", async () => {
     const matches = await prisma.product.findMany({ where: { AND: [dealsWhereClause()] } });
     expect(matches.some((p) => p.id === flaggedProduct.id)).toBe(true);
+  });
+
+  it("excludes a product with a markdown price that staff never ticked", async () => {
+    const matches = await prisma.product.findMany({ where: { AND: [dealsWhereClause()] } });
+    expect(matches.some((p) => p.id === markdownOnlyProduct.id)).toBe(false);
   });
 
   it("excludes products that are neither flagged nor have a markdown price", async () => {
