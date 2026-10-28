@@ -399,17 +399,47 @@ model CountLine {
 // ---------------------------------------------------------------------------
 
 model Customer {
-  id        String    @id @default(uuid())
-  email     String?   @unique
-  phone     String?
-  firstName String?
-  lastName  String?
-  addresses Address[]
-  orders    Order[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id              String    @id @default(uuid())
+  email           String?   @unique
+  phone           String?
+  firstName       String?
+  lastName        String?
+  // Storefront account credentials. Both stay null for guest customers — rows
+  // created implicitly by checkout/POS — so those keep working unchanged. A
+  // customer can sign in only once both are set, which only happens after the
+  // emailed one-time code has been confirmed (see CustomerRegistration).
+  passwordHash    String?
+  emailVerifiedAt DateTime?
+  addresses       Address[]
+  orders          Order[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([email])
+}
+
+// A storefront sign-up waiting on its emailed one-time code. Nothing is written
+// to Customer until the code is confirmed, so an unverified sign-up can never
+// create, overwrite, or take over a customer (or guest-order history) for an
+// email address the submitter doesn't control. `id` is returned to the browser
+// that started the sign-up and must accompany the code, so a code from some
+// other sign-up attempt for the same email can't complete this one. Only a
+// keyed hash of the code is stored, never the code itself.
+model CustomerRegistration {
+  id           String   @id @default(uuid())
+  email        String
+  firstName    String
+  lastName     String
+  passwordHash String
+  codeHash     String
+  expiresAt    DateTime
+  attempts     Int      @default(0)
+  resendCount  Int      @default(0)
+  lastSentAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([email])
+  @@index([expiresAt])
 }
 
 enum AddressType {

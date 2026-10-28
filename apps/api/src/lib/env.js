@@ -36,6 +36,17 @@ const env = {
   cloudinaryCloudName: required("CLOUDINARY_CLOUD_NAME"),
   cloudinaryApiKey: required("CLOUDINARY_API_KEY"),
   cloudinaryApiSecret: required("CLOUDINARY_API_SECRET"),
+  // Transactional email (customer sign-up verification codes). All optional so
+  // the API still boots without it: with SMTP_HOST unset, development prints
+  // the code to the API console instead of sending, while production refuses
+  // to start a sign-up it has no way to deliver (see lib/mailer.js).
+  smtpHost: process.env.SMTP_HOST || "",
+  smtpPort: Number(process.env.SMTP_PORT || 587),
+  // true = implicit TLS (port 465); false = STARTTLS upgrade (port 587).
+  smtpSecure: process.env.SMTP_SECURE === "true",
+  smtpUser: process.env.SMTP_USER || "",
+  smtpPass: process.env.SMTP_PASS || "",
+  mailFrom: process.env.MAIL_FROM || "Big Ed's Sofas & Beds <no-reply@localhost>",
 };
 
 module.exports = { env };

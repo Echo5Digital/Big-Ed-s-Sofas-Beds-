@@ -8,6 +8,7 @@ import DataTable from "@/components/ui/DataTable";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
+import CustomersTab from "@/components/users/CustomersTab";
 import { api, ApiClientError } from "@/lib/api/client";
 import { useAuth } from "@/lib/hooks/useAuth";
 
@@ -256,6 +257,7 @@ function UsersContent() {
   const [error, setError] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [tab, setTab] = useState("staff");
 
   const load = useCallback(() => {
     api
@@ -327,8 +329,13 @@ function UsersContent() {
     <div>
       <PageHeader
         title="Users"
-        subtitle="Staff accounts and role-based access control"
+        subtitle={
+          tab === "staff"
+            ? "Staff accounts and role-based access control"
+            : "Customers who registered an account on the storefront"
+        }
         action={
+          tab === "staff" &&
           hasPermission("users:manage") && (
             <Button icon={UserPlus} onClick={() => setCreateOpen(true)}>
               New User
@@ -337,19 +344,47 @@ function UsersContent() {
         }
       />
 
-      {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      <div role="tablist" aria-label="Users" className="mb-6 flex gap-1 border-b border-black/10">
+        {[
+          ["staff", "Staff"],
+          ["customers", "Customers"],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            onClick={() => setTab(key)}
+            className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-brand-red ${
+              tab === key
+                ? "border-brand-red text-brand-red"
+                : "border-transparent text-brand-charcoal/60 hover:text-brand-charcoal"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-      <DataTable columns={columns} rows={users} emptyMessage="No users yet." />
+      {tab === "staff" ? (
+        <>
+          {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-      <NewUserModal open={createOpen} onClose={() => setCreateOpen(false)} onDone={handleChanged} />
+          <DataTable columns={columns} rows={users} emptyMessage="No users yet." />
 
-      <EditUserModal
-        key={editingUser?.id}
-        user={editingUser}
-        isSelf={Boolean(currentUser && editingUser && currentUser.id === editingUser.id)}
-        onClose={() => setEditingUser(null)}
-        onDone={handleChanged}
-      />
+          <NewUserModal open={createOpen} onClose={() => setCreateOpen(false)} onDone={handleChanged} />
+
+          <EditUserModal
+            key={editingUser?.id}
+            user={editingUser}
+            isSelf={Boolean(currentUser && editingUser && currentUser.id === editingUser.id)}
+            onClose={() => setEditingUser(null)}
+            onDone={handleChanged}
+          />
+        </>
+      ) : (
+        <CustomersTab />
+      )}
     </div>
   );
 }

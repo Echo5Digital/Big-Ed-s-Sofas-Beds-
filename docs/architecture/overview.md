@@ -95,6 +95,45 @@ In-Store POS (apps/pos, :3002)         ─┘
   for the exact permission grants and `docs/database/schema.md` for the full
   permission list.
 
+## Customer accounts (storefront)
+
+Separate from staff auth above: customers sign in at `/account` on the
+storefront via `apps/api/src/routes/customerAuth.routes.js`
+(`/api/customer-auth/*`), backed by `Customer`, not `User`.
+
+- **Sign-up is email + password, verified by a one-time code.**
+  `POST /register` stores a pending `CustomerRegistration` and emails a
+  6-digit code; `POST /verify-otp` (pending id + code) creates the verified
+  customer and signs them in; `POST /resend-otp` issues a fresh code.
+  `/login`, `/refresh`, `/logout`, and `/me` behave like their staff
+  counterparts. Rules live in `services/customerAuth.service.js`.
+- **Code rules:** 6 digits, 10-minute lifetime, stored only as an HMAC (never
+  the code), 5 wrong attempts then the sign-up is discarded, 60-second resend
+  cooldown, at most 5 resends. The attempt counter is incremented *before*
+  the comparison so parallel guesses can't exceed the limit.
+- **Email ownership is the trust anchor.** A guest customer from checkout/POS
+  who registers with the same email (case-insensitive) is attached to their
+  existing order history once the code proves they own the address; the
+  shop's existing name/phone values are kept.
+- **Sessions are isolated from staff sessions:** distinct cookies
+  (`big_eds_customer_*`) and a `customer` JWT audience that only the customer
+  middleware accepts. A customer session can't pass `requireAuth` and a staff
+  session can't pass `requireCustomer`. Customer endpoints do not yet gate
+  any order data; `requireCustomer` exists for the account-area features to
+  build on.
+- **Staff visibility:** the admin's **Users → Customers** tab lists registered
+  customers (read-only; name, email, registered date, order count;
+  server-side search and paging) via `GET /api/users/customers`. Phone is
+  deliberately not shown or searchable — sign-up doesn't collect one, so any
+  value on the row came from an earlier guest checkout. It sits in the
+  Users router, so it needs `users:manage` like the rest of that page; guests
+  from checkout/POS aren't listed (they appear through their orders), and
+  credentials are never selected.
+- **Delivery:** email via SMTP (`nodemailer`, `SMTP_*`/`MAIL_FROM` — see
+  `apps/api/.env.example`). With `SMTP_HOST` unset, non-production prints the
+  code to the API console; production fails the sign-up with HTTP 503 instead
+  of pretending a code was sent, and never logs codes.
+
 ## Inventory integrity (the part the kickoff plan calls "non-negotiable")
 
 All stock-mutating operations live in `apps/api/src/services/inventory.service.js`
