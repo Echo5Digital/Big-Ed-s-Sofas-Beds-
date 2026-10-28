@@ -35,6 +35,46 @@ const userRolesUpdateSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Customer accounts (storefront sign-up / sign-in)
+// ---------------------------------------------------------------------------
+
+// Normalised at the edge so "Jane@X.com" and "jane@x.com" are one account.
+const customerEmailSchema = z.string().trim().toLowerCase().email().max(254);
+
+// bcrypt only hashes the first 72 *bytes* and silently ignores the rest, so
+// cap on bytes (not characters) instead of letting a long passphrase appear to
+// work while only its prefix is actually checked.
+const customerPasswordSchema = z
+  .string()
+  .min(8, "Password must be at least 8 characters")
+  .refine((value) => new TextEncoder().encode(value).length <= 72, {
+    message: "Password must be at most 72 bytes",
+  });
+
+const customerRegisterSchema = z.object({
+  email: customerEmailSchema,
+  password: customerPasswordSchema,
+  firstName: z.string().trim().min(1).max(100),
+  lastName: z.string().trim().min(1).max(100),
+});
+
+const customerVerifyOtpSchema = z.object({
+  pendingId: z.string().uuid(),
+  code: z.string().regex(/^\d{6}$/, "Enter the 6-digit code"),
+});
+
+const customerResendOtpSchema = z.object({
+  pendingId: z.string().uuid(),
+});
+
+// Deliberately lenient on password length: sign-in should answer "wrong
+// email or password", never reveal the password rules to a guesser.
+const customerLoginSchema = z.object({
+  email: customerEmailSchema,
+  password: z.string().min(1).max(200),
+});
+
+// ---------------------------------------------------------------------------
 // Catalog
 // ---------------------------------------------------------------------------
 
@@ -292,6 +332,10 @@ module.exports = {
   userCreateSchema,
   userUpdateSchema,
   userRolesUpdateSchema,
+  customerRegisterSchema,
+  customerVerifyOtpSchema,
+  customerResendOtpSchema,
+  customerLoginSchema,
   categoryCreateSchema,
   variantCreateSchema,
   productImageInputSchema,

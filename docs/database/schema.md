@@ -65,7 +65,19 @@ never a diff of the current row.
   `ADJUSTMENT_INCREASE`/`ADJUSTMENT_DECREASE` movements for any discrepancy,
   same as a manual adjustment.
 
-### Sales (`Customer`, `Address`, `Order`, `OrderLine`, `Payment`, `Refund`, `ProviderEvent`)
+### Sales (`Customer`, `CustomerRegistration`, `Address`, `Order`, `OrderLine`, `Payment`, `Refund`, `ProviderEvent`)
+
+`Customer` rows are created two ways: implicitly as a guest by checkout/POS
+(`upsert` by email — `passwordHash` and `emailVerifiedAt` stay null), or by
+a storefront sign-up that has confirmed its emailed one-time code (both set).
+Only a customer with both set can sign in; see
+`docs/architecture/overview.md#customer-accounts-storefront`.
+`CustomerRegistration` holds a sign-up that is still waiting on its code —
+the pending name/email/password hash plus a keyed hash of the code, expiry,
+and attempt/resend counters. It is deliberately *not* a `Customer`: nothing
+is written to `Customer` until the code is confirmed, and a row is deleted
+when it completes, is replaced by a newer sign-up for the same email, or is
+locked out. Abandoned rows are swept (after 24h) by the next sign-up.
 
 `Order` has three independent status enums — see
 `docs/architecture/overview.md#orders-three-independent-dimensions`.
