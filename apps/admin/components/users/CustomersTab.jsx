@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Search } from "lucide-react";
+import { Search, Trash2 } from "lucide-react";
 import DataTable from "@/components/ui/DataTable";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
+import Modal from "@/components/ui/Modal";
 import { api, ApiClientError } from "@/lib/api/client";
 
 const PAGE_SIZE = 25;
@@ -14,19 +15,28 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
-// Read-only list of storefront customers who registered an account (and
-// verified their email). Searching and paging happen on the server since the
-// list grows with every sign-up.
+function displayName(customer) {
+  return `${customer.firstName ?? ""} ${customer.lastName ?? ""}`.trim() || customer.email;
+}
+
+// Storefront customers who registered an account (and verified their email),
+// with the ability to permanently delete one. Searching and paging happen on
+// the server since the list grows with every sign-up.
 export default function CustomersTab() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
+  // Bumped after a delete to refetch the current page.
+  const [reloadToken, setReloadToken] = useState(0);
   // The latest response, tagged with the query it answers. Loading is derived
   // from whether that tag matches the current query, so there's no
   // set-loading-state-inside-an-effect to get out of step.
   const [result, setResult] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState(null); // customer awaiting confirmation
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
 
-  const queryKey = `${debouncedSearch}|${page}`;
+  const queryKey = `${debouncedSearch}|${page}|${reloadToken}`;
   const loading = result?.key !== queryKey;
 
   useEffect(() => {
@@ -69,6 +79,30 @@ export default function CustomersTab() {
   const to = from + (customers?.length ?? 0) - 1;
   const error = !loading ? result?.error : null;
 
+  function closeDeleteDialog() {
+    if (deleting) return;
+    setPendingDelete(null);
+    setDeleteError(null);
+  }
+
+  async function confirmDelete() {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.delete(`/users/customers/${pendingDelete.id}`);
+      // Removing the only row on a later page would leave that page empty.
+      if (page > 1 && customers?.length === 1) setPage(page - 1);
+      setReloadToken((t) => t + 1);
+      setPendingDelete(null);
+    } catch (err) {
+      setDeleteError(err instanceof ApiClientError ? err.message : "Failed to delete the customer.");
+      // Already gone (e.g. another admin deleted them): drop the stale row.
+      if (err instanceof ApiClientError && err.status === 404) setReloadToken((t) => t + 1);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const columns = [
     {
       key: "name",
@@ -81,6 +115,24 @@ export default function CustomersTab() {
       key: "orderCount",
       header: "Orders",
       render: (c) => (c.orderCount > 0 ? <Badge tone="info">{c.orderCount}</Badge> : <span className="text-brand-charcoal/40">0</span>),
+    },
+    {
+      key: "actions",
+      header: "",
+      render: (c) => (
+        <button
+          type="button"
+          onClick={() => {
+            setDeleteError(null);
+            setPendingDelete(c);
+          }}
+          aria-label={`Delete ${displayName(c)}`}
+          title="Delete customer"
+          className="rounded-lg p-2 text-brand-charcoal/50 transition-colors hover:bg-red-50 hover:text-red-700 focus-visible:outline-2 focus-visible:outline-brand-red"
+        >
+          <Trash2 className="size-4" aria-hidden="true" />
+        </button>
+      ),
     },
   ];
 
@@ -130,6 +182,36 @@ export default function CustomersTab() {
           </div>
         </div>
       )}
+
+      <Modal open={Boolean(pendingDelete)} onClose={closeDeleteDialog} title="Delete customer?">
+        {pendingDelete && (
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-brand-charcoal">
+              <span className="font-semibold">{displayName(pendingDelete)}</span> ({pendingDelete.email}) will be permanently
+              deleted from the database. This can&apos;t be undone.
+            </p>
+            <ul className="list-disc space-y-1 pl-5 text-sm text-brand-charcoal/70">
+              <li>Their account is removed immediately, and anyone signed in as them is signed out.</li>
+              <li>
+                {pendingDelete.orderCount > 0
+                  ? `Their ${pendingDelete.orderCount} order${pendingDelete.orderCount === 1 ? "" : "s"} will be kept, but will no longer show a customer.`
+                  : "They have no orders."}
+              </li>
+            </ul>
+
+            {deleteError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{deleteError}</p>}
+
+            <div className="flex gap-3">
+              <Button icon={Trash2} onClick={confirmDelete} disabled={deleting}>
+                {deleting ? "Deleting…" : "Delete Customer"}
+              </Button>
+              <Button variant="outline" onClick={closeDeleteDialog} disabled={deleting}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

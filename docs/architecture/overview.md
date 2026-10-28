@@ -123,7 +123,13 @@ storefront via `apps/api/src/routes/customerAuth.routes.js`
   build on.
 - **Staff visibility:** the admin's **Users → Customers** tab lists registered
   customers (read-only; name, email, registered date, order count;
-  server-side search and paging) via `GET /api/users/customers`. Phone is
+  server-side search and paging) via `GET /api/users/customers`, and each row
+  has a delete (trash) action — `DELETE /api/users/customers/:id`, a **hard
+  delete**: the customer row, their addresses and any pending sign-up for the
+  email are removed from the database, while their orders are kept but detach
+  (`Order.customerId` -> null). Only registered accounts can be deleted this
+  way; the audit entry (`customer.delete`) records who and which id, but not
+  the customer's email or name. Phone is
   deliberately not shown or searchable — sign-up doesn't collect one, so any
   value on the row came from an earlier guest checkout. It sits in the
   Users router, so it needs `users:manage` like the rest of that page; guests

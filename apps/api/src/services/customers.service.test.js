@@ -1,5 +1,5 @@
 const { prisma } = require("@big-eds/database");
-const { listRegisteredCustomers } = require("./customers.service");
+const { listRegisteredCustomers, deleteRegisteredCustomer } = require("./customers.service");
 
 // Runs against the real dev database (same convention as pos.service.test.js —
 // no Prisma mock layer). Every row uses a run-unique surname/email prefix so
@@ -122,5 +122,111 @@ describe("customers.service — listRegisteredCustomers", () => {
 
     const huge = await listRegisteredCustomers({ q: SURNAME, pageSize: 100000 });
     expect(huge.pagination.pageSize).toBe(100);
+  });
+});
+
+describe("customers.service — deleteRegisteredCustomer", () => {
+  const prefix = `customer-delete-test-${RUN}`;
+  const orderPrefix = `CUSTOMER-DELETE-TEST-${RUN}`;
+  let counter = 0;
+
+  const makeCustomer = (overrides = {}) => {
+    counter += 1;
+    return prisma.customer.create({
+      data: {
+        email: `${prefix}-${counter}@example.com`,
+        firstName: "Del",
+        lastName: `Test${RUN}`,
+        passwordHash: "x",
+        emailVerifiedAt: new Date(),
+        ...overrides,
+      },
+    });
+  };
+
+  afterAll(async () => {
+    // Order numbers are count-based and the orders table is shared, so any
+    // order a test created is removed here even if the test failed midway.
+    await prisma.order.deleteMany({ where: { orderNumber: { startsWith: orderPrefix } } });
+    await prisma.customerRegistration.deleteMany({ where: { email: { startsWith: prefix } } });
+    await prisma.customer.deleteMany({ where: { email: { startsWith: prefix } } });
+  });
+
+  it("permanently removes the customer row from the database", async () => {
+    const customer = await makeCustomer();
+
+    const result = await deleteRegisteredCustomer(customer.id);
+
+    expect(result).toEqual({ id: customer.id, orderCount: 0 });
+    expect(await prisma.customer.findUnique({ where: { id: customer.id } })).toBeNull();
+    expect(await prisma.customer.count({ where: { email: customer.email } })).toBe(0);
+  });
+
+  it("keeps their orders but detaches them from the deleted customer", async () => {
+    const customer = await makeCustomer();
+    const order = await prisma.order.create({
+      data: { orderNumber: `${orderPrefix}-A`, channel: "ONLINE", customerId: customer.id },
+    });
+
+    const result = await deleteRegisteredCustomer(customer.id);
+
+    expect(result.orderCount).toBe(1);
+    const kept = await prisma.order.findUnique({ where: { id: order.id } });
+    expect(kept).not.toBeNull();
+    expect(kept.customerId).toBeNull();
+    await prisma.order.delete({ where: { id: order.id } });
+  });
+
+  it("also removes their saved addresses and any half-finished sign-up for the same email", async () => {
+    const customer = await makeCustomer();
+    await prisma.address.create({
+      data: { customerId: customer.id, type: "SHIPPING", line1: "1 Test St", city: "Lake Wales", state: "FL", postalCode: "33853" },
+    });
+    const registrationData = { firstName: "P", lastName: "R", passwordHash: "x", codeHash: "x", expiresAt: new Date(Date.now() + 600000) };
+    // Differently-cased address: registrations are matched case-insensitively.
+    await prisma.customerRegistration.create({ data: { ...registrationData, email: customer.email.toUpperCase() } });
+    const unrelated = await prisma.customerRegistration.create({ data: { ...registrationData, email: `${prefix}-unrelated@example.com` } });
+
+    await deleteRegisteredCustomer(customer.id);
+
+    expect(await prisma.address.count({ where: { customerId: customer.id } })).toBe(0);
+    expect(await prisma.customerRegistration.count({ where: { email: { equals: customer.email, mode: "insensitive" } } })).toBe(0);
+    expect(await prisma.customerRegistration.findUnique({ where: { id: unrelated.id } })).not.toBeNull();
+  });
+
+  it("does not touch other customers", async () => {
+    const target = await makeCustomer();
+    const bystander = await makeCustomer();
+
+    await deleteRegisteredCustomer(target.id);
+
+    expect(await prisma.customer.findUnique({ where: { id: bystander.id } })).not.toBeNull();
+  });
+
+  it("cannot delete guests, unverified rows or unknown ids, and leaves them in place", async () => {
+    const guest = await makeCustomer({ passwordHash: null, emailVerifiedAt: null });
+    const unverified = await makeCustomer({ emailVerifiedAt: null });
+
+    for (const id of [guest.id, unverified.id, "00000000-0000-4000-8000-000000000000", "not-a-uuid"]) {
+      await expect(deleteRegisteredCustomer(id)).rejects.toMatchObject({ statusCode: 404 });
+    }
+    expect(await prisma.customer.findUnique({ where: { id: guest.id } })).not.toBeNull();
+    expect(await prisma.customer.findUnique({ where: { id: unverified.id } })).not.toBeNull();
+  });
+
+  it("a second delete of the same customer is a clean 404, not a crash", async () => {
+    const customer = await makeCustomer();
+    await deleteRegisteredCustomer(customer.id);
+
+    await expect(deleteRegisteredCustomer(customer.id)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it("drops them from the admin list immediately", async () => {
+    const customer = await makeCustomer();
+    expect((await listRegisteredCustomers({ q: customer.email })).customers).toHaveLength(1);
+
+    await deleteRegisteredCustomer(customer.id);
+
+    expect((await listRegisteredCustomers({ q: customer.email })).customers).toHaveLength(0);
   });
 });

@@ -6,7 +6,7 @@ const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
 const { NotFoundError, ConflictError } = require("../lib/errors");
-const { listRegisteredCustomers } = require("../services/customers.service");
+const { listRegisteredCustomers, deleteRegisteredCustomer } = require("../services/customers.service");
 
 const router = express.Router();
 
@@ -66,6 +66,29 @@ router.get(
     // A repeated query param arrives as an array; only a plain string is a search.
     const result = await listRegisteredCustomers({ q: typeof q === "string" ? q : undefined, page, pageSize });
     res.json(result);
+  })
+);
+
+router.delete(
+  "/customers/:id",
+  asyncHandler(async (req, res) => {
+    const { id, orderCount } = await deleteRegisteredCustomer(req.params.id);
+
+    // The audit entry records who removed which customer and when, but
+    // deliberately not the customer's email or name: the point of the delete is
+    // that their personal details are gone from the database, and this row would
+    // otherwise keep them.
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: "customer.delete",
+        entityType: "Customer",
+        entityId: id,
+        metadata: { orderCount },
+      },
+    });
+
+    res.json({ success: true, orderCount });
   })
 );
 

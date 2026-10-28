@@ -1,4 +1,5 @@
 const { prisma } = require("@big-eds/database");
+const { NotFoundError } = require("../lib/errors");
 
 // A "registered" customer is one who created a storefront account and proved
 // they own the email with the one-time code (see customerAuth.service.js).
@@ -72,4 +73,34 @@ async function listRegisteredCustomers({ q, page, pageSize } = {}) {
   };
 }
 
-module.exports = { listRegisteredCustomers };
+// Permanently removes a registered customer's account from the database (a hard
+// delete, by design — the row is gone, not flagged).
+//
+// What happens to what's linked to them, per the schema's onDelete rules:
+//   - Address rows are deleted with the customer (cascade).
+//   - Orders are kept — they're sales records — but detach from the customer
+//     (customerId becomes null), so an order no longer shows who it was for.
+//   - Any half-finished sign-up for the same email is deleted here explicitly:
+//     CustomerRegistration is keyed by email, not by a foreign key, so nothing
+//     would remove it otherwise.
+// Their signed-in sessions stop working on the next request, since the session
+// middleware re-reads the customer from the database every time.
+//
+// Only registered accounts can be deleted through this path (it's the list the
+// admin sees); guest checkout records are not reachable by it.
+async function deleteRegisteredCustomer(customerId) {
+  return prisma.$transaction(async (tx) => {
+    const customer = await tx.customer.findFirst({
+      where: { id: String(customerId), ...REGISTERED },
+      select: { id: true, email: true, _count: { select: { orders: true } } },
+    });
+    if (!customer) throw new NotFoundError("Customer not found");
+
+    await tx.customerRegistration.deleteMany({ where: { email: { equals: customer.email, mode: "insensitive" } } });
+    await tx.customer.delete({ where: { id: customer.id } });
+
+    return { id: customer.id, orderCount: customer._count.orders };
+  });
+}
+
+module.exports = { listRegisteredCustomers, deleteRegisteredCustomer };
