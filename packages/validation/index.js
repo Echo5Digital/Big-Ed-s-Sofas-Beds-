@@ -75,6 +75,54 @@ const customerLoginSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Customer account area (profile, password, saved addresses)
+// ---------------------------------------------------------------------------
+
+// Blank optional inputs arrive from forms as "" — store them as null instead.
+const blankToNull = (value) => (value === "" ? null : value);
+
+// Lenient on formatting ("(555) 123-4567", "+1 555 123 4567") but must look
+// like a phone number: only phone punctuation and 7-15 digits.
+const customerPhoneSchema = z
+  .string()
+  .trim()
+  .max(40)
+  .refine((value) => value === "" || (/^[+()\d\s.-]+$/.test(value) && /^\d{7,15}$/.test(value.replace(/\D/g, ""))), {
+    message: "Enter a valid phone number",
+  })
+  .transform(blankToNull);
+
+// Email is deliberately absent: it is the sign-in identity and is only ever
+// set by the verified sign-up flow.
+const customerProfileUpdateSchema = z.object({
+  firstName: z.string().trim().min(1, "First name is required").max(100),
+  lastName: z.string().trim().min(1, "Last name is required").max(100),
+  phone: customerPhoneSchema.optional().nullable(),
+});
+
+const customerChangePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Enter your current password").max(200),
+    newPassword: customerPasswordSchema,
+  })
+  .refine((data) => data.newPassword !== data.currentPassword, {
+    message: "Choose a password you haven't used before",
+    path: ["newPassword"],
+  });
+
+const customerAddressSchema = z.object({
+  line1: z.string().trim().min(1, "Street address is required").max(200),
+  line2: z.string().trim().max(200).transform(blankToNull).optional().nullable(),
+  city: z.string().trim().min(1, "City is required").max(120),
+  state: z.string().trim().min(1, "State is required").max(60),
+  postalCode: z.string().trim().min(1, "ZIP / postal code is required").max(20),
+  country: z.string().trim().min(1).max(60).optional(),
+  isDefault: z.boolean().optional(),
+});
+
+const customerAddressUpdateSchema = customerAddressSchema.partial();
+
+// ---------------------------------------------------------------------------
 // Catalog
 // ---------------------------------------------------------------------------
 
@@ -336,6 +384,10 @@ module.exports = {
   customerVerifyOtpSchema,
   customerResendOtpSchema,
   customerLoginSchema,
+  customerProfileUpdateSchema,
+  customerChangePasswordSchema,
+  customerAddressSchema,
+  customerAddressUpdateSchema,
   categoryCreateSchema,
   variantCreateSchema,
   productImageInputSchema,

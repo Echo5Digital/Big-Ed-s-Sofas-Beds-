@@ -118,9 +118,33 @@ storefront via `apps/api/src/routes/customerAuth.routes.js`
 - **Sessions are isolated from staff sessions:** distinct cookies
   (`big_eds_customer_*`) and a `customer` JWT audience that only the customer
   middleware accepts. A customer session can't pass `requireAuth` and a staff
-  session can't pass `requireCustomer`. Customer endpoints do not yet gate
-  any order data; `requireCustomer` exists for the account-area features to
-  build on.
+  session can't pass `requireCustomer`.
+- **Account area** (`/account` once signed in): a left sidebar with four
+  sections — Profile, Addresses, My Orders, Settings — backed by
+  `/api/customer-account/*` (`routes/customerAccount.routes.js`, rules in
+  `services/customerAccount.service.js`). The whole router sits behind
+  `requireCustomer`, and every query is scoped by the customer id from the
+  verified session, never from the URL or body.
+  - *Profile:* `GET`/`PATCH /profile` edits first name, last name and phone.
+    Email is read-only — it is the sign-in identity and is only ever set by the
+    verified sign-up flow.
+  - *Addresses:* `GET`/`POST /addresses`, `PATCH`/`DELETE /addresses/:id`,
+    `POST /addresses/:id/default`. Stored as `Address` rows of type `SHIPPING`;
+    exactly one default (the first address is the default; deleting the default
+    promotes the oldest remaining); capped at 10 per customer. `Address` has no
+    name/phone columns, so a card shows the address only.
+  - *My Orders:* `GET /orders` (paged) lists the customer's non-`DRAFT` orders
+    with line snapshots, newest first. An order is linked to an account by
+    `Order.customerId`, which checkout sets by matching the email. The page
+    shows order/fulfillment progress and payment status as separate labels.
+  - *Settings:* `POST /change-password` needs the current password (wrong ->
+    `400`, deliberately not `401`, which the storefront treats as "session
+    expired"), is limited to 5 attempts per 15 minutes **per customer**, and
+    does not revoke other signed-in sessions (JWTs are stateless and `Customer`
+    has no token-version column). Sign out lives here too.
+  - The storefront refreshes an expired access cookie (15 min) once through
+    `/customer-auth/refresh` and retries; only if that fails does it return to
+    the sign-in form (`lib/api/customerAccount.js`).
 - **Staff visibility:** the admin's **Users → Customers** tab lists registered
   customers (read-only; name, email, registered date, order count;
   server-side search and paging) via `GET /api/users/customers`, and each row

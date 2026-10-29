@@ -5,7 +5,8 @@ import AccountPanel from "@/components/account/AccountPanel";
 
 export const metadata = {
   title: "Your Account | Big Ed's Sofas & Beds",
-  description: "Sign in or create a Big Ed's Sofas & Beds account to track orders and check out faster.",
+  description:
+    "Sign in or create a Big Ed's Sofas & Beds account to manage your details and addresses, view your orders, and check out faster.",
 };
 
 export default function AccountPage() {
@@ -13,7 +14,7 @@ export default function AccountPage() {
     <div className="pb-10">
       <PageHero title="Account" showMascot={false} />
 
-      <Container className="mt-8 max-w-md">
+      <Container className="mt-8">
         <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Account" }]} />
         <AccountPanel />
       </Container>

@@ -8,6 +8,7 @@ const { errorHandler } = require("./middleware/errorHandler");
 
 const authRoutes = require("./routes/auth.routes");
 const customerAuthRoutes = require("./routes/customerAuth.routes");
+const customerAccountRoutes = require("./routes/customerAccount.routes");
 const usersRoutes = require("./routes/users.routes");
 const catalogRoutes = require("./routes/catalog.routes");
 const inventoryRoutes = require("./routes/inventory.routes");
@@ -42,6 +43,7 @@ function createApp() {
 
   app.use("/api/auth", authRoutes);
   app.use("/api/customer-auth", customerAuthRoutes);
+  app.use("/api/customer-account", customerAccountRoutes);
   app.use("/api/users", usersRoutes);
   app.use("/api/catalog", catalogRoutes);
   app.use("/api/inventory", inventoryRoutes);

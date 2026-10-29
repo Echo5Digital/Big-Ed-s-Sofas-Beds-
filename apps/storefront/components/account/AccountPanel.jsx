@@ -1,9 +1,7 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
-import Link from "next/link";
-import { User, Mail, Eye, EyeOff, LogOut } from "lucide-react";
-import { ApiClientError } from "@/lib/api/client";
+import { useCallback, useEffect, useId, useState } from "react";
+import { User, Mail } from "lucide-react";
 import {
   registerCustomer,
   verifyRegistrationCode,
@@ -12,93 +10,18 @@ import {
   logoutCustomer,
   getCurrentCustomer,
 } from "@/lib/api/customerAuth";
-
-const inputClass =
-  "w-full rounded-lg border border-brand-charcoal/20 bg-white px-3.5 py-2.5 text-sm text-brand-charcoal placeholder:text-brand-charcoal/40 focus:outline-none focus-visible:outline-2 focus-visible:outline-brand-red";
-const primaryButtonClass =
-  "mt-2 w-full rounded-full bg-brand-red px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark disabled:cursor-not-allowed disabled:opacity-60";
-const linkButtonClass =
-  "text-sm font-semibold text-brand-red underline-offset-2 hover:text-brand-red-dark hover:underline focus-visible:outline-2 focus-visible:outline-brand-red disabled:cursor-not-allowed disabled:text-brand-charcoal/40 disabled:no-underline";
+import AccountDashboard from "@/components/account/AccountDashboard";
+import {
+  Field,
+  Notice,
+  PasswordField,
+  describeError,
+  linkButtonClass,
+  primaryButtonClass,
+  reasonOf,
+} from "@/components/account/formParts";
 
 const EMPTY_FORM = { firstName: "", lastName: "", email: "", password: "", code: "" };
-
-function reasonOf(error) {
-  return error instanceof ApiClientError ? error.details?.reason : undefined;
-}
-
-// Turns whatever went wrong into one sentence for the customer. The API's
-// validation failures (422) carry per-field messages; everything else the API
-// raises already has a customer-readable message.
-function describeError(error) {
-  if (error instanceof ApiClientError) {
-    if (error.status === 422 && error.details?.fieldErrors) {
-      const first = Object.values(error.details.fieldErrors).flat()[0];
-      if (first) return first;
-    }
-    return error.message;
-  }
-  return "We couldn't reach the server. Check your connection and try again.";
-}
-
-function Notice({ notice }) {
-  if (!notice) return null;
-  const isError = notice.type === "error";
-  return (
-    <p
-      role={isError ? "alert" : "status"}
-      className={`mt-4 rounded-lg px-4 py-3 text-sm ${
-        isError ? "bg-brand-red/10 text-brand-red-dark" : "bg-brand-gold/15 text-brand-charcoal/80"
-      }`}
-    >
-      {notice.message}
-    </p>
-  );
-}
-
-function Field({ id, label, onChange, ...inputProps }) {
-  return (
-    <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-semibold text-brand-charcoal">
-        {label}
-      </label>
-      <input id={id} onChange={(event) => onChange(event.target.value)} className={inputClass} {...inputProps} />
-    </div>
-  );
-}
-
-function PasswordField({ id, label, value, onChange, autoComplete, hint, minLength }) {
-  const [visible, setVisible] = useState(false);
-  const Icon = visible ? EyeOff : Eye;
-  return (
-    <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-semibold text-brand-charcoal">
-        {label}
-      </label>
-      <div className="relative">
-        <input
-          id={id}
-          type={visible ? "text" : "password"}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          autoComplete={autoComplete}
-          minLength={minLength}
-          required
-          className={`${inputClass} pr-11`}
-        />
-        <button
-          type="button"
-          onClick={() => setVisible((v) => !v)}
-          aria-label={visible ? "Hide password" : "Show password"}
-          aria-pressed={visible}
-          className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-brand-charcoal/60 hover:text-brand-charcoal focus-visible:outline-2 focus-visible:outline-brand-red"
-        >
-          <Icon className="size-4" aria-hidden="true" />
-        </button>
-      </div>
-      {hint ? <p className="mt-1 text-xs text-brand-charcoal/60">{hint}</p> : null}
-    </div>
-  );
-}
 
 export default function AccountPanel() {
   const uid = useId();
@@ -262,18 +185,43 @@ export default function AccountPanel() {
     });
   }
 
+  // Called by the account sections when even a refresh can't restore the
+  // session (e.g. the refresh cookie has lapsed). Stable so the sections'
+  // data-loading effects don't re-run on every render of this panel.
+  const handleSessionExpired = useCallback(() => {
+    setCustomer(null);
+    setNotice({ type: "info", message: "Your session has expired. Please sign in again." });
+    setView("signin");
+  }, []);
+
+  // Keeps the "Hello, name" in the sidebar in step with a saved profile edit.
+  const handleProfileSaved = useCallback((names) => {
+    setCustomer((current) => (current ? { ...current, ...names } : current));
+  }, []);
+
+  if (view === "signedin") {
+    return (
+      <AccountDashboard
+        customer={customer}
+        onProfileSaved={handleProfileSaved}
+        onSessionExpired={handleSessionExpired}
+        onSignOut={handleLogout}
+        signingOut={busy}
+      />
+    );
+  }
+
   const heading = {
     loading: ["Your Account", ""],
     signin: ["Sign In to Your Account", "Track orders, save favorites, and check out faster."],
     register: ["Create Your Account", "It only takes a minute. We'll email you a code to confirm your address."],
     verify: ["Check Your Email", pending ? `Enter the 6-digit code we sent to ${pending.email}.` : ""],
-    signedin: [customer ? `Welcome, ${customer.firstName || "friend"}` : "Welcome", customer?.email ?? ""],
   }[view];
 
   const HeadingIcon = view === "verify" ? Mail : User;
 
   return (
-    <div className="mt-6 rounded-2xl border border-brand-charcoal/10 bg-white p-6 sm:p-8">
+    <div className="mx-auto mt-6 max-w-md rounded-2xl border border-brand-charcoal/10 bg-white p-6 sm:p-8">
       <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-brand-red/10 text-brand-red">
         <HeadingIcon className="size-6" aria-hidden="true" />
       </span>
@@ -425,25 +373,6 @@ export default function AccountPanel() {
         </>
       ) : null}
 
-      {view === "signedin" ? (
-        <div className="mt-6 flex flex-col gap-3">
-          <Link
-            href="/shop"
-            className="w-full rounded-full bg-brand-red px-6 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark"
-          >
-            Continue Shopping
-          </Link>
-          <button
-            type="button"
-            onClick={handleLogout}
-            disabled={busy}
-            className="flex w-full items-center justify-center gap-2 rounded-full border border-brand-charcoal/20 px-6 py-3 text-sm font-semibold text-brand-charcoal transition-colors hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <LogOut className="size-4" aria-hidden="true" />
-            {busy ? "Signing out…" : "Sign Out"}
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }
