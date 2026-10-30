@@ -103,7 +103,6 @@ export const siteConfig = {
     { label: "Terms of Service", href: "/terms-of-service" },
     { label: "Shipping & Delivery", href: "/shipping-delivery" },
     { label: "Returns", href: "/returns" },
-    { label: "Site Map", href: "/sitemap" },
   ],
 };
 

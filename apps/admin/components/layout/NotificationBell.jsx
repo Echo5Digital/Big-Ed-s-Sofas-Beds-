@@ -21,7 +21,7 @@ function timeAgo(isoString) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-export default function NotificationBell({ onNavigate }) {
+export default function NotificationBell() {
   const [sessions, setSessions] = useState([]);
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
@@ -53,7 +53,6 @@ export default function NotificationBell({ onNavigate }) {
 
   function handleLinkClick() {
     setOpen(false);
-    onNavigate?.();
   }
 
   return (
@@ -62,7 +61,7 @@ export default function NotificationBell({ onNavigate }) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label={`Notifications${sessions.length > 0 ? ` (${sessions.length} pending)` : ""}`}
-        className="relative rounded-full p-2 text-white/80 hover:bg-white/10 hover:text-white lg:text-brand-charcoal lg:hover:bg-black/5 lg:hover:text-brand-charcoal"
+        className="relative rounded-full p-2 text-brand-charcoal hover:bg-black/5"
       >
         <Bell className="size-5" aria-hidden="true" />
         {sessions.length > 0 && (
