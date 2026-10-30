@@ -337,6 +337,15 @@ const registerCloseSchema = z.object({
   notes: z.string().max(1000).optional().nullable(),
 });
 
+const registerReopenApproveSchema = z.object({
+  closingCashCents: z.number().int().nonnegative(),
+  notes: z.string().max(1000).optional().nullable(),
+});
+
+const registerReopenDenySchema = z.object({
+  reason: z.string().max(1000).optional().nullable(),
+});
+
 // Card tender is intentionally not a distinct success path yet — no payment
 // processor/terminal model has been selected (see
 // docs/requirements/open-questions.md). CASH and DEPOSIT are real, working
@@ -405,6 +414,8 @@ module.exports = {
   checkoutCreateSchema,
   registerOpenSchema,
   registerCloseSchema,
+  registerReopenApproveSchema,
+  registerReopenDenySchema,
   posSaleSchema,
   posRefundSchema,
 };

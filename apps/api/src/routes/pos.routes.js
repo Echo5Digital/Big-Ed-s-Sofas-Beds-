@@ -1,6 +1,13 @@
 const express = require("express");
 const { prisma } = require("@big-eds/database");
-const { registerOpenSchema, registerCloseSchema, posSaleSchema, posRefundSchema } = require("@big-eds/validation");
+const {
+  registerOpenSchema,
+  registerCloseSchema,
+  registerReopenApproveSchema,
+  registerReopenDenySchema,
+  posSaleSchema,
+  posRefundSchema,
+} = require("@big-eds/validation");
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
@@ -43,7 +50,10 @@ router.get(
   asyncHandler(async (req, res) => {
     const registers = await prisma.register.findMany({
       where: { isActive: true },
-      include: { location: true, sessions: { where: { status: "OPEN" }, take: 1 } },
+      include: {
+        location: true,
+        sessions: { where: { status: { in: ["OPEN", "PENDING_REOPEN_APPROVAL"] } }, take: 1 },
+      },
       orderBy: { name: "asc" },
     });
     res.json({
@@ -52,7 +62,8 @@ router.get(
         name: r.name,
         locationId: r.locationId,
         locationName: r.location?.name ?? null,
-        openSessionId: r.sessions[0]?.id ?? null,
+        openSessionId: r.sessions[0]?.status === "OPEN" ? r.sessions[0].id : null,
+        pendingReopenSessionId: r.sessions[0]?.status === "PENDING_REOPEN_APPROVAL" ? r.sessions[0].id : null,
       })),
     });
   })
@@ -87,6 +98,61 @@ router.post(
   validateBody(registerCloseSchema),
   asyncHandler(async (req, res) => {
     const session = await posService.closeRegister({
+      registerSessionId: req.params.id,
+      ...req.body,
+      performedById: req.user.id,
+    });
+    res.json({ session });
+  })
+);
+
+// Cashier-facing: found a register stuck OPEN from a previous shift and
+// cannot close it out themselves — submits it for manager/admin review
+// instead. Same permission as a normal close, since this replaces that
+// action for a session the cashier doesn't own.
+router.post(
+  "/sessions/:id/request-reopen",
+  requirePermission("pos:register:close"),
+  asyncHandler(async (req, res) => {
+    const session = await posService.requestReopen({
+      registerSessionId: req.params.id,
+      requestedById: req.user.id,
+    });
+    res.json({ session });
+  })
+);
+
+// Admin/manager-facing: lists every register awaiting reopen approval —
+// backs the admin notification bell and the approvals page.
+router.get(
+  "/registers/pending-reopens",
+  requirePermission("pos:register:approve-reopen"),
+  asyncHandler(async (req, res) => {
+    const sessions = await posService.listPendingReopens();
+    res.json({ sessions });
+  })
+);
+
+router.post(
+  "/sessions/:id/approve-reopen",
+  requirePermission("pos:register:approve-reopen"),
+  validateBody(registerReopenApproveSchema),
+  asyncHandler(async (req, res) => {
+    const session = await posService.approveReopen({
+      registerSessionId: req.params.id,
+      ...req.body,
+      performedById: req.user.id,
+    });
+    res.json({ session });
+  })
+);
+
+router.post(
+  "/sessions/:id/deny-reopen",
+  requirePermission("pos:register:approve-reopen"),
+  validateBody(registerReopenDenySchema),
+  asyncHandler(async (req, res) => {
+    const session = await posService.denyReopen({
       registerSessionId: req.params.id,
       ...req.body,
       performedById: req.user.id,

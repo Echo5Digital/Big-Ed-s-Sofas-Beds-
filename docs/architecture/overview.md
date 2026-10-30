@@ -26,7 +26,10 @@ apps/
   api/          Express.js REST API — the only app that talks to the database
   pos/          Next.js in-store cashier app (port 3002). Register open/close,
                 cash sales, deposits, receipts, and closeout reconciliation are
-                real; card-present tender is stubbed pending a payment
+                real — a register left open from a previous shift can't be
+                force-closed by a cashier; it needs manager/admin approval to
+                reopen (see "Register reopen approval" below); card-present
+                tender is stubbed pending a payment
                 processor/terminal decision — see apps/pos/README.md and
                 docs/requirements/open-questions.md.
 
@@ -89,11 +92,12 @@ In-Store POS (apps/pos, :3002)         ─┘
   the JWT), so disabling a user or changing their role takes effect
   immediately rather than waiting for token expiry.
 - Four seeded roles: `ADMIN` (all permissions), `MANAGER` (catalog, inventory,
-  purchasing including approval, orders, reports), `STAFF` (read-only plus PO
-  receiving), `CASHIER` (catalog/inventory/orders read plus `pos:*` —
-  register open/close, sell, refund). See `packages/database/prisma/seed.js`
-  for the exact permission grants and `docs/database/schema.md` for the full
-  permission list.
+  purchasing including approval, orders, reports, plus
+  `pos:register:approve-reopen`), `STAFF` (read-only plus PO receiving),
+  `CASHIER` (catalog/inventory/orders read plus `pos:*` — register open/close,
+  sell, refund). See `packages/database/prisma/seed.js` for the exact
+  permission grants and `docs/database/schema.md` for the full permission
+  list.
 
 ## Customer accounts (storefront)
 

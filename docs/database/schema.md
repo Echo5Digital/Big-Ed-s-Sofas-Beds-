@@ -31,8 +31,8 @@ in use (seeded in `packages/database/prisma/seed.js`):
 `catalog:read`, `catalog:write`, `inventory:read`, `inventory:adjust`,
 `purchasing:read`, `purchasing:write`, `purchasing:approve`,
 `purchasing:receive`, `orders:read`, `orders:write`, `users:manage`,
-`reports:read`, `pos:register:open`, `pos:register:close`, `pos:sell`,
-`pos:refund`.
+`reports:read`, `pos:register:open`, `pos:register:close`,
+`pos:register:approve-reopen`, `pos:sell`, `pos:refund`.
 
 `AuditLog` records privileged actions (`inventory.adjust`,
 `inventory.transfer`, `po.approve`, `po.reject`, `auth.login`) with the
@@ -100,6 +100,14 @@ stored fact, not a report computed after the fact. `Order.channel` (`ONLINE`
 | `POS`) and `Order.fulfillmentMethod` (`PICKUP` | `DELIVERY` | `IN_STORE`)
 distinguish a POS walk-out sale from an online pickup/delivery order without
 a separate order type.
+
+`RegisterSessionStatus` has a third value, `PENDING_REOPEN_APPROVAL`, for a
+session left `OPEN` from a previous shift that a cashier cannot force-close
+themselves — see "Register reopen approval" in
+`docs/workflows/order-lifecycle.md`. `RegisterSession.reopenRequestedById`/
+`reopenRequestedAt`, `reopenApprovedById`/`reopenApprovedAt`, and
+`reopenDeniedAt`/`reopenDenialReason` record that approval trail, mirroring
+`PurchaseOrder.approvedById`/`approvedAt`.
 
 ### Purchasing (`Supplier`, `PurchaseOrder`, `POLine`, `GoodsReceipt`, `ReceiptLine`)
 

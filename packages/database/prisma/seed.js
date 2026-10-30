@@ -18,6 +18,7 @@ const PERMISSIONS = [
   { key: "reports:read", description: "View reports" },
   { key: "pos:register:open", description: "Open a POS register session" },
   { key: "pos:register:close", description: "Close out a POS register session" },
+  { key: "pos:register:approve-reopen", description: "Approve or deny a stuck register's reopen request" },
   { key: "pos:sell", description: "Ring up POS sales (cash, deposit, card)" },
   { key: "pos:refund", description: "Process POS returns/refunds" },
 ];
@@ -36,6 +37,7 @@ const ROLE_PERMISSIONS = {
     "orders:read",
     "orders:write",
     "reports:read",
+    "pos:register:approve-reopen",
   ],
   STAFF: [
     "catalog:read",
@@ -154,10 +156,20 @@ async function main() {
   });
 
   console.log("Seeding POS register...");
-  const existingRegister = await prisma.register.findFirst({ where: { name: "Register 01" } });
+  const existingRegister = await prisma.register.findFirst({ where: { locationId: showroom.id } });
+  const registerName = new Date().toLocaleDateString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+  });
   if (!existingRegister) {
     await prisma.register.create({
-      data: { name: "Register 01", locationId: showroom.id, isActive: true },
+      data: { name: registerName, locationId: showroom.id, isActive: true },
+    });
+  } else if (existingRegister.name === "Register 01") {
+    await prisma.register.update({
+      where: { id: existingRegister.id },
+      data: { name: registerName },
     });
   }
 

@@ -360,4 +360,105 @@ describe("pos.service", () => {
 
     await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
   });
+
+  describe("reopen approval", () => {
+    it("moves a stuck OPEN session to PENDING_REOPEN_APPROVAL and blocks opening the register", async () => {
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 10000 });
+
+      const requested = await posService.requestReopen({ registerSessionId: session.id, requestedById: null });
+      expect(requested.status).toBe("PENDING_REOPEN_APPROVAL");
+      expect(requested.reopenRequestedAt).not.toBeNull();
+
+      await expect(
+        posService.openRegister({ registerId: register.id, openingCashCents: 0 })
+      ).rejects.toThrow(/awaiting manager approval/);
+
+      // denyReopen sends the session back to OPEN (by design — the register
+      // stays locked, not freed) so it must still be closed out normally
+      // afterward, same as any other stuck-open session, or it leaks into
+      // later tests sharing this fixture register.
+      await posService.denyReopen({ registerSessionId: session.id, reason: null, performedById: null });
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 10000 });
+    });
+
+    it("rejects requesting reopen on a session that isn't OPEN", async () => {
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
+
+      await expect(
+        posService.requestReopen({ registerSessionId: session.id, requestedById: null })
+      ).rejects.toThrow(/stuck, currently-open/);
+    });
+
+    it("approving reconciles cash and closes the session, freeing the register", async () => {
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 10000 });
+      await posService.ringSale({
+        registerSessionId: session.id,
+        lines: [{ variantId: variant.id, quantity: 1 }],
+        tenderMethod: "CASH",
+        tenderedCents: 50000,
+        performedById: null,
+      });
+
+      await posService.requestReopen({ registerSessionId: session.id, requestedById: null });
+
+      const pending = await posService.listPendingReopens();
+      expect(pending.some((s) => s.id === session.id)).toBe(true);
+
+      // Expected: 10000 opening + 50000 cash sale = 60000.
+      const approved = await posService.approveReopen({
+        registerSessionId: session.id,
+        closingCashCents: 60000,
+        performedById: null,
+      });
+      expect(approved.status).toBe("CLOSED");
+      expect(approved.expectedCashCents).toBe(60000);
+      expect(approved.discrepancyCents).toBe(0);
+      expect(approved.reopenApprovedAt).not.toBeNull();
+
+      const stillPending = await posService.listPendingReopens();
+      expect(stillPending.some((s) => s.id === session.id)).toBe(false);
+
+      // The register is free again — opening a new session now succeeds.
+      const reopened = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+      expect(reopened.status).toBe("OPEN");
+      await posService.closeRegister({ registerSessionId: reopened.id, closingCashCents: 0 });
+    });
+
+    it("denying sends the session back to OPEN instead of closing it", async () => {
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 5000 });
+      await posService.requestReopen({ registerSessionId: session.id, requestedById: null });
+
+      const denied = await posService.denyReopen({
+        registerSessionId: session.id,
+        reason: "Drawer needs an in-person count",
+        performedById: null,
+      });
+      expect(denied.status).toBe("OPEN");
+      expect(denied.reopenDeniedAt).not.toBeNull();
+      expect(denied.reopenDenialReason).toBe("Drawer needs an in-person count");
+
+      // Still blocked from opening (status is OPEN, not freed) — same as any
+      // other stuck-open register.
+      await expect(
+        posService.openRegister({ registerId: register.id, openingCashCents: 0 })
+      ).rejects.toThrow(/already has an open session/);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 5000 });
+    });
+
+    it("rejects approving or denying a session that isn't pending", async () => {
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      await expect(
+        posService.approveReopen({ registerSessionId: session.id, closingCashCents: 0, performedById: null })
+      ).rejects.toThrow(/not awaiting reopen approval/);
+      await expect(
+        posService.denyReopen({ registerSessionId: session.id, reason: null, performedById: null })
+      ).rejects.toThrow(/not awaiting reopen approval/);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
+    });
+  });
 });

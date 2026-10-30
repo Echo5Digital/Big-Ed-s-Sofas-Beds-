@@ -1,8 +1,6 @@
 // Big Ed's Retail OS — core data model.
-// Scope this pass: Auth/RBAC, Catalog, Inventory, Purchasing, Orders (e-commerce).
-// POS-specific tables (Register, RegisterSession, CashMovement) are included for
-// schema completeness per the kickoff plan but are not wired to any API yet —
-// POS is explicitly deferred.
+// Scope this pass: Auth/RBAC, Catalog, Inventory, Purchasing, Orders (e-commerce),
+// POS (Register, RegisterSession, CashMovement).
 
 generator client {
   provider = "prisma-client-js"
@@ -38,7 +36,9 @@ model User {
   purchaseOrdersApproved PurchaseOrder[]   @relation("POApprovedBy")
   goodsReceipts          GoodsReceipt[]
   stockMovements         StockMovement[]
-  registerSessionsOpened RegisterSession[]
+  registerSessionsOpened RegisterSession[] @relation("RegisterSessionOpenedBy")
+  reopensRequested       RegisterSession[] @relation("RegisterSessionReopenRequestedBy")
+  reopensApproved        RegisterSession[] @relation("RegisterSessionReopenApprovedBy")
   createdAt              DateTime          @default(now())
   updatedAt              DateTime          @updatedAt
 
@@ -646,23 +646,37 @@ model Register {
 enum RegisterSessionStatus {
   OPEN
   CLOSED
+  // Set when a cashier finds this register's previous session still OPEN
+  // (left stuck — not closed out correctly) and submits a reopen request
+  // instead of closing it themselves. The register cannot be opened again
+  // until an admin/manager approves (-> CLOSED) or denies (-> back to OPEN)
+  // the request. See pos:register:approve-reopen.
+  PENDING_REOPEN_APPROVAL
 }
 
 model RegisterSession {
-  id                String                @id @default(uuid())
-  registerId        String
-  register          Register              @relation(fields: [registerId], references: [id], onDelete: Restrict)
-  openedById        String?
-  openedBy          User?                 @relation(fields: [openedById], references: [id], onDelete: SetNull)
-  status            RegisterSessionStatus @default(OPEN)
-  openingCashCents  Int                   @default(0)
-  closingCashCents  Int?
-  expectedCashCents Int?
-  discrepancyCents  Int?
-  cashMovements     CashMovement[]
-  receipts          Receipt[]
-  openedAt          DateTime              @default(now())
-  closedAt          DateTime?
+  id                  String                @id @default(uuid())
+  registerId          String
+  register            Register              @relation(fields: [registerId], references: [id], onDelete: Restrict)
+  openedById          String?
+  openedBy            User?                 @relation("RegisterSessionOpenedBy", fields: [openedById], references: [id], onDelete: SetNull)
+  status              RegisterSessionStatus @default(OPEN)
+  openingCashCents    Int                   @default(0)
+  closingCashCents    Int?
+  expectedCashCents   Int?
+  discrepancyCents    Int?
+  cashMovements       CashMovement[]
+  receipts            Receipt[]
+  openedAt            DateTime              @default(now())
+  closedAt            DateTime?
+  reopenRequestedById String?
+  reopenRequestedBy   User?                 @relation("RegisterSessionReopenRequestedBy", fields: [reopenRequestedById], references: [id], onDelete: SetNull)
+  reopenRequestedAt   DateTime?
+  reopenApprovedById  String?
+  reopenApprovedBy    User?                 @relation("RegisterSessionReopenApprovedBy", fields: [reopenApprovedById], references: [id], onDelete: SetNull)
+  reopenApprovedAt    DateTime?
+  reopenDeniedAt      DateTime?
+  reopenDenialReason  String?
 
   @@index([registerId])
   @@index([status])

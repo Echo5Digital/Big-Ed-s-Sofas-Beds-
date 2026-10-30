@@ -75,6 +75,37 @@ cash against the session's `CashMovement` rows and records any discrepancy
 rather than silently absorbing it; refunds are capped at the order total and
 write a compensating `REFUND` cash movement.
 
+### Register reopen approval (implemented)
+
+A register session left `OPEN` from a previous shift (never closed out —
+e.g. the cashier's browser tab closed without clicking "Close out
+register") cannot be force-closed by a cashier directly. Instead:
+
+1. A cashier who selects a stuck register in `apps/pos`'s "Open your
+   register" screen sees a "Request reopen approval" action instead of a
+   close button. `POST /api/pos/sessions/:id/request-reopen` (requires
+   `pos:register:close`) moves the session to
+   `RegisterSessionStatus.PENDING_REOPEN_APPROVAL` and stamps
+   `reopenRequestedById`/`reopenRequestedAt`. The register stays unusable —
+   `openRegister` rejects both `OPEN` and `PENDING_REOPEN_APPROVAL` — and the
+   cashier's screen polls until the status changes.
+2. Every register in this state surfaces in the admin dashboard's
+   notification bell (polled, `GET /api/pos/registers/pending-reopens`) and
+   on the `/registers` page, gated behind the `pos:register:approve-reopen`
+   permission (seeded onto `ADMIN` and `MANAGER`, not `CASHIER`/`STAFF`).
+3. **Approve** (`POST /api/pos/sessions/:id/approve-reopen`) actually closes
+   the stuck session — same cash reconciliation as a normal close (counted
+   cash vs. `openingCashCents` + `CashMovement` total, discrepancy recorded)
+   — and stamps `reopenApprovedById`/`reopenApprovedAt`. The register becomes
+   available again immediately.
+4. **Deny** (`POST /api/pos/sessions/:id/deny-reopen`) sends the session back
+   to `OPEN` rather than closing it — the register stays locked, signaling
+   that someone needs to physically check the drawer before it can be
+   reconciled — and stamps `reopenDeniedAt`/`reopenDenialReason`.
+
+Both actions write an `AuditLog` entry (`pos.register.reopen.request`
+/ `.approve` / `.deny`).
+
 ## Receiving stock (implemented)
 
 `POST /api/purchasing/purchase-orders/:id/receive` in

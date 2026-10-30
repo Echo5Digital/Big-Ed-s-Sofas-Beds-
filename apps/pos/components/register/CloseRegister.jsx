@@ -8,17 +8,14 @@ import { formatCents } from "@/lib/format";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
 
-// Closes a register session. Defaults to the current device's own open
-// session (the "Close out register" button inside an active checkout), but
-// accepts an explicit registerSessionId/registerName so a cashier can also
-// close a *different* register's stuck-open session they discover from the
-// "Open your register" screen (e.g. left open by a previous shift that never
-// closed out) — the close-session API has no ownership check, only the
-// pos:register:close permission, so this is a UI-only generalization.
-export default function CloseRegister({ open, onClose, registerSessionId, registerName, onClosed }) {
+// Closes the current device's own open register session (the "Close out
+// register" button inside an active checkout). A stuck register left open by
+// a previous shift is handled separately — see OpenRegister.jsx's "Request
+// reopen approval" flow, which requires manager/admin sign-off rather than
+// letting a cashier force-close someone else's session directly.
+export default function CloseRegister({ open, onClose, onClosed }) {
   const { session, closeSession } = useRegisterSession();
-  const targetSessionId = registerSessionId ?? session?.id;
-  const isOwnSession = !registerSessionId || registerSessionId === session?.id;
+  const targetSessionId = session?.id;
   const [closingCash, setClosingCash] = useState("");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -44,15 +41,13 @@ export default function CloseRegister({ open, onClose, registerSessionId, regist
     setResult(null);
     setClosingCash("");
     setNotes("");
-    if (isOwnSession) closeSession();
+    closeSession();
     onClose();
     onClosed?.();
   }
 
-  const titleSuffix = registerName ? ` — ${registerName}` : "";
-
   return (
-    <Modal open={open} onClose={onClose} title={result ? "Register closed" : `Close out register${titleSuffix}`}>
+    <Modal open={open} onClose={onClose} title={result ? "Register closed" : "Close out register"}>
       {result ? (
         <div className="flex flex-col gap-4">
           <div className="flex flex-col items-center gap-2 text-center">

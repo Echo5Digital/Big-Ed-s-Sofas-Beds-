@@ -23,6 +23,7 @@ function serializeSession(session) {
     id: session.id,
     registerId: session.registerId,
     registerName: session.register?.name,
+    locationName: session.register?.location?.name,
     status: session.status,
     openingCashCents: session.openingCashCents,
     closingCashCents: session.closingCashCents,
@@ -31,6 +32,12 @@ function serializeSession(session) {
     openedById: session.openedById,
     openedAt: session.openedAt,
     closedAt: session.closedAt,
+    reopenRequestedById: session.reopenRequestedById,
+    reopenRequestedAt: session.reopenRequestedAt,
+    reopenApprovedById: session.reopenApprovedById,
+    reopenApprovedAt: session.reopenApprovedAt,
+    reopenDeniedAt: session.reopenDeniedAt,
+    reopenDenialReason: session.reopenDenialReason,
   };
 }
 
@@ -39,12 +46,17 @@ async function openRegister({ registerId, openingCashCents, openedById }) {
   if (!register) throw new NotFoundError("Register not found");
   if (!register.isActive) throw new ConflictError("Register is not active");
 
-  const existingOpenSession = await prisma.registerSession.findFirst({
-    where: { registerId, status: "OPEN" },
+  const blockingSession = await prisma.registerSession.findFirst({
+    where: { registerId, status: { in: ["OPEN", "PENDING_REOPEN_APPROVAL"] } },
   });
-  if (existingOpenSession) {
+  if (blockingSession) {
+    if (blockingSession.status === "PENDING_REOPEN_APPROVAL") {
+      throw new ConflictError("Register is awaiting manager approval to reopen", {
+        registerSessionId: blockingSession.id,
+      });
+    }
     throw new ConflictError("Register already has an open session", {
-      registerSessionId: existingOpenSession.id,
+      registerSessionId: blockingSession.id,
     });
   }
 
@@ -337,6 +349,145 @@ async function closeRegister({ registerSessionId, closingCashCents, notes, perfo
   return serializeSession(updated);
 }
 
+// A cashier who finds a register still OPEN from a previous shift (left
+// stuck — not closed out correctly) can no longer force-close it themselves.
+// Instead this flips the stuck session to PENDING_REOPEN_APPROVAL so a
+// manager/admin reviews and either approves (closing it out for real) or
+// denies (sending it back to OPEN) the request. The register stays
+// unusable — openRegister() rejects both OPEN and PENDING_REOPEN_APPROVAL —
+// until that happens.
+async function requestReopen({ registerSessionId, requestedById }) {
+  const session = await prisma.registerSession.findUnique({
+    where: { id: registerSessionId },
+    include: { register: true },
+  });
+  if (!session) throw new NotFoundError("Register session not found");
+  if (session.status !== "OPEN") {
+    throw new ConflictError("Only a stuck, currently-open register session can request reopen approval");
+  }
+
+  const updated = await prisma.registerSession.update({
+    where: { id: registerSessionId },
+    data: {
+      status: "PENDING_REOPEN_APPROVAL",
+      reopenRequestedById: requestedById,
+      reopenRequestedAt: new Date(),
+      reopenApprovedById: null,
+      reopenApprovedAt: null,
+      reopenDeniedAt: null,
+      reopenDenialReason: null,
+    },
+    include: { register: { include: { location: true } } },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: requestedById,
+      action: "pos.register.reopen.request",
+      entityType: "RegisterSession",
+      entityId: registerSessionId,
+    },
+  });
+
+  return serializeSession(updated);
+}
+
+async function listPendingReopens() {
+  const sessions = await prisma.registerSession.findMany({
+    where: { status: "PENDING_REOPEN_APPROVAL" },
+    include: { register: { include: { location: true } }, reopenRequestedBy: true },
+    orderBy: { reopenRequestedAt: "asc" },
+  });
+  return sessions.map((session) => ({
+    ...serializeSession(session),
+    reopenRequestedByName: session.reopenRequestedBy
+      ? `${session.reopenRequestedBy.firstName} ${session.reopenRequestedBy.lastName}`
+      : null,
+  }));
+}
+
+// Approving actually closes the stuck session out (same cash reconciliation
+// as a normal close) so the register becomes available again. The manager
+// supplies the counted drawer total just like a cashier would have, since
+// nobody has reconciled this drawer yet.
+async function approveReopen({ registerSessionId, closingCashCents, notes, performedById }) {
+  const session = await prisma.registerSession.findUnique({ where: { id: registerSessionId } });
+  if (!session) throw new NotFoundError("Register session not found");
+  if (session.status !== "PENDING_REOPEN_APPROVAL") {
+    throw new ConflictError("This register session is not awaiting reopen approval");
+  }
+
+  const movements = await prisma.cashMovement.findMany({ where: { registerSessionId } });
+  const movementTotal = movements.reduce((sum, m) => {
+    const sign = m.type === "REFUND" || m.type === "PAID_OUT" ? -1 : 1;
+    return sum + sign * m.amountCents;
+  }, 0);
+
+  const expectedCashCents = session.openingCashCents + movementTotal;
+  const discrepancyCents = closingCashCents - expectedCashCents;
+
+  const updated = await prisma.registerSession.update({
+    where: { id: registerSessionId },
+    data: {
+      status: "CLOSED",
+      closingCashCents,
+      expectedCashCents,
+      discrepancyCents,
+      closedAt: new Date(),
+      reopenApprovedById: performedById,
+      reopenApprovedAt: new Date(),
+    },
+    include: { register: true },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: performedById,
+      action: "pos.register.reopen.approve",
+      entityType: "RegisterSession",
+      entityId: registerSessionId,
+      reasonCode: notes || null,
+      metadata: { closingCashCents, expectedCashCents, discrepancyCents },
+    },
+  });
+
+  return serializeSession(updated);
+}
+
+// Denying sends the session back to OPEN rather than closing it — the
+// manager is saying "don't just count this out, someone needs to physically
+// look at this register" (e.g. the discrepancy claim seems off, or the
+// stuck-open session needs investigating in person before it's reconciled).
+async function denyReopen({ registerSessionId, reason, performedById }) {
+  const session = await prisma.registerSession.findUnique({ where: { id: registerSessionId } });
+  if (!session) throw new NotFoundError("Register session not found");
+  if (session.status !== "PENDING_REOPEN_APPROVAL") {
+    throw new ConflictError("This register session is not awaiting reopen approval");
+  }
+
+  const updated = await prisma.registerSession.update({
+    where: { id: registerSessionId },
+    data: {
+      status: "OPEN",
+      reopenDeniedAt: new Date(),
+      reopenDenialReason: reason || null,
+    },
+    include: { register: true },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: performedById,
+      action: "pos.register.reopen.deny",
+      entityType: "RegisterSession",
+      entityId: registerSessionId,
+      reasonCode: reason || null,
+    },
+  });
+
+  return serializeSession(updated);
+}
+
 async function refund({ registerSessionId, orderId, amountCents, reasonCode, notes, restock, performedById }) {
   const session = await getOpenSession(registerSessionId);
 
@@ -414,6 +565,10 @@ async function refund({ registerSessionId, orderId, amountCents, reasonCode, not
 module.exports = {
   openRegister,
   closeRegister,
+  requestReopen,
+  listPendingReopens,
+  approveReopen,
+  denyReopen,
   ringSale,
   refund,
   serializeSession,
