@@ -32,13 +32,16 @@ Ed's Sofas & Beds homepage and the conventions that later pages followed.
 
 ```
 app/
-  layout.js        Root layout: fonts, DemoCartProvider, AnnouncementBar, SiteHeader, SiteFooter
+  layout.js        Root layout: fonts, DemoCartProvider, AnnouncementBar, SiteHeader,
+                     ConditionalFinancingBanner, SiteFooter
   page.jsx          Homepage section composition
   globals.css       Design tokens (colors, fonts) via Tailwind v4 @theme
 
 components/
   layout/           Site chrome: AnnouncementBar, SiteHeader, MobileNavigation,
-                     SearchBox, SiteFooter, DemoCartProvider (client context)
+                     SearchBox, SiteFooter, DemoCartProvider (client context),
+                     ConditionalFinancingBanner (renders FinancingBanner on every
+                     route except Home, /financing, /cart, /checkout, /account)
   home/             Homepage sections: HeroBanner, CategoryGrid/CategoryCard,
                      FeaturedProducts/ProductCard, DealsBanner, BenefitsSection,
                      ShowroomSection, TestimonialsSection, FinancingBanner,

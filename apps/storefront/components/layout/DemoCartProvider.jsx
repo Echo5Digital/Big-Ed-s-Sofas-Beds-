@@ -76,17 +76,24 @@ export function DemoCartProvider({ children }) {
     [cartItems]
   );
 
-  const value = {
-    cartItems,
-    cartCount,
-    cartSubtotal,
-    addToCart,
-    removeFromCart,
-    updateQuantity,
-    clearCart,
-    wishlistIds,
-    toggleWishlist,
-  };
+  // Memoized so components that only read e.g. cartCount (like SiteHeader,
+  // re-rendered on every navbar hover via its own local state) don't also
+  // get a new context value — and therefore a forced re-render — on every
+  // render of whatever triggered this provider to re-render.
+  const value = useMemo(
+    () => ({
+      cartItems,
+      cartCount,
+      cartSubtotal,
+      addToCart,
+      removeFromCart,
+      updateQuantity,
+      clearCart,
+      wishlistIds,
+      toggleWishlist,
+    }),
+    [cartItems, cartCount, cartSubtotal, addToCart, removeFromCart, updateQuantity, clearCart, wishlistIds, toggleWishlist]
+  );
 
   return <DemoCartContext.Provider value={value}>{children}</DemoCartContext.Provider>;
 }

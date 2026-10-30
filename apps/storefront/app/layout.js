@@ -4,6 +4,7 @@ import { DemoCartProvider } from "@/components/layout/DemoCartProvider";
 import AnnouncementBar from "@/components/layout/AnnouncementBar";
 import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
+import ConditionalFinancingBanner from "@/components/layout/ConditionalFinancingBanner";
 
 const fredoka = Fredoka({
   variable: "--font-fredoka",
@@ -56,6 +57,7 @@ export default function RootLayout({ children }) {
           <AnnouncementBar />
           <SiteHeader />
           <main className="flex-1">{children}</main>
+          <ConditionalFinancingBanner />
           <SiteFooter />
         </DemoCartProvider>
       </body>

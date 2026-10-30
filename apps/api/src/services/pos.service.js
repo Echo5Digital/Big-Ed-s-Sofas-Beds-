@@ -3,11 +3,6 @@ const { ConflictError, NotFoundError } = require("../lib/errors");
 const { createWithSequentialNumber } = require("../lib/sequentialNumber");
 const inventoryService = require("./inventory.service");
 
-// POS sales reserve and convert in the same request (a cashier completes the
-// sale immediately, unlike online checkout's held cart), so the reservation
-// TTL only needs to bridge the reserve -> convert gap within one transaction.
-const POS_RESERVATION_TTL_MINUTES = 5;
-
 async function nextOrderNumber(tx) {
   const count = await tx.order.count();
   return `BE-${100000 + count + 1}`;
@@ -62,7 +57,7 @@ async function openRegister({ registerId, openingCashCents, openedById }) {
 
   const session = await prisma.registerSession.create({
     data: { registerId, openedById, openingCashCents, status: "OPEN" },
-    include: { register: true },
+    include: { register: { include: { location: true } } },
   });
 
   return serializeSession(session);
@@ -183,46 +178,43 @@ async function ringSale({
     })
   );
 
-  // Reserve-then-convert per line, each its own transaction (same pattern as
-  // online checkout) so concurrent POS/web sales serialize on the stock
-  // balance row rather than racing on a stale read.
-  const reservationFailures = [];
-  const convertedLineVariantIds = [];
-  for (const line of lines) {
-    let reservation;
-    try {
-      reservation = await inventoryService.reserveStock({
+  // Reserve+convert each line in a single transaction (reserveAndConvertForSale)
+  // rather than two separately-committed ones — a POS cashier completes
+  // checkout in one motion, so there's no reason to pay for an intermediate
+  // ACTIVE-reservation round trip the way online checkout's reserve-now/
+  // convert-later flow needs. Lines run concurrently: each only locks its own
+  // variant's StockBalance row (same FOR UPDATE this always used), so
+  // distinct-product lines don't block each other, and same-variant lines
+  // (two cart rows for one SKU) still serialize correctly via Postgres's own
+  // row-lock queuing inside each call's transaction — concurrent POS/web
+  // sales for the same variant still serialize on that row exactly as before.
+  const settled = await Promise.allSettled(
+    lines.map((line) =>
+      inventoryService.reserveAndConvertForSale({
         variantId: line.variantId,
         locationId,
         quantity: line.quantity,
         orderId: order.id,
-        ttlMinutes: POS_RESERVATION_TTL_MINUTES,
-      });
-      await inventoryService.convertReservationToSale(reservation.id, {
         performedById,
         referenceId: order.id,
-      });
-      convertedLineVariantIds.push(line.variantId);
-    } catch {
-      // reserveStock can succeed (stock already locked into `reserved`) even
-      // when the immediately-following convertReservationToSale throws (a
-      // transient DB error, a lookup race, etc). Without releasing it here,
-      // that reservation stays ACTIVE and the unit stays stuck in
-      // StockBalance.reserved — unavailable to sell anywhere, online or in
-      // another register — until its TTL lazily expires. Only the lines
-      // tracked in convertedLineVariantIds are rolled back below, which never
-      // covered this reserved-but-not-converted case.
-      if (reservation) {
-        await inventoryService.releaseReservation(reservation.id).catch(() => {});
-      }
-      reservationFailures.push(line.variantId);
-      break;
+      })
+    )
+  );
+
+  const reservationFailures = [];
+  const convertedLineVariantIds = [];
+  settled.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      convertedLineVariantIds.push(lines[index].variantId);
+    } else {
+      reservationFailures.push(lines[index].variantId);
     }
-  }
+  });
 
   if (reservationFailures.length > 0) {
-    // Compensate any lines that already converted before cancelling the
-    // order — a sale that's half rung up must never be left ambiguous.
+    // Compensate every line that did succeed before cancelling the order —
+    // a sale that's half rung up must never be left ambiguous, regardless of
+    // which lines happened to win the race.
     for (const variantId of convertedLineVariantIds) {
       const line = lines.find((l) => l.variantId === variantId);
       await inventoryService.adjustStock({

@@ -49,6 +49,37 @@ const PRODUCT_INCLUDE = {
   },
 };
 
+// POS's product search (apps/pos/components/checkout/ProductSearch.jsx) only
+// ever reads variant sku/name/price/availability — it never shows images,
+// category, or description. Those extra relations are real Prisma-level
+// round trips (category, categoryTags+category, images) and real
+// over-the-wire payload (full Cloudinary URLs/alt text for every image on
+// every product) that POS fetches and immediately discards on every
+// debounced keystroke. ?fields=minimal skips them; every other caller
+// (storefront) is unaffected and keeps the full default shape.
+const PRODUCT_INCLUDE_MINIMAL = {
+  variants: {
+    include: {
+      stockBalances: { include: { location: true } },
+    },
+  },
+};
+
+function serializeProductMinimal(product) {
+  return {
+    id: product.id,
+    name: product.name,
+    variants: product.variants.map((v) => ({
+      id: v.id,
+      sku: v.sku,
+      name: v.name,
+      priceCents: v.priceCents,
+      isActive: v.isActive,
+      availability: computeAvailability(v),
+    })),
+  };
+}
+
 // The admin product list's Category column should show the most specific
 // (deepest) category a product belongs to, not necessarily whichever one
 // happens to be the primary categoryId — admins can check a parent and a
@@ -136,7 +167,8 @@ router.get(
 router.get(
   "/products",
   asyncHandler(async (req, res) => {
-    const { category, status, q, page = "1", pageSize = "24", sort, deals } = req.query;
+    const { category, status, q, page = "1", pageSize = "24", sort, deals, fields } = req.query;
+    const minimal = fields === "minimal";
 
     const where = {
       ...(status ? { status } : { status: "ACTIVE" }),
@@ -177,7 +209,7 @@ router.get(
     const [products, total] = await Promise.all([
       prisma.product.findMany({
         where,
-        include: PRODUCT_INCLUDE,
+        include: minimal ? PRODUCT_INCLUDE_MINIMAL : PRODUCT_INCLUDE,
         orderBy,
         take,
         skip,
@@ -186,7 +218,7 @@ router.get(
     ]);
 
     res.json({
-      products: products.map(serializeProduct),
+      products: products.map(minimal ? serializeProductMinimal : serializeProduct),
       pagination: { page: Number(page) || 1, pageSize: take, total },
     });
   })

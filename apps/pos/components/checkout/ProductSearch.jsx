@@ -45,7 +45,7 @@ export default function ProductSearch({ onAdd }) {
     setLoading(true);
     try {
       const data = await api.get(
-        `/catalog/products?page=1&pageSize=${PAGE_SIZE}${q ? `&q=${encodeURIComponent(q)}` : ""}`
+        `/catalog/products?fields=minimal&page=1&pageSize=${PAGE_SIZE}${q ? `&q=${encodeURIComponent(q)}` : ""}`
       );
       if (requestId !== requestIdRef.current) return;
       setResults(flattenVariants(data.products));
@@ -68,7 +68,7 @@ export default function ProductSearch({ onAdd }) {
     setLoadingMore(true);
     try {
       const data = await api.get(
-        `/catalog/products?page=${nextPage}&pageSize=${PAGE_SIZE}${query ? `&q=${encodeURIComponent(query)}` : ""}`
+        `/catalog/products?fields=minimal&page=${nextPage}&pageSize=${PAGE_SIZE}${query ? `&q=${encodeURIComponent(query)}` : ""}`
       );
       if (requestId !== requestIdRef.current) return;
       setResults((prev) => [...prev, ...flattenVariants(data.products)]);

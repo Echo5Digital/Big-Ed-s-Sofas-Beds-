@@ -54,15 +54,22 @@ displayed success").
 2. For `CASH`/`DEPOSIT`: price the lines server-side from live `Variant`
    data (never trust a client-sent price), create a `DRAFT` order with
    `channel: "POS"` and `fulfillmentMethod: "IN_STORE"`.
-3. Reserve stock against the register's assigned location, then immediately
-   call `convertReservationToSale` — a POS cashier completes checkout in one
-   motion, unlike the online cart's held reservation. This reuses the exact
-   same `inventory.service.js` functions the online checkout path uses, so
-   POS and web sales serialize on the same `StockBalance` row and can never
-   double-sell the last unit across channels.
-4. If any line fails to reserve, compensate already-converted lines with an
+3. Reserve and convert stock for every line concurrently (`Promise.allSettled`)
+   against the register's assigned location via
+   `inventoryService.reserveAndConvertForSale` — a POS cashier completes
+   checkout in one motion, unlike the online cart's held reservation, so
+   reserve+convert happens in a single transaction per line instead of two
+   separately-committed ones (online checkout still reserves now and converts
+   later via `reserveStock`/`convertReservationToSale` separately, once
+   payment is confirmed — see "Online checkout" above). Each line's
+   transaction still takes the same `FOR UPDATE` lock on its `StockBalance`
+   row, so POS and web sales for the same variant still serialize on that row
+   and can never double-sell the last unit across channels; lines for
+   different variants run in parallel since they lock different rows.
+4. If any line fails, compensate every line that did succeed with an
    offsetting `adjustStock` call and cancel the order — a half-rung-up sale
-   is never left ambiguous.
+   is never left ambiguous, regardless of which concurrent lines happened to
+   succeed or fail.
 5. Write a `Payment` (`status: SUCCEEDED`), a `CashMovement` on the register
    session (type `SALE` or `DEPOSIT`), and a `Receipt`. `paymentStatus`
    becomes `PAID` (full tender) or `PARTIALLY_PAID` (deposit less than the

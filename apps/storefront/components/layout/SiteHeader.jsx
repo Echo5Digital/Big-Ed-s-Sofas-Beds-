@@ -51,7 +51,7 @@ function NavItem({ item }) {
           role="menu"
           onMouseEnter={openNow}
           onMouseLeave={closeSoon}
-          className={`absolute left-1/2 top-full z-50 w-64 -translate-x-1/2 pt-2 transition ${
+          className={`absolute left-1/2 top-full z-50 w-64 -translate-x-1/2 pt-2 transition-[opacity,transform] duration-100 ease-out ${
             open ? "visible translate-y-0 opacity-100" : "invisible -translate-y-1 opacity-0"
           }`}
         >
@@ -62,6 +62,7 @@ function NavItem({ item }) {
                   href={child.href}
                   role="menuitem"
                   onClick={() => setOpen(false)}
+                  prefetch={false}
                   className="block rounded-lg px-3 py-2 hover:bg-brand-charcoal/5 hover:text-brand-red-dark focus-visible:outline-2 focus-visible:outline-brand-red"
                 >
                   {child.label}

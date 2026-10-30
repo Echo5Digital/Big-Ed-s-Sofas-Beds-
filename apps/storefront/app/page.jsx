@@ -12,7 +12,6 @@ import DealsBanner from "@/components/home/DealsBanner";
 import BenefitsSection from "@/components/home/BenefitsSection";
 import ShowroomSection from "@/components/home/ShowroomSection";
 import TestimonialsSection from "@/components/home/TestimonialsSection";
-import FinancingBanner from "@/components/home/FinancingBanner";
 import NewsletterSignup from "@/components/home/NewsletterSignup";
 import { getCategories, getProducts } from "@/lib/api/catalog";
 
@@ -36,7 +35,6 @@ export default async function HomePage() {
       <BenefitsSection />
       <ShowroomSection />
       <TestimonialsSection />
-      <FinancingBanner />
       <NewsletterSignup />
     </>
   );

@@ -257,6 +257,62 @@ async function convertReservationToSale(reservationId, { performedById, referenc
   });
 }
 
+// POS-only fast path: a cashier completes checkout in one motion, so there's
+// no reason to split "reserve" and "convert" into two separately-committed
+// transactions the way online checkout does (reserve at add-to-cart time,
+// convert only once payment is confirmed, possibly minutes later via
+// webhook — see routes/orders.routes.js and routes/webhooks.routes.js,
+// which still call reserveStock/convertReservationToSale separately and
+// must keep doing so). Here, both steps happen inside ONE transaction and
+// ONE FOR UPDATE lock acquisition instead of two, which is the same
+// cross-channel serialization guarantee reserveStock/convertReservationToSale
+// provide individually — a concurrent online reservation for the same
+// variant still blocks on the same StockBalance row lock — just without the
+// extra round trip of committing an intermediate ACTIVE reservation that
+// gets converted a few milliseconds later.
+async function reserveAndConvertForSale({ variantId, locationId, quantity, orderId, performedById, referenceId }) {
+  return prisma.$transaction(async (tx) => {
+    const balance = await getOrCreateBalance(tx, variantId, locationId);
+
+    if (availableToSell(balance) < quantity) {
+      throw new ConflictError("Insufficient stock available to reserve", {
+        availableToSell: availableToSell(balance),
+        requested: quantity,
+      });
+    }
+
+    await tx.stockBalance.update({
+      where: { id: balance.id },
+      data: { onHand: { decrement: quantity } },
+    });
+
+    const reservation = await tx.reservation.create({
+      data: {
+        variantId,
+        locationId,
+        quantity,
+        orderId,
+        expiresAt: new Date(),
+        status: "CONVERTED",
+      },
+    });
+
+    await tx.stockMovement.create({
+      data: {
+        variantId,
+        locationId,
+        type: "SALE",
+        quantity,
+        referenceType: "Order",
+        referenceId: referenceId ?? orderId,
+        performedById,
+      },
+    });
+
+    return reservation;
+  });
+}
+
 // Lazily expire reservations past their TTL. Called before any read that
 // needs an accurate available-to-sell figure (catalog reads, PDP, checkout).
 async function expireStaleReservations() {
@@ -299,6 +355,7 @@ module.exports = {
   reserveStock,
   releaseReservation,
   convertReservationToSale,
+  reserveAndConvertForSale,
   expireStaleReservations,
   availableToSell,
 };

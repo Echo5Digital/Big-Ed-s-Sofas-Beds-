@@ -60,3 +60,20 @@ body {
     transform: translateY(0) scale(1);
   }
 }
+
+/* Printing a sale receipt must only output the receipt itself — not the
+   checkout screen, cart, or "Sale complete" modal chrome behind it. The
+   receipt renders into its own top-level node (see ReceiptPrintable /
+   ReceiptView) so this rule can hide every other top-level child of <body>
+   (the app root, the "Sale complete" modal's own portal, etc.) and show only
+   that node, full width, with no browser chrome bleeding through. */
+@media print {
+  body > *:not(#receipt-print-root) {
+    display: none !important;
+  }
+
+  #receipt-print-root {
+    display: block !important;
+    position: static !important;
+  }
+}
