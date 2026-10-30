@@ -534,6 +534,7 @@ model Order {
   @@index([paymentStatus])
   @@index([fulfillmentStatus])
   @@index([orderNumber])
+  @@index([createdAt])
 }
 
 // Historical snapshot of price/tax/discount at time of sale — never recompute

@@ -24,26 +24,68 @@ router.get(
   asyncHandler(async (req, res) => {
     const { start, end } = parseDayRange(req.query.date);
 
-    const [ordersInRange, salesAgg, lowStockBalances] = await Promise.all([
+    // Computed in SQL rather than fetching every (variant, location) row and
+    // filtering in JS — see /dashboard/overview for the same fix with more
+    // detail on why that mattered at scale.
+    const [ordersInRange, salesAgg, lowStockCountRow] = await Promise.all([
       prisma.order.count({ where: { createdAt: { gte: start, lt: end }, status: { not: "CANCELED" } } }),
       prisma.order.aggregate({
         where: { createdAt: { gte: start, lt: end }, status: { not: "CANCELED" } },
         _sum: { totalCents: true },
       }),
-      prisma.stockBalance.findMany({
-        include: { variant: { include: { product: true } }, location: true },
-      }),
+      prisma.$queryRaw`
+        SELECT COUNT(*)::int AS count
+        FROM "StockBalance" sb
+        WHERE GREATEST(sb."onHand" - sb.reserved - sb.quarantined, 0) <= 2
+      `,
     ]);
 
-    const lowStockCount = lowStockBalances
-      .map((b) => Math.max(0, b.onHand - b.reserved - b.quarantined))
-      .filter((available) => available <= 2).length;
+    const lowStockCount = lowStockCountRow[0]?.count ?? 0;
 
     res.json({
       date: start.toISOString(),
       salesCents: salesAgg._sum.totalCents ?? 0,
       orders: ordersInRange,
       lowStockCount,
+    });
+  })
+);
+
+// Daily revenue + order count for the last `days` calendar days (including
+// today), oldest first — backs the admin dashboard's trend chart. Buckets by
+// the database's own local day boundary (date_trunc) rather than JS Date
+// math so the grouping is a single indexed query instead of N separate
+// day-range queries. Days with no orders still appear in the response with
+// zero values, filled in client-side isn't needed since we left-join against
+// a generated date series here.
+router.get(
+  "/sales-trend",
+  asyncHandler(async (req, res) => {
+    const days = Math.min(90, Math.max(1, Number(req.query.days) || 14));
+
+    const rows = await prisma.$queryRaw`
+      SELECT
+        day_series.day AS day,
+        COALESCE(SUM(o."totalCents"), 0)::bigint AS "salesCents",
+        COUNT(o.id)::int AS orders
+      FROM generate_series(
+        date_trunc('day', now()) - (${days - 1} || ' days')::interval,
+        date_trunc('day', now()),
+        '1 day'::interval
+      ) AS day_series(day)
+      LEFT JOIN "Order" o
+        ON date_trunc('day', o."createdAt") = day_series.day
+        AND o.status != 'CANCELED'
+      GROUP BY day_series.day
+      ORDER BY day_series.day ASC
+    `;
+
+    res.json({
+      days: rows.map((r) => ({
+        date: r.day.toISOString().slice(0, 10),
+        salesCents: Number(r.salesCents),
+        orders: r.orders,
+      })),
     });
   })
 );
