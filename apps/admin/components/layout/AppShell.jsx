@@ -17,6 +17,7 @@ import {
   Menu,
   LogOut,
   MonitorSmartphone,
+  CreditCard,
 } from "lucide-react";
 import { useAuth } from "@/lib/hooks/useAuth";
 import NotificationBell from "./NotificationBell";
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
   { label: "Purchase Orders", href: "/purchasing", icon: ClipboardList, permission: "purchasing:read" },
   { label: "Suppliers", href: "/suppliers", icon: Users, permission: "purchasing:read" },
   { label: "Orders", href: "/orders", icon: ShoppingCart, permission: "orders:read" },
+  { label: "Payments", href: "/payments", icon: CreditCard, permission: "reports:read" },
   { label: "Deliveries", href: "/deliveries", icon: Truck, permission: "orders:read" },
   { label: "Registers", href: "/registers", icon: MonitorSmartphone, permission: "pos:register:approve-reopen" },
   { label: "Reports", href: "/reports", icon: BarChart3, permission: "reports:read" },

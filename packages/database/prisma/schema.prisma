@@ -562,6 +562,7 @@ enum PaymentMethod {
   CASH
   CARD
   DEPOSIT
+  BANK_TRANSFER
 }
 
 enum PaymentStatusDetail {

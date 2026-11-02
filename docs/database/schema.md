@@ -87,6 +87,18 @@ idempotent once a real payment provider is integrated — duplicate webhook
 deliveries become no-ops at the database constraint level, not just
 application logic.
 
+`PaymentMethod` is `CASH | CARD | DEPOSIT | BANK_TRANSFER`. `BANK_TRANSFER`
+was added as schema groundwork for the admin Payments dashboard
+(`docs/architecture/overview.md#payments-admin-dashboard-apipayments`) — no
+checkout, webhook, or POS code path creates a `BANK_TRANSFER` payment yet, so
+it will always aggregate to zero until a real bank-transfer flow is built.
+`Payment` has no relation to `User`; the only way to attribute a payment to
+a staff member is the indirect join `Payment -> Order -> Receipt ->
+RegisterSession -> openedBy`, which only resolves for POS sales (online/
+Stripe payments have no register session). `Refund.paymentId` exists but is
+never populated by the one place refunds are created (`pos.service.js`'s
+`refund()`) — refunds attribute to an `Order`, not a specific `Payment` row.
+
 ### POS (`Register`, `RegisterSession`, `CashMovement`, `Receipt`)
 
 Implemented — see `apps/api/src/services/pos.service.js` and

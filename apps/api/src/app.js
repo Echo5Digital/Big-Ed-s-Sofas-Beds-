@@ -17,6 +17,7 @@ const ordersRoutes = require("./routes/orders.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
 const posRoutes = require("./routes/pos.routes");
 const reportsRoutes = require("./routes/reports.routes");
+const paymentsRoutes = require("./routes/payments.routes");
 const webhooksRoutes = require("./routes/webhooks.routes");
 
 function createApp() {
@@ -52,6 +53,7 @@ function createApp() {
   app.use("/api/dashboard", dashboardRoutes);
   app.use("/api/pos", posRoutes);
   app.use("/api/reports", reportsRoutes);
+  app.use("/api/payments", paymentsRoutes);
 
   app.use((req, res) => {
     res.status(404).json({ error: { message: "Not found" } });

@@ -16,18 +16,53 @@ function parseDayRange(dateParam) {
   return { start, end };
 }
 
+// `monthParam` is a "YYYY-MM" string (the shape of an <input type="month">).
+// Falls back to the current calendar month on anything unparseable, same
+// fallback behavior as parseDayRange above.
+function parseMonthRange(monthParam) {
+  const match = /^(\d{4})-(\d{2})$/.exec(monthParam ?? "");
+  const now = new Date();
+  const year = match ? Number(match[1]) : now.getFullYear();
+  const monthIndex = match ? Number(match[2]) - 1 : now.getMonth();
+  const start = new Date(year, monthIndex, 1);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(year, monthIndex + 1, 1);
+  end.setHours(0, 0, 0, 0);
+  return { start, end };
+}
+
+// PurchaseOrder has no stored spend total — every line's committed cost is
+// expectedQty * unitCostCents, plus its own tax/freight, matching the same
+// formula purchasing.routes.js's PO export endpoint already uses so this
+// number can't silently diverge from what a PO's own line items show.
+function lineSpendCents(line) {
+  return line.expectedQty * line.unitCostCents + line.taxCents + line.freightCents;
+}
+
 // Date-scoped version of /dashboard/overview's stat tiles, so the Reports
-// page can show any selected day rather than always "today". Low stock is
-// a current snapshot (not a historical concept) so it ignores the date.
+// page can show any selected day (or, with ?month=YYYY-MM, a whole calendar
+// month) rather than always "today". Low stock is a current snapshot (not a
+// historical concept) so it ignores the date/month range. Payment-method
+// breakdowns, deposits, refunds, and outstanding balances live on the
+// Payments page (/api/payments/stats) — this endpoint intentionally stays
+// focused on order/purchasing/catalog activity so the two pages don't show
+// overlapping, potentially-diverging numbers for the same concept.
 router.get(
   "/overview",
   asyncHandler(async (req, res) => {
-    const { start, end } = parseDayRange(req.query.date);
+    const { start, end } = req.query.month ? parseMonthRange(req.query.month) : parseDayRange(req.query.date);
 
     // Computed in SQL rather than fetching every (variant, location) row and
     // filtering in JS — see /dashboard/overview for the same fix with more
     // detail on why that mattered at scale.
-    const [ordersInRange, salesAgg, lowStockCountRow] = await Promise.all([
+    const [
+      ordersInRange,
+      salesAgg,
+      lowStockCountRow,
+      newCustomers,
+      poByStatus,
+      poLinesInRange,
+    ] = await Promise.all([
       prisma.order.count({ where: { createdAt: { gte: start, lt: end }, status: { not: "CANCELED" } } }),
       prisma.order.aggregate({
         where: { createdAt: { gte: start, lt: end }, status: { not: "CANCELED" } },
@@ -38,15 +73,30 @@ router.get(
         FROM "StockBalance" sb
         WHERE GREATEST(sb."onHand" - sb.reserved - sb.quarantined, 0) <= 2
       `,
+      prisma.customer.count({ where: { createdAt: { gte: start, lt: end } } }),
+      prisma.purchaseOrder.groupBy({
+        by: ["status"],
+        where: { createdAt: { gte: start, lt: end } },
+        _count: { _all: true },
+      }),
+      prisma.pOLine.findMany({
+        where: { purchaseOrder: { createdAt: { gte: start, lt: end }, status: { not: "CANCELED" } } },
+        select: { expectedQty: true, unitCostCents: true, taxCents: true, freightCents: true },
+      }),
     ]);
 
     const lowStockCount = lowStockCountRow[0]?.count ?? 0;
+    const purchasingSpendCents = poLinesInRange.reduce((sum, line) => sum + lineSpendCents(line), 0);
 
     res.json({
       date: start.toISOString(),
+      rangeEnd: end.toISOString(),
       salesCents: salesAgg._sum.totalCents ?? 0,
       orders: ordersInRange,
       lowStockCount,
+      newCustomers,
+      purchaseOrdersByStatus: poByStatus.map((g) => ({ status: g.status, count: g._count._all })),
+      purchasingSpendCents,
     });
   })
 );

@@ -228,6 +228,52 @@ decision): cash and deposit sales are fully implemented, but
 `POST /api/pos/sales` rejects `tenderMethod: "CARD"` with 501 — see
 `apps/pos/README.md`.
 
+### Reports (`/api/reports`)
+
+`apps/api/src/routes/reports.routes.js`, gated by `reports:read`.
+`GET /reports/overview` accepts either `?date=YYYY-MM-DD` (single day,
+default: today) or `?month=YYYY-MM` (full calendar month, falls back to the
+current month on anything unparseable) — the admin Reports page
+(`apps/admin/app/reports/page.jsx`) exposes this as a Day/Month toggle.
+Besides sales/orders/low-stock, the response is period-scoped for
+`newCustomers` (`Customer.createdAt` in range — counts guest-checkout rows
+too, not just verified signups) and purchasing (`purchaseOrdersByStatus`
+grouped by `PurchaseOrder.createdAt` in range, `purchasingSpendCents` summing
+each `POLine`'s `expectedQty * unitCostCents + taxCents + freightCents`
+across non-`CANCELED` POs created in range — the same formula
+`purchasing.routes.js`'s PO export endpoint uses, so the two numbers can't
+silently diverge). `GET /reports/sales-trend?days=N` (shared with the
+Dashboard's trend chart) backs Reports' own 30-day trend chart, which is a
+fixed rolling window independent of the Day/Month toggle. Payment-method
+breakdowns, deposits, refunds, and outstanding balances are intentionally
+**not** duplicated here — see Payments below.
+
+### Payments admin dashboard (`/api/payments`)
+
+`apps/api/src/routes/payments.routes.js`, gated by `reports:read` (same
+permission as Dashboard/Reports — there is no separate `payments:read` key).
+Read-only; nothing here mutates a `Payment`, `Order`, or `Refund` row.
+
+- `GET /payments/stats` — dashboard tiles: collected today/this month
+  (`Payment.amountCents` summed where `status: SUCCEEDED`, never
+  `Order.totalCents`, so partial/deposit payments are reflected accurately),
+  outstanding balances (`Order.totalCents` minus its `SUCCEEDED` payments for
+  every `UNPAID`/`PARTIALLY_PAID` order), deposits collected, total refunds,
+  failed transaction count, and a revenue breakdown by method/channel
+  (online card, POS card, cash, bank transfer).
+- `GET /payments` — filterable list (`method`, `status`, `source` derived
+  from `Order.channel`, `q` matching order number or customer email, `from`/
+  `to` date range), newest first, capped at 200 rows (same convention as
+  `orders.routes.js`/`reports.routes.js` — no pagination UI exists yet
+  anywhere in the admin app).
+- `GET /payments/:id` — single payment plus its order's full refund history.
+
+The admin UI lives at `apps/admin/app/payments/page.jsx` (sidebar entry
+"Payments", same `reports:read` gate). See
+`docs/database/schema.md#sales-customer-customerregistration-address-order-orderline-payment-refund-providerevent`
+for the `BANK_TRANSFER` payment method and the "recorded by" attribution
+caveat (best-effort via `RegisterSession.openedBy`, POS-only).
+
 ## What is explicitly NOT built yet (by design)
 
 These are scope guardrails from the kickoff plan, not omissions:

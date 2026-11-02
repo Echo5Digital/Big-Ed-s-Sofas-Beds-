@@ -64,7 +64,10 @@ function ProductsContent() {
     return allRows.filter((r) => {
       const matchesSearch =
         !query || r.variant.sku.toLowerCase().includes(query) || r.product.name.toLowerCase().includes(query);
-      const matchesCategory = !categoryId || r.product.category?.id === categoryId;
+      const matchesCategory =
+        !categoryId ||
+        r.product.category?.id === categoryId ||
+        r.product.categories.some((c) => c.id === categoryId);
       return matchesSearch && matchesCategory;
     });
   }, [products, search, categoryId]);
