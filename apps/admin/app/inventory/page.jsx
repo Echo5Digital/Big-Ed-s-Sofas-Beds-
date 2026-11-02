@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeftRight, PlusCircle, Search, SlidersHorizontal } from "lucide-react";
+import { ArrowLeftRight, Search, SlidersHorizontal } from "lucide-react";
 import RequireAuth from "@/components/layout/RequireAuth";
 import PageHeader from "@/components/ui/PageHeader";
 import DataTable from "@/components/ui/DataTable";
@@ -9,75 +9,6 @@ import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { api, ApiClientError } from "@/lib/api/client";
-
-// Both header-level "Add Stock" and "Transfer" actions need a specific
-// (variant, location) balance row to act on — same shape AdjustModal and
-// TransferModal already take — so this picker lets the user search and pick
-// one from the balances already loaded on the page, instead of duplicating
-// a second fetch of the same data.
-function VariantPickerModal({ open, title, balances, onClose, onPick }) {
-  const [query, setQuery] = useState("");
-
-  function handleClose() {
-    setQuery("");
-    onClose();
-  }
-
-  const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const source = balances ?? [];
-    if (!q) return source.slice(0, 50);
-    return source
-      .filter((b) => b.sku.toLowerCase().includes(q) || b.productName.toLowerCase().includes(q))
-      .slice(0, 50);
-  }, [balances, query]);
-
-  return (
-    <Modal open={open} onClose={handleClose} title={title}>
-      <div className="flex flex-col gap-3">
-        <div className="relative">
-          <Search
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-brand-charcoal/40"
-            aria-hidden="true"
-          />
-          <input
-            autoFocus
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by SKU or product name"
-            aria-label="Search inventory by SKU or name"
-            className="w-full rounded-lg border border-black/15 py-2 pl-9 pr-3 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-          />
-        </div>
-
-        <ul className="flex max-h-80 flex-col divide-y divide-black/5 overflow-y-auto rounded-lg border border-black/10">
-          {matches.length === 0 && (
-            <li className="px-3 py-4 text-center text-sm text-brand-charcoal/50">No matching stock found.</li>
-          )}
-          {matches.map((b) => (
-            <li key={b.id}>
-              <button
-                type="button"
-                onClick={() => {
-                  setQuery("");
-                  onPick(b);
-                }}
-                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm hover:bg-gray-50"
-              >
-                <span className="min-w-0 truncate">
-                  <span className="font-semibold text-brand-charcoal">{b.productName}</span>
-                  <span className="text-brand-charcoal/50"> — {b.sku}</span>
-                </span>
-                <span className="shrink-0 text-xs text-brand-charcoal/50">{b.locationName}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </Modal>
-  );
-}
 
 function AdjustModal({ open, onClose, balance, onDone }) {
   const [type, setType] = useState("ADJUSTMENT_INCREASE");
@@ -299,7 +230,6 @@ function InventoryContent() {
   const [error, setError] = useState(null);
   const [adjustTarget, setAdjustTarget] = useState(null);
   const [transferTarget, setTransferTarget] = useState(null);
-  const [pickerMode, setPickerMode] = useState(null); // null | "adjust" | "transfer"
 
   const load = useCallback(() => {
     const query = lowStockOnly ? "?lowStockOnly=true" : "";
@@ -330,26 +260,6 @@ function InventoryContent() {
   }, [balances, search]);
 
   const columns = [
-    { key: "sku", header: "SKU" },
-    { key: "productName", header: "Product", render: (r) => r.productName },
-    { key: "locationName", header: "Location" },
-    { key: "onHand", header: "On Hand" },
-    { key: "reserved", header: "Reserved" },
-    { key: "quarantined", header: "Quarantined" },
-    {
-      key: "availableToSell",
-      header: "Available",
-      render: (r) => (
-        <Badge tone={r.availableToSell === 0 ? "danger" : r.availableToSell <= 2 ? "warning" : "success"}>
-          {r.availableToSell}
-        </Badge>
-      ),
-    },
-    {
-      key: "suggestedReorderQty",
-      header: "Suggested Reorder",
-      render: (r) => (r.suggestedReorderQty > 0 ? r.suggestedReorderQty : "—"),
-    },
     {
       key: "actions",
       header: "",
@@ -374,6 +284,26 @@ function InventoryContent() {
         </div>
       ),
     },
+    { key: "sku", header: "SKU" },
+    { key: "productName", header: "Product", render: (r) => r.productName },
+    { key: "locationName", header: "Location" },
+    { key: "onHand", header: "On Hand" },
+    { key: "reserved", header: "Reserved" },
+    { key: "quarantined", header: "Quarantined" },
+    {
+      key: "availableToSell",
+      header: "Available",
+      render: (r) => (
+        <Badge tone={r.availableToSell === 0 ? "danger" : r.availableToSell <= 2 ? "warning" : "success"}>
+          {r.availableToSell}
+        </Badge>
+      ),
+    },
+    {
+      key: "suggestedReorderQty",
+      header: "Suggested Reorder",
+      render: (r) => (r.suggestedReorderQty > 0 ? r.suggestedReorderQty : "—"),
+    },
   ];
 
   return (
@@ -382,25 +312,15 @@ function InventoryContent() {
         title="Inventory"
         subtitle="Stock by location, reservations, and adjustments"
         action={
-          <div className="flex flex-wrap items-center gap-4">
-            <label className="flex items-center gap-2 text-sm font-medium text-brand-charcoal">
-              <input
-                type="checkbox"
-                checked={lowStockOnly}
-                onChange={(e) => setLowStockOnly(e.target.checked)}
-                className="size-4 rounded border-black/20 text-brand-red focus:ring-brand-red"
-              />
-              Low stock only
-            </label>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" icon={PlusCircle} onClick={() => setPickerMode("adjust")}>
-                Add Stock
-              </Button>
-              <Button variant="outline" size="sm" icon={ArrowLeftRight} onClick={() => setPickerMode("transfer")}>
-                Transfer
-              </Button>
-            </div>
-          </div>
+          <label className="flex items-center gap-2 text-sm font-medium text-brand-charcoal">
+            <input
+              type="checkbox"
+              checked={lowStockOnly}
+              onChange={(e) => setLowStockOnly(e.target.checked)}
+              className="size-4 rounded border-black/20 text-brand-red focus:ring-brand-red"
+            />
+            Low stock only
+          </label>
         }
       />
 
@@ -427,27 +347,6 @@ function InventoryContent() {
         emptyMessage={
           balances && balances.length > 0 ? "No stock balances match your search." : "No stock balances found."
         }
-      />
-
-      <VariantPickerModal
-        open={pickerMode === "adjust"}
-        title="Add Stock — Select Item"
-        balances={balances}
-        onClose={() => setPickerMode(null)}
-        onPick={(balance) => {
-          setPickerMode(null);
-          setAdjustTarget(balance);
-        }}
-      />
-      <VariantPickerModal
-        open={pickerMode === "transfer"}
-        title="Transfer Stock — Select Item"
-        balances={balances}
-        onClose={() => setPickerMode(null)}
-        onPick={(balance) => {
-          setPickerMode(null);
-          setTransferTarget(balance);
-        }}
       />
 
       <AdjustModal
