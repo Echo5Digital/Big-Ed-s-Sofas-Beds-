@@ -20,6 +20,23 @@ function slugify(value) {
     .replace(/(^-|-$)/g, "");
 }
 
+// ApiClientError.message is always the generic "Validation failed" for a 422
+// (see apps/api/src/lib/errors.js ValidationError) — the actual failing
+// field lives in .details, a Zod .flatten() object. Surfacing it here is
+// what would have told staff immediately that "Dimensions" (not the
+// category) was the problem, instead of a dead-end generic message.
+function describeApiError(err, fallback) {
+  const fieldErrors = err instanceof ApiClientError ? err.details?.fieldErrors : null;
+  if (fieldErrors) {
+    const firstEntry = Object.entries(fieldErrors).find(([, messages]) => messages?.length);
+    if (firstEntry) {
+      const [field, messages] = firstEntry;
+      return `${field}: ${messages[0]}`;
+    }
+  }
+  return err instanceof ApiClientError ? err.message : fallback;
+}
+
 function NewProductContent() {
   const router = useRouter();
   const [categories, setCategories] = useState([]);
@@ -99,7 +116,7 @@ function NewProductContent() {
       });
       router.push("/products");
     } catch (err) {
-      setError(err instanceof ApiClientError ? err.message : "Failed to create product.");
+      setError(describeApiError(err, "Failed to create product."));
     } finally {
       setSubmitting(false);
     }
@@ -218,6 +235,7 @@ function NewProductContent() {
                 placeholder={'e.g. 84"W x 38"D x 36"H'}
                 value={dimensions}
                 onChange={(e) => setDimensions(e.target.value)}
+                maxLength={160}
                 className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
               />
             </div>
