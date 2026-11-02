@@ -1,4 +1,5 @@
 const { prisma } = require("@big-eds/database");
+const { productCreateSchema } = require("@big-eds/validation");
 const inventoryService = require("../services/inventory.service");
 const { pickDisplayCategory } = require("./catalog.routes");
 
@@ -343,5 +344,97 @@ describe("catalog.routes — GET /products?deals=true", () => {
   it("excludes products that are neither flagged nor have a markdown price", async () => {
     const matches = await prisma.product.findMany({ where: { AND: [dealsWhereClause()] } });
     expect(matches.some((p) => p.id === plainProduct.id)).toBe(false);
+  });
+});
+
+// Regression/coverage test for "can a product be added to every category":
+// exercises the exact same two steps the admin New Product form's submit
+// depends on — productCreateSchema.safeParse() (what validateBody runs
+// before the handler ever sees the request) and the Prisma create() call
+// the handler makes — for every category that actually exists in the
+// database today (both top-level and child), as the sole primary category.
+// A mismatch between CategoryMultiSelect's real category ids and the Zod
+// schema (e.g. a non-uuid id format) would show up here as a safeParse
+// failure, which is exactly what the admin form surfaces as "Invalid ...".
+describe("catalog.routes — POST /products accepts every existing category", () => {
+  let categories;
+  const createdProductIds = [];
+
+  beforeAll(async () => {
+    categories = await prisma.category.findMany();
+    expect(categories.length).toBeGreaterThan(0);
+  });
+
+  afterAll(async () => {
+    for (const id of createdProductIds) {
+      await prisma.variant.deleteMany({ where: { productId: id } });
+      await prisma.productCategory.deleteMany({ where: { productId: id } });
+      await prisma.product.delete({ where: { id } });
+    }
+  });
+
+  it("validates and creates a product for every category as the primary categoryId", async () => {
+    for (const category of categories) {
+      const suffix = `${Date.now()}-${category.id.slice(0, 8)}`;
+      const payload = {
+        name: `Category Coverage Test ${category.slug}`,
+        slug: `category-coverage-${suffix}`,
+        categoryId: category.id,
+        categoryIds: [],
+        status: "DRAFT",
+        variants: [{ sku: `CAT-COVERAGE-${suffix}`, name: `Category Coverage Test ${category.slug}`, priceCents: 1000 }],
+      };
+
+      const result = productCreateSchema.safeParse(payload);
+      expect(result.success, `safeParse failed for category ${category.slug}: ${JSON.stringify(result.error?.flatten())}`).toBe(true);
+
+      const { variants, categoryIds, ...productData } = result.data;
+      const created = await prisma.product.create({
+        data: { ...productData, variants: { create: variants } },
+        include: { variants: true },
+      });
+      createdProductIds.push(created.id);
+
+      expect(created.categoryId).toBe(category.id);
+    }
+  }, 60000);
+
+  // CategoryMultiSelect lets staff check a parent and one of its children
+  // together (the parent becomes primary categoryId, the child rides along
+  // in categoryIds) — covers that combined selection going through
+  // secondaryCategoryIds dedup and the ProductCategory join table.
+  it("validates and creates a product with a parent as primary and its child as a secondary tag", async () => {
+    const parent = categories.find((c) => !c.parentId && categories.some((child) => child.parentId === c.id));
+    const child = categories.find((c) => c.parentId === parent.id);
+    expect(parent).toBeTruthy();
+    expect(child).toBeTruthy();
+
+    const suffix = `${Date.now()}-parent-child`;
+    const payload = {
+      name: "Category Coverage Parent+Child Test",
+      slug: `category-coverage-${suffix}`,
+      categoryId: parent.id,
+      categoryIds: [parent.id, child.id],
+      status: "DRAFT",
+      variants: [{ sku: `CAT-COVERAGE-${suffix}`, name: "Category Coverage Parent+Child Test", priceCents: 1000 }],
+    };
+
+    const result = productCreateSchema.safeParse(payload);
+    expect(result.success, `safeParse failed: ${JSON.stringify(result.error?.flatten())}`).toBe(true);
+
+    const { variants, categoryIds, ...productData } = result.data;
+    const secondaryCategoryIds = categoryIds.filter((id) => id !== productData.categoryId);
+    const created = await prisma.product.create({
+      data: {
+        ...productData,
+        variants: { create: variants },
+        categoryTags: { create: secondaryCategoryIds.map((categoryId) => ({ categoryId })) },
+      },
+      include: { categoryTags: true },
+    });
+    createdProductIds.push(created.id);
+
+    expect(created.categoryId).toBe(parent.id);
+    expect(created.categoryTags.map((t) => t.categoryId)).toEqual([child.id]);
   });
 });
