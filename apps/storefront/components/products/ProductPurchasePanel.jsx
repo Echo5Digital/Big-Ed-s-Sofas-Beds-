@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Minus, Plus, ShoppingCart, Check, Truck, Store } from "lucide-react";
 import { stripInlineMarkdown } from "@big-eds/ui";
 import { useDemoCart } from "@/components/layout/DemoCartProvider";
 
 export default function ProductPurchasePanel({ product }) {
-  const { addToCart } = useDemoCart();
+  const { addToCart, cartItems } = useDemoCart();
   const activeVariants = product.variants.filter((v) => v.isActive);
   const [selectedVariantId, setSelectedVariantId] = useState(
     activeVariants[0]?.id ?? product.variants[0]?.id
@@ -18,6 +19,10 @@ export default function ProductPurchasePanel({ product }) {
 
   const available = selectedVariant?.availability?.totalAvailable ?? 0;
   const canAddToCart = available > 0 && quantity <= available;
+  // Scoped to the selected variant, not the whole product — switching to a
+  // different variant that isn't in the cart yet should offer "Add to Cart"
+  // again rather than incorrectly claiming it's already there.
+  const isInCart = cartItems.some((item) => item.variantId === selectedVariant?.id);
 
   function handleAddToCart() {
     if (!canAddToCart || !selectedVariant) return;
@@ -127,32 +132,20 @@ export default function ProductPurchasePanel({ product }) {
       </div>
 
       {/* Desktop/tablet add-to-cart. Hidden on small screens in favor of the sticky mobile bar. */}
-      <button
-        type="button"
-        onClick={handleAddToCart}
-        disabled={!canAddToCart}
-        className="hidden items-center justify-center gap-2 rounded-full bg-brand-red px-6 py-3.5 text-base font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark disabled:cursor-not-allowed disabled:bg-brand-charcoal/20 disabled:text-brand-charcoal/50 sm:flex"
-      >
-        {justAdded ? (
-          <>
-            <Check className="size-5 shrink-0" aria-hidden="true" />
-            Added to Cart
-          </>
-        ) : (
-          <>
-            <ShoppingCart className="size-5 shrink-0" aria-hidden="true" />
-            {available === 0 ? "Out of Stock" : "Add to Cart"}
-          </>
-        )}
-      </button>
-
-      {/* Sticky mobile add-to-cart bar */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-brand-charcoal/10 bg-white/95 p-3 backdrop-blur sm:hidden">
+      {isInCart && !justAdded ? (
+        <Link
+          href="/cart"
+          className="hidden items-center justify-center gap-2 rounded-full bg-brand-red px-6 py-3.5 text-base font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark sm:flex"
+        >
+          <ShoppingCart className="size-5 shrink-0" aria-hidden="true" />
+          Go to Cart
+        </Link>
+      ) : (
         <button
           type="button"
           onClick={handleAddToCart}
           disabled={!canAddToCart}
-          className="flex w-full items-center justify-center gap-2 rounded-full bg-brand-red px-6 py-3.5 text-base font-semibold text-white shadow-lg transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark disabled:cursor-not-allowed disabled:bg-brand-charcoal/20 disabled:text-brand-charcoal/50"
+          className="hidden items-center justify-center gap-2 rounded-full bg-brand-red px-6 py-3.5 text-base font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark disabled:cursor-not-allowed disabled:bg-brand-charcoal/20 disabled:text-brand-charcoal/50 sm:flex"
         >
           {justAdded ? (
             <>
@@ -166,6 +159,38 @@ export default function ProductPurchasePanel({ product }) {
             </>
           )}
         </button>
+      )}
+
+      {/* Sticky mobile add-to-cart bar */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-brand-charcoal/10 bg-white/95 p-3 backdrop-blur sm:hidden">
+        {isInCart && !justAdded ? (
+          <Link
+            href="/cart"
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-brand-red px-6 py-3.5 text-base font-semibold text-white shadow-lg transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark"
+          >
+            <ShoppingCart className="size-5 shrink-0" aria-hidden="true" />
+            Go to Cart
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={handleAddToCart}
+            disabled={!canAddToCart}
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-brand-red px-6 py-3.5 text-base font-semibold text-white shadow-lg transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark disabled:cursor-not-allowed disabled:bg-brand-charcoal/20 disabled:text-brand-charcoal/50"
+          >
+            {justAdded ? (
+              <>
+                <Check className="size-5 shrink-0" aria-hidden="true" />
+                Added to Cart
+              </>
+            ) : (
+              <>
+                <ShoppingCart className="size-5 shrink-0" aria-hidden="true" />
+                {available === 0 ? "Out of Stock" : "Add to Cart"}
+              </>
+            )}
+          </button>
+        )}
       </div>
       {/* Spacer so sticky bar doesn't cover content on mobile */}
       <div className="h-16 sm:hidden" aria-hidden="true" />

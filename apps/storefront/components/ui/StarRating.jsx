@@ -1,6 +1,10 @@
 import { Star, StarHalf } from "lucide-react";
 
-export default function StarRating({ rating, reviewCount, size = "sm" }) {
+// showValue is opt-in (default off) so existing callers — the shared
+// ProductCard used on /shop, product detail, search, wishlist — keep their
+// current star-only look. Only the homepage sections that pass a
+// generated rating (see lib/dailyRotation.js) turn it on.
+export default function StarRating({ rating, reviewCount, size = "sm", showValue = false }) {
   const full = Math.floor(rating);
   const hasHalf = rating - full >= 0.5;
   const empty = 5 - full - (hasHalf ? 1 : 0);
@@ -17,6 +21,7 @@ export default function StarRating({ rating, reviewCount, size = "sm" }) {
           <Star key={`empty-${i}`} className={`${starSize} text-brand-charcoal/20`} fill="currentColor" strokeWidth={0} />
         ))}
       </div>
+      {showValue && <span className="text-xs font-semibold text-brand-charcoal">{rating.toFixed(1)}</span>}
       {typeof reviewCount === "number" && (
         <span className="text-xs text-brand-charcoal/60">({reviewCount})</span>
       )}

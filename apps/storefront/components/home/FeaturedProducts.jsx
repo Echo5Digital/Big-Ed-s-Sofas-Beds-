@@ -4,24 +4,24 @@ import Container from "@/components/ui/Container";
 import SectionHeading from "@/components/ui/SectionHeading";
 import ProductCard from "@/components/home/ProductCard";
 import { normalizeProductForCard } from "@/lib/api/normalize";
+import { withHomepageAccents } from "@/lib/dailyRotation";
 
-export const FEATURED_COUNT = 6;
+export const FEATURED_COUNT = 12;
 
 // Platform Bed Frame has no product photography yet (see
 // docs/requirements/open-questions.md — "Blocks: Real catalog data"), so it's
-// excluded from this curated homepage row until a photo is supplied. The
-// page fetches a few extra (see app/page.jsx) to backfill the slot without
-// starving the grid.
+// excluded from this curated homepage row until a photo is supplied.
 const EXCLUDED_SLUGS = new Set(["platform-bed-frame"]);
 export const EXCLUDED_SLUG_COUNT = EXCLUDED_SLUGS.size;
 
-// Takes already-fetched products (see app/page.jsx) so the homepage can
-// fetch this and CategoryGrid's data concurrently instead of waterfalling.
+// Takes an already-selected (see pickDailyDiverse in app/page.jsx), already
+// day-rotated list of products spanning every category, not just the
+// newest-added ones.
 export default function FeaturedProducts({ products: rawProducts }) {
   const featured = rawProducts
     .filter((p) => !EXCLUDED_SLUGS.has(p.slug))
-    .slice(0, FEATURED_COUNT)
-    .map(normalizeProductForCard);
+    .map(normalizeProductForCard)
+    .map(withHomepageAccents);
 
   return (
     <section className="bg-brand-cream py-12 sm:py-16">
@@ -42,7 +42,7 @@ export default function FeaturedProducts({ products: rawProducts }) {
 
         <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
           {featured.map((product) => (
-            <ProductCard key={product.id} product={product} />
+            <ProductCard key={product.id} product={product} showRatingValue />
           ))}
         </div>
       </Container>

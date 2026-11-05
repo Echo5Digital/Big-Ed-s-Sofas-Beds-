@@ -43,10 +43,10 @@ export default async function ProductDetailPage({ params }) {
 
   const defaultVariant = product.variants.find((v) => v.isActive) ?? product.variants[0];
   const totalAvailable = defaultVariant?.availability?.totalAvailable ?? 0;
-  const locationNames = (defaultVariant?.availability?.byLocation ?? [])
-    .filter((l) => l.availableToSell > 0)
-    .map((l) => l.locationName);
   const inStock = totalAvailable > 0;
+  // Matches the "limited quantity available" threshold this status previously
+  // appended as a suffix to the in-stock message; now its own distinct state.
+  const isLimitedStock = inStock && totalAvailable <= 2;
   const plainName = stripInlineMarkdown(product.name);
 
   const related = product.category
@@ -89,9 +89,11 @@ export default async function ProductDetailPage({ params }) {
 
           <div
             className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-sm font-medium ${
-              inStock
-                ? "border-green-600/20 bg-green-600/5 text-green-800"
-                : "border-brand-red/20 bg-brand-red/5 text-brand-red-dark"
+              isLimitedStock
+                ? "border-brand-gold-dark/30 bg-brand-gold/10 text-brand-gold-dark"
+                : inStock
+                  ? "border-green-600/20 bg-green-600/5 text-green-800"
+                  : "border-brand-red/20 bg-brand-red/5 text-brand-red-dark"
             }`}
           >
             {inStock ? (
@@ -99,12 +101,7 @@ export default async function ProductDetailPage({ params }) {
             ) : (
               <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             )}
-            <span>
-              {inStock
-                ? `In stock — ${locationNames.join(" & ")}`
-                : "Currently out of stock — check back soon"}
-              {inStock && totalAvailable <= 2 && " (limited quantity available)"}
-            </span>
+            <span>{isLimitedStock ? "Limited Stock" : inStock ? "In Stock" : "Out of Stock"}</span>
           </div>
 
           <ProductAttributes product={product} />

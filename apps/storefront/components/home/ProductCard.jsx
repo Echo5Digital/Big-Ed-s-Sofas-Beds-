@@ -16,10 +16,11 @@ const BADGE_STYLES = {
   "OUT OF STOCK": "bg-brand-charcoal/60 text-white",
 };
 
-export default function ProductCard({ product }) {
-  const { addToCart, wishlistIds, toggleWishlist } = useDemoCart();
+export default function ProductCard({ product, showRatingValue = false }) {
+  const { addToCart, cartItems, wishlistIds, toggleWishlist } = useDemoCart();
   const [justAdded, setJustAdded] = useState(false);
   const isWishlisted = wishlistIds.includes(product.id);
+  const isInCart = cartItems.some((item) => item.variantId === product.variantId);
   const plainName = stripInlineMarkdown(product.name);
 
   function handleAddToCart() {
@@ -77,28 +78,38 @@ export default function ProductCard({ product }) {
           <InlineMarkdown text={product.name} />
         </Link>
         {typeof product.rating === "number" && (
-          <StarRating rating={product.rating} reviewCount={product.reviewCount} />
+          <StarRating rating={product.rating} reviewCount={product.reviewCount} showValue={showRatingValue} />
         )}
         <Price price={product.price} compareAtPrice={product.compareAtPrice} />
 
-        <button
-          type="button"
-          onClick={handleAddToCart}
-          disabled={product.totalAvailable === 0}
-          className="mt-auto flex items-center justify-center gap-2 rounded-full bg-brand-red px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark disabled:cursor-not-allowed disabled:bg-brand-charcoal/20 disabled:text-brand-charcoal/50"
-        >
-          {justAdded ? (
-            <>
-              <Check className="size-4 shrink-0" aria-hidden="true" />
-              Added
-            </>
-          ) : (
-            <>
-              <ShoppingCart className="size-4 shrink-0" aria-hidden="true" />
-              {product.totalAvailable === 0 ? "Out of Stock" : "Add to Cart"}
-            </>
-          )}
-        </button>
+        {isInCart && !justAdded ? (
+          <Link
+            href="/cart"
+            className="mt-auto flex items-center justify-center gap-2 rounded-full bg-brand-red px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark"
+          >
+            <ShoppingCart className="size-4 shrink-0" aria-hidden="true" />
+            Go to Cart
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={handleAddToCart}
+            disabled={product.totalAvailable === 0}
+            className="mt-auto flex items-center justify-center gap-2 rounded-full bg-brand-red px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark disabled:cursor-not-allowed disabled:bg-brand-charcoal/20 disabled:text-brand-charcoal/50"
+          >
+            {justAdded ? (
+              <>
+                <Check className="size-4 shrink-0" aria-hidden="true" />
+                Added
+              </>
+            ) : (
+              <>
+                <ShoppingCart className="size-4 shrink-0" aria-hidden="true" />
+                {product.totalAvailable === 0 ? "Out of Stock" : "Add to Cart"}
+              </>
+            )}
+          </button>
+        )}
       </div>
     </div>
   );

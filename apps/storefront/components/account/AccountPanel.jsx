@@ -24,7 +24,12 @@ import {
 
 const EMPTY_FORM = { firstName: "", lastName: "", email: "", password: "", code: "" };
 
-export default function AccountPanel() {
+// onSignedIn is opt-in (default no-op) — fired right after a successful
+// sign-in or just-verified registration, before the dashboard view renders.
+// /account itself doesn't need it; the checkout page's sign-in gate
+// (app/checkout/page.jsx) uses it to resume checkout once the customer is
+// authenticated.
+export default function AccountPanel({ onSignedIn = () => {} }) {
   const uid = useId();
   // loading | signin | register | verify | signedin
   const [view, setView] = useState("loading");
@@ -119,6 +124,7 @@ export default function AccountPanel() {
         setPending(null);
         setForm(EMPTY_FORM);
         goTo("signedin");
+        onSignedIn(verified);
       } catch (error) {
         const reason = reasonOf(error);
         if (reason === "not_found" || reason === "too_many_attempts") {
@@ -168,6 +174,7 @@ export default function AccountPanel() {
         setCustomer(signedIn);
         setForm(EMPTY_FORM);
         goTo("signedin");
+        onSignedIn(signedIn);
       } catch (error) {
         setNotice({ type: "error", message: describeError(error) });
       }

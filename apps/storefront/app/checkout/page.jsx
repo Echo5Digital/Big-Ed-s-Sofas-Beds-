@@ -1,18 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
-import { Truck, Store, ClipboardCheck, ShoppingBag } from "lucide-react";
+import { Truck, Store, ClipboardCheck, ShoppingBag, LogIn } from "lucide-react";
 import Container from "@/components/ui/Container";
 import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import EmptyState from "@/components/ui/EmptyState";
 import PageHero from "@/components/ui/PageHero";
+import AccountPanel from "@/components/account/AccountPanel";
 import { useDemoCart } from "@/components/layout/DemoCartProvider";
 import { formatCurrency } from "@/utils/formatCurrency";
 import { api, ApiClientError } from "@/lib/api/client";
+import { getCurrentCustomer } from "@/lib/api/customerAuth";
 
 const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
   ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
@@ -29,6 +31,25 @@ export default function CheckoutPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [unavailableVariantIds, setUnavailableVariantIds] = useState([]);
+  // "checking" | "signed-in" | "signed-out" — an account is required to reach
+  // the checkout form itself (see the signed-out render below); this is a
+  // storefront-only gate, the API's /checkout endpoint is unchanged and still
+  // accepts guest orders from other channels (e.g. future POS/phone orders).
+  const [authStatus, setAuthStatus] = useState("checking");
+
+  useEffect(() => {
+    let cancelled = false;
+    getCurrentCustomer()
+      .then((customer) => {
+        if (!cancelled) setAuthStatus(customer ? "signed-in" : "signed-out");
+      })
+      .catch(() => {
+        if (!cancelled) setAuthStatus("signed-out");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -91,6 +112,38 @@ export default function CheckoutPage() {
               actionHref="/shop"
             />
           </div>
+        </Container>
+      </div>
+    );
+  }
+
+  if (checkoutState === "form" && authStatus !== "signed-in") {
+    return (
+      <div className="pb-10">
+        <PageHero title="Checkout" showMascot={false} />
+        <Container className="mt-8">
+          <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Cart", href: "/cart" }, { label: "Checkout" }]} />
+          {authStatus === "checking" ? (
+            <p role="status" aria-busy="true" className="mt-8 text-center text-sm text-brand-charcoal/60">
+              Loading&hellip;
+            </p>
+          ) : (
+            <>
+              <div className="mx-auto mt-8 flex max-w-md flex-col items-center gap-2 text-center">
+                <span className="flex size-12 items-center justify-center rounded-full bg-brand-red/10 text-brand-red">
+                  <LogIn className="size-6" aria-hidden="true" />
+                </span>
+                <h1 className="font-display text-xl font-bold text-brand-charcoal">
+                  Sign In to Complete Your Order
+                </h1>
+                <p className="text-sm text-brand-charcoal/60">
+                  Create a free account or sign in to place your order — it only takes a minute, and
+                  you&rsquo;ll be able to track this order afterward.
+                </p>
+              </div>
+              <AccountPanel onSignedIn={() => setAuthStatus("signed-in")} />
+            </>
+          )}
         </Container>
       </div>
     );

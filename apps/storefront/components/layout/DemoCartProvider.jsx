@@ -1,16 +1,74 @@
 "use client";
 
-// Client-side cart & wishlist state. Cart contents are in-memory only (not
-// persisted to an account or backend) — lines carry a real variantId so
-// checkout can submit them directly to POST /api/checkout.
+// Client-side cart & wishlist state. Cart contents aren't persisted to an
+// account or backend — lines carry a real variantId so checkout can submit
+// them directly to POST /api/checkout. They ARE persisted to sessionStorage
+// (tab-scoped, cleared when the tab closes) purely so a page reload doesn't
+// wipe the cart out from under a shopper mid-checkout — e.g. while on the
+// sign-in gate in app/checkout/page.jsx, a password manager or accidental
+// refresh shouldn't lose what they were about to buy.
 
-import { createContext, useContext, useState, useCallback, useMemo } from "react";
+import { createContext, useContext, useState, useCallback, useMemo, useEffect, useSyncExternalStore } from "react";
 
 const DemoCartContext = createContext(null);
+const CART_STORAGE_KEY = "big-eds-cart";
+
+function readStoredCart() {
+  try {
+    const raw = window.sessionStorage.getItem(CART_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    // Corrupt/foreign JSON in the slot — start fresh rather than crash the app.
+    return [];
+  }
+}
+
+// A stable sentinel, not just `[]` — reference equality against this exact
+// array is how the provider below tells "haven't restored from storage yet"
+// apart from "restored, and the stored cart happened to be empty."
+const NOT_YET_RESTORED = [];
+
+function subscribe() {
+  // Nothing outside this tab writes to this sessionStorage key after mount,
+  // so there's no external change to subscribe to — this store only ever
+  // needs to be read once. useSyncExternalStore is used anyway because it's
+  // the one hydration-safe way to read a client-only value during render:
+  // getServerSnapshot keeps server and first-client-paint output identical
+  // (no hydration mismatch), and getSnapshot's result is cached directly in
+  // module scope, not React state, so reading it is a plain function call,
+  // not a ref access.
+  return () => {};
+}
+
+let cachedInitialCart = null;
+function getSnapshot() {
+  if (cachedInitialCart === null) cachedInitialCart = readStoredCart();
+  return cachedInitialCart;
+}
+
+function getServerSnapshot() {
+  return NOT_YET_RESTORED;
+}
 
 export function DemoCartProvider({ children }) {
-  const [cartItems, setCartItems] = useState([]);
+  const initialCart = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const [cartItems, setCartItems] = useState(NOT_YET_RESTORED);
   const [wishlistIds, setWishlistIds] = useState([]);
+
+  // True for exactly one render: the first client render after hydration,
+  // where initialCart has already resolved to the real sessionStorage value
+  // but cartItems hasn't picked it up yet. Setting state here (during render,
+  // not an effect) means the restored cart appears in that same render pass
+  // instead of flashing an empty cart for a frame first.
+  if (cartItems === NOT_YET_RESTORED && initialCart !== NOT_YET_RESTORED) {
+    setCartItems(initialCart);
+  }
+
+  useEffect(() => {
+    if (cartItems === NOT_YET_RESTORED) return;
+    window.sessionStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
+  }, [cartItems]);
 
   // `product` here is the normalized card shape (id, slug, name, image,
   // price) plus a `variantId` identifying which real Variant to check out —
