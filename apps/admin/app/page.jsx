@@ -245,10 +245,15 @@ function DashboardContent({ overview, trend, error }) {
       </div>
 
       <Card className="mb-6">
-        <h2 className="mb-4 flex items-center gap-2 font-display text-base font-bold text-brand-charcoal">
-          <AlertTriangle className="size-4.5 text-amber-500" aria-hidden="true" />
-          Requires Attention
-        </h2>
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <h2 className="flex items-center gap-2 font-display text-base font-bold text-brand-charcoal">
+            <AlertTriangle className="size-4.5 text-amber-500" aria-hidden="true" />
+            Requires Attention
+          </h2>
+          <Link href="/inventory?lowStockOnly=true" className="text-sm font-semibold text-brand-red hover:underline">
+            View all
+          </Link>
+        </div>
 
         {overview && overview.lowStock.length === 0 ? (
           <p className="text-sm text-brand-charcoal/50">No low-stock items right now.</p>

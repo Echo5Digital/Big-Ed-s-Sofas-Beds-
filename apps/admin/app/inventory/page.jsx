@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeftRight, Search, SlidersHorizontal } from "lucide-react";
 import RequireAuth from "@/components/layout/RequireAuth";
 import PageHeader from "@/components/ui/PageHeader";
@@ -223,10 +224,22 @@ function TransferModal({ open, onClose, balance, locations, onDone }) {
 }
 
 function InventoryContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [balances, setBalances] = useState(null);
   const [locations, setLocations] = useState([]);
-  const [lowStockOnly, setLowStockOnly] = useState(false);
   const [search, setSearch] = useState("");
+
+  // The URL is the source of truth for this filter so it can be deep-linked —
+  // the dashboard's "Requires Attention → View all" opens
+  // /inventory?lowStockOnly=true — and stays correct across back/forward and
+  // sidebar navigation (a plain useState would keep a stale value when only
+  // the query string changes on this same page).
+  const lowStockOnly = searchParams.get("lowStockOnly") === "true";
+
+  function setLowStockOnly(checked) {
+    router.replace(checked ? "/inventory?lowStockOnly=true" : "/inventory", { scroll: false });
+  }
   const [error, setError] = useState(null);
   const [adjustTarget, setAdjustTarget] = useState(null);
   const [transferTarget, setTransferTarget] = useState(null);
@@ -343,6 +356,7 @@ function InventoryContent() {
 
       <DataTable
         columns={columns}
+        stickyScrollbar
         rows={filteredBalances}
         emptyMessage={
           balances && balances.length > 0 ? "No stock balances match your search." : "No stock balances found."
@@ -375,7 +389,10 @@ function InventoryContent() {
 export default function InventoryPage() {
   return (
     <RequireAuth permission="inventory:read">
-      <InventoryContent />
+      {/* useSearchParams needs a Suspense boundary so the route can still be prerendered. */}
+      <Suspense fallback={null}>
+        <InventoryContent />
+      </Suspense>
     </RequireAuth>
   );
 }

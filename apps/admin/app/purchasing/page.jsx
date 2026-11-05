@@ -85,7 +85,12 @@ function PurchasingContent() {
 
       {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-      <DataTable columns={columns} rows={purchaseOrders} emptyMessage="No purchase orders yet." />
+      <DataTable
+        columns={columns}
+        rows={purchaseOrders}
+        rowHref={(r) => `/purchasing/${r.id}`}
+        emptyMessage="No purchase orders yet."
+      />
     </div>
   );
 }

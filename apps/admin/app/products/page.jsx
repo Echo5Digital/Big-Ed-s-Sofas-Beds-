@@ -162,6 +162,7 @@ function ProductsContent() {
 
       <DataTable
         columns={columns}
+        stickyScrollbar
         rows={products === null ? null : rows}
         emptyMessage={
           products !== null && products.length > 0
