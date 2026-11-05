@@ -16,6 +16,7 @@ import {
   Notice,
   PasswordField,
   describeError,
+  inputClass,
   linkButtonClass,
   primaryButtonClass,
   reasonOf,
