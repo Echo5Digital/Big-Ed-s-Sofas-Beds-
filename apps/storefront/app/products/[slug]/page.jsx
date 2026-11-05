@@ -56,6 +56,13 @@ export default async function ProductDetailPage({ params }) {
         .map(normalizeProductForCard)
     : [];
 
+  // Staff-curated cross-links to other, independently-sellable products (see
+  // ProductLink in packages/database/prisma/schema.prisma) — distinct from
+  // `related`/"You May Also Like" above, which is auto-computed from shared
+  // category and not staff-controlled. Always symmetric server-side, so this
+  // never needs to be set from both products' admin pages.
+  const linkedProducts = (product.linkedProducts ?? []).map(normalizeProductForCard);
+
   return (
     <div className="pb-10">
       <Container className="pt-6">
@@ -107,6 +114,17 @@ export default async function ProductDetailPage({ params }) {
           <ProductAttributes product={product} />
 
           <ProductPurchasePanel product={product} />
+
+          {linkedProducts.length > 0 && (
+            <div className="flex flex-col gap-2 border-t border-brand-charcoal/10 pt-4">
+              <h2 className="text-sm font-semibold text-brand-charcoal">Available As</h2>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {linkedProducts.map((item) => (
+                  <ProductCard key={item.id} product={item} />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </Container>
 

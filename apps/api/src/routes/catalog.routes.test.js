@@ -1,5 +1,5 @@
 const { prisma } = require("@big-eds/database");
-const { productCreateSchema } = require("@big-eds/validation");
+const { productCreateSchema, productUpdateSchema } = require("@big-eds/validation");
 const inventoryService = require("../services/inventory.service");
 const { pickDisplayCategory } = require("./catalog.routes");
 
@@ -436,5 +436,144 @@ describe("catalog.routes — POST /products accepts every existing category", ()
 
     expect(created.categoryId).toBe(parent.id);
     expect(created.categoryTags.map((t) => t.categoryId)).toEqual([child.id]);
+  });
+});
+
+// Mirrors POST /products' + PATCH /products/:id's linkedProductIds handling
+// exactly (see catalog.routes.js) — the non-negotiable property here is
+// symmetry: adding B under A must make A appear under B with no separate
+// action, and removing B from A must remove A from B too, never leaving a
+// one-directional stale link on either side.
+describe("catalog.routes — linkedProductIds symmetry", () => {
+  const createdProductIds = [];
+
+  afterAll(async () => {
+    for (const id of createdProductIds) {
+      await prisma.productLink.deleteMany({ where: { OR: [{ productId: id }, { linkedProductId: id }] } });
+      await prisma.variant.deleteMany({ where: { productId: id } });
+      await prisma.product.delete({ where: { id } }).catch(() => {});
+    }
+  });
+
+  async function createTestProduct(label) {
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const payload = {
+      name: `Linked Product Test ${label} ${suffix}`,
+      slug: `linked-test-${label.toLowerCase()}-${suffix}`,
+      status: "DRAFT",
+      variants: [{ sku: `LINKED-TEST-${label}-${suffix}`, name: `Linked Product Test ${label}`, priceCents: 1000 }],
+    };
+    const result = productCreateSchema.safeParse(payload);
+    expect(result.success, `safeParse failed: ${JSON.stringify(result.error?.flatten())}`).toBe(true);
+    const { variants, ...productData } = result.data;
+    const created = await prisma.product.create({ data: { ...productData, variants: { create: variants } } });
+    createdProductIds.push(created.id);
+    return created;
+  }
+
+  // Exercises the exact create-path logic from POST /products: write both
+  // (A, B) and (B, A) ProductLink rows in response to A's linkedProductIds alone.
+  async function createLinksSymmetric(productId, linkedProductIds) {
+    const dedupedLinkIds = [...new Set(linkedProductIds)];
+    if (dedupedLinkIds.length === 0) return;
+    await prisma.productLink.createMany({
+      data: dedupedLinkIds.flatMap((linkedProductId) => [
+        { productId, linkedProductId },
+        { productId: linkedProductId, linkedProductId: productId },
+      ]),
+      skipDuplicates: true,
+    });
+  }
+
+  // Exercises the exact update-path diff/replace logic from PATCH /products/:id.
+  async function replaceLinksSymmetric(productId, linkedProductIds) {
+    const dedupedLinkIds = [...new Set(linkedProductIds)].filter((id) => id !== productId);
+    const existingLinks = await prisma.productLink.findMany({
+      where: { productId },
+      select: { linkedProductId: true },
+    });
+    const existingLinkIds = existingLinks.map((l) => l.linkedProductId);
+    const removedLinkIds = existingLinkIds.filter((id) => !dedupedLinkIds.includes(id));
+    const addedLinkIds = dedupedLinkIds.filter((id) => !existingLinkIds.includes(id));
+
+    if (removedLinkIds.length > 0) {
+      await prisma.productLink.deleteMany({
+        where: {
+          OR: [
+            { productId, linkedProductId: { in: removedLinkIds } },
+            { productId: { in: removedLinkIds }, linkedProductId: productId },
+          ],
+        },
+      });
+    }
+    if (addedLinkIds.length > 0) {
+      await prisma.productLink.createMany({
+        data: addedLinkIds.flatMap((linkedProductId) => [
+          { productId, linkedProductId },
+          { productId: linkedProductId, linkedProductId: productId },
+        ]),
+        skipDuplicates: true,
+      });
+    }
+  }
+
+  it("linking B under A on create also makes A appear under B, with no action on B", async () => {
+    const a = await createTestProduct("A");
+    const b = await createTestProduct("B");
+
+    await createLinksSymmetric(a.id, [b.id]);
+
+    const aLinks = await prisma.productLink.findMany({ where: { productId: a.id } });
+    const bLinks = await prisma.productLink.findMany({ where: { productId: b.id } });
+    expect(aLinks.map((l) => l.linkedProductId)).toEqual([b.id]);
+    expect(bLinks.map((l) => l.linkedProductId)).toEqual([a.id]);
+  });
+
+  it("removing B from A's linked list on update also removes A from B's list", async () => {
+    const a = await createTestProduct("A");
+    const b = await createTestProduct("B");
+    await createLinksSymmetric(a.id, [b.id]);
+
+    // Validate the update payload the same way the route does.
+    const result = productUpdateSchema.safeParse({ linkedProductIds: [] });
+    expect(result.success).toBe(true);
+    await replaceLinksSymmetric(a.id, result.data.linkedProductIds);
+
+    const aLinks = await prisma.productLink.findMany({ where: { productId: a.id } });
+    const bLinks = await prisma.productLink.findMany({ where: { productId: b.id } });
+    expect(aLinks).toHaveLength(0);
+    expect(bLinks).toHaveLength(0);
+  });
+
+  it("replacing A's links from [B] to [C] drops the B<->A pair and adds the C<->A pair", async () => {
+    const a = await createTestProduct("A");
+    const b = await createTestProduct("B");
+    const c = await createTestProduct("C");
+    await createLinksSymmetric(a.id, [b.id]);
+
+    await replaceLinksSymmetric(a.id, [c.id]);
+
+    const aLinks = (await prisma.productLink.findMany({ where: { productId: a.id } })).map((l) => l.linkedProductId);
+    const bLinks = await prisma.productLink.findMany({ where: { productId: b.id } });
+    const cLinks = (await prisma.productLink.findMany({ where: { productId: c.id } })).map((l) => l.linkedProductId);
+
+    expect(aLinks).toEqual([c.id]);
+    expect(bLinks).toHaveLength(0);
+    expect(cLinks).toEqual([a.id]);
+  });
+
+  it("submitting a product's own id in its update payload does not create a self-link", async () => {
+    const a = await createTestProduct("A");
+
+    // Mirrors PATCH /products/:id's dedupedLinkIds filter: a product's own id
+    // can legitimately end up in the submitted list (e.g. a stale admin-form
+    // search result from before an edit), so the route filters it out before
+    // diffing/writing, same as this helper does.
+    const result = productUpdateSchema.safeParse({ linkedProductIds: [a.id] });
+    expect(result.success).toBe(true);
+    await replaceLinksSymmetric(a.id, result.data.linkedProductIds);
+
+    const selfLinks = await prisma.productLink.findMany({ where: { productId: a.id, linkedProductId: a.id } });
+    expect(selfLinks).toHaveLength(0);
   });
 });

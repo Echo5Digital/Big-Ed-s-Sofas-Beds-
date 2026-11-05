@@ -159,6 +159,15 @@ model Product {
   isDeal       Boolean           @default(false)
   variants     Variant[]
   images       ProductImage[]
+  // Cross-links to OTHER, independently-sellable Products (e.g. a sectional
+  // and a loveseat in the same collection) — distinct from Variant, which is
+  // color/size options of this SAME product on one page. Always written and
+  // removed symmetrically in pairs (see apps/api/src/routes/catalog.routes.js)
+  // so "A links to B" and "B links to A" can never drift out of sync; the two
+  // relation names below are just Prisma's required way to name each side of
+  // a self-referential many-to-many, not a meaningful direction.
+  linkedTo     ProductLink[]     @relation("ProductLinksFrom")
+  linkedFrom   ProductLink[]     @relation("ProductLinksTo")
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
 
@@ -166,6 +175,17 @@ model Product {
   @@index([categoryId])
   @@index([status])
   @@index([isDeal])
+}
+
+model ProductLink {
+  productId       String
+  product         Product  @relation("ProductLinksFrom", fields: [productId], references: [id], onDelete: Cascade)
+  linkedProductId String
+  linkedProduct   Product  @relation("ProductLinksTo", fields: [linkedProductId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+
+  @@id([productId, linkedProductId])
+  @@index([linkedProductId])
 }
 
 model Variant {

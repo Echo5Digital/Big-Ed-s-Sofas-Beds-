@@ -39,14 +39,26 @@ in use (seeded in `packages/database/prisma/seed.js`):
 acting user, entity, optional reason code, and a JSON metadata blob — append
 only, never edited.
 
-### Products (`Category`, `Product`, `Variant`, `ProductImage`, `PriceHistory`)
+### Products (`Category`, `Product`, `Variant`, `ProductImage`, `PriceHistory`, `ProductLink`)
 
 `Product` is the sellable concept (e.g. "Cloud Comfort Sectional");
 `Variant` is the actual SKU-bearing, priced, stocked unit (e.g. "Gray" /
-"Charcoal"). All stock, pricing, and order-line relationships point at
-`Variant`, never `Product`, because a product without a variant can't be
-sold or counted. `PriceHistory` is write-only — a new row per price change,
-never a diff of the current row.
+"Charcoal") *of that same Product*, sharing one storefront page. All stock,
+pricing, and order-line relationships point at `Variant`, never `Product`,
+because a product without a variant can't be sold or counted. `PriceHistory`
+is write-only — a new row per price change, never a diff of the current row.
+
+`ProductLink` is a different, separate concept: a cross-link between two
+*independently sellable* `Product` rows (e.g. a sectional and the matching
+loveseat from the same collection, each with its own page/SKU/price) so each
+appears as an "Available As" option on the other's storefront page. Every
+link is written and removed as a symmetric pair — `(A, B)` and `(B, A)` rows
+both exist or neither does — enforced in application code
+(`apps/api/src/routes/catalog.routes.js`'s product create/update handlers),
+not by the schema itself. The composite primary key `(productId,
+linkedProductId)` prevents duplicate links in one direction; `onDelete:
+Cascade` on both sides means deleting either product silently drops any link
+rows naming it, in either direction.
 
 ### Stock (`Location`, `StockBalance`, `StockMovement`, `Reservation`, `Transfer`, `Count`, `CountLine`)
 

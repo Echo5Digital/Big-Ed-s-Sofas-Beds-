@@ -10,6 +10,7 @@ import ProductNameInput from "@/components/products/ProductNameInput";
 import ProductImagePicker from "@/components/products/ProductImagePicker";
 import CategoryMultiSelect from "@/components/products/CategoryMultiSelect";
 import ProductInitialStockInputs from "@/components/products/ProductInitialStockInputs";
+import LinkedProductPicker from "@/components/products/LinkedProductPicker";
 import { api, ApiClientError } from "@/lib/api/client";
 
 function slugify(value) {
@@ -55,6 +56,7 @@ function NewProductContent() {
   const [material, setMaterial] = useState("");
   const [dimensions, setDimensions] = useState("");
   const [images, setImages] = useState([]);
+  const [linkedProducts, setLinkedProducts] = useState([]);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -112,6 +114,7 @@ function NewProductContent() {
         // concept is exposed in this form, so its name mirrors the product
         // name (the API still requires every product to have a variant).
         variants: [{ sku, name, priceCents: Math.round(Number(priceCents) * 100) }],
+        linkedProductIds: linkedProducts.length ? linkedProducts.map((p) => p.id) : undefined,
         initialStock: Object.keys(initialStock).length ? initialStock : undefined,
       });
       router.push("/products");
@@ -286,6 +289,18 @@ function NewProductContent() {
             </p>
           </div>
           <ProductImagePicker images={images} onChange={setImages} />
+        </Card>
+
+        <Card className="flex flex-col gap-4">
+          <div>
+            <h2 className="font-display text-base font-bold text-brand-charcoal">Linked Products</h2>
+            <p className="text-xs text-brand-charcoal/60">
+              Other, separately-sold products to show as options on this product&rsquo;s storefront
+              page (e.g. a matching loveseat for a sectional). Linking is automatic both ways — no
+              need to also edit the other product.
+            </p>
+          </div>
+          <LinkedProductPicker linkedProducts={linkedProducts} onChange={setLinkedProducts} />
         </Card>
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}

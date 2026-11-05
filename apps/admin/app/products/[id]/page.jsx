@@ -9,6 +9,7 @@ import Button from "@/components/ui/Button";
 import ProductNameInput from "@/components/products/ProductNameInput";
 import ProductImagePicker from "@/components/products/ProductImagePicker";
 import CategoryMultiSelect from "@/components/products/CategoryMultiSelect";
+import LinkedProductPicker from "@/components/products/LinkedProductPicker";
 import { api, ApiClientError } from "@/lib/api/client";
 
 function slugify(value) {
@@ -53,6 +54,7 @@ function EditProductContent() {
   const [material, setMaterial] = useState("");
   const [dimensions, setDimensions] = useState("");
   const [images, setImages] = useState([]);
+  const [linkedProducts, setLinkedProducts] = useState([]);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -103,6 +105,7 @@ function EditProductContent() {
           ...(product.category ? [product.category.id] : []),
           ...product.categories.map((c) => c.id),
         ]);
+        setLinkedProducts(product.linkedProducts ?? []);
       })
       .catch((err) => setError(err instanceof ApiClientError ? err.message : "Failed to load product."))
       .finally(() => setLoading(false));
@@ -133,6 +136,10 @@ function EditProductContent() {
         dimensions: dimensions || null,
         images: images.map(({ url, publicId, altText }) => ({ url, publicId, altText })),
         variants: [{ id: variantId, sku, name, priceCents: Math.round(Number(priceCents) * 100) }],
+        // Full replace, same convention as categoryIds above — always sends
+        // the complete current list, even empty, so removing the last linked
+        // product actually clears it instead of being silently skipped.
+        linkedProductIds: linkedProducts.map((p) => p.id),
       });
       router.push("/products");
     } catch (err) {
@@ -309,6 +316,18 @@ function EditProductContent() {
             </p>
           </div>
           <ProductImagePicker images={images} onChange={setImages} />
+        </Card>
+
+        <Card className="flex flex-col gap-4">
+          <div>
+            <h2 className="font-display text-base font-bold text-brand-charcoal">Linked Products</h2>
+            <p className="text-xs text-brand-charcoal/60">
+              Other, separately-sold products to show as options on this product&rsquo;s storefront
+              page (e.g. a matching loveseat for a sectional). Linking is automatic both ways — no
+              need to also edit the other product.
+            </p>
+          </div>
+          <LinkedProductPicker linkedProducts={linkedProducts} onChange={setLinkedProducts} excludeProductId={id} />
         </Card>
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}

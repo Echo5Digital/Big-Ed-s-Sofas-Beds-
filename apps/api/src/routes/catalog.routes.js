@@ -38,6 +38,17 @@ function uploadBufferToCloudinary(buffer) {
   });
 }
 
+// linkedTo (see ProductLink in schema.prisma) resolves each cross-linked
+// Product just enough to render a storefront card and an admin "currently
+// linked" chip — slug/name/first image/first-variant price, NOT the full
+// stockBalances-per-location/every-image shape the main product gets below.
+// This matters because PRODUCT_INCLUDE is also used by GET /admin/products,
+// which lists the WHOLE catalog at once (no pagination yet) — giving every
+// linked product its own full nested stock/image join here would multiply
+// that query's cost by however many links exist, for data no admin list or
+// product-card view actually needs (storefront cards only show one image and
+// one price; the admin picker only needs enough to show what's already
+// linked, not full availability).
 const PRODUCT_INCLUDE = {
   category: true,
   categoryTags: { include: { category: true } },
@@ -45,6 +56,40 @@ const PRODUCT_INCLUDE = {
   variants: {
     include: {
       stockBalances: { include: { location: true } },
+    },
+  },
+  linkedTo: {
+    include: {
+      linkedProduct: {
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          images: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
+          // Not take: 1 — the storefront picks the first ACTIVE variant for
+          // card display (normalizeProductForCard), not just the first
+          // created one, so a handful need to come along for it to pick from
+          // correctly. Still bounded (not every variant on every link, which
+          // for a single-variant product — the normal case today — is the
+          // same one row either way).
+          variants: {
+            orderBy: { createdAt: "asc" },
+            take: 5,
+            select: {
+              id: true,
+              sku: true,
+              priceCents: true,
+              compareAtCents: true,
+              isActive: true,
+              // Needed so a linked product's storefront card can show a real
+              // "Out of Stock" badge instead of a false one
+              // (computeAvailability defaults to 0 when this is missing,
+              // which would otherwise mislabel an in-stock linked product).
+              stockBalances: { include: { location: true } },
+            },
+          },
+        },
+      },
     },
   },
 };
@@ -148,6 +193,28 @@ function serializeProduct(product) {
       compareAtCents: v.compareAtCents,
       isActive: v.isActive,
       availability: computeAvailability(v),
+    })),
+    // Other, independently-sellable Products this one cross-links to (see
+    // ProductLink in schema.prisma) — NOT this product's own color/size
+    // variants, which are the `variants` array above. Each entry is the same
+    // {id, slug, name, images, variants} shape as a normal product list item
+    // (minus category — PRODUCT_INCLUDE's nested linkedTo.linkedProduct
+    // doesn't fetch it, since the storefront only needs slug/image/price/sku
+    // to render a card and link to the linked product's own page), so
+    // existing card-normalizing code can consume it unchanged.
+    linkedProducts: (product.linkedTo ?? []).map(({ linkedProduct: lp }) => ({
+      id: lp.id,
+      slug: lp.slug,
+      name: lp.name,
+      images: lp.images.map((img) => ({ url: img.url })),
+      variants: lp.variants.map((v) => ({
+        id: v.id,
+        sku: v.sku,
+        priceCents: v.priceCents,
+        compareAtCents: v.compareAtCents,
+        isActive: v.isActive,
+        availability: computeAvailability(v),
+      })),
     })),
   };
 }
@@ -288,11 +355,16 @@ router.post(
   requirePermission("catalog:write"),
   validateBody(productCreateSchema),
   asyncHandler(async (req, res) => {
-    const { variants, images, categoryIds, initialStock, ...productData } = req.body;
+    const { variants, images, categoryIds, linkedProductIds, initialStock, ...productData } = req.body;
     // Secondary categories are purely additive to the primary categoryId —
     // dedupe so the same category never appears as both, which would violate
     // the ProductCategory composite primary key.
     const secondaryCategoryIds = (categoryIds ?? []).filter((id) => id !== productData.categoryId);
+    // No self-link filter needed here (unlike PATCH below): this product's id
+    // doesn't exist yet until tx.product.create() below runs, so the admin
+    // form's search results — populated from already-existing products —
+    // can never have offered this not-yet-created product as a candidate.
+    const dedupedLinkIds = [...new Set(linkedProductIds ?? [])];
 
     // Product creation and its variants' StockBalance rows must commit
     // together: without a StockBalance row a variant is invisible on the
@@ -326,6 +398,19 @@ router.post(
         });
       }
 
+      // Each selected product gets BOTH directions written in the same
+      // transaction — (new product -> it) and (it -> new product) — so the
+      // link is never visible from only one side, even momentarily.
+      if (dedupedLinkIds.length > 0) {
+        await tx.productLink.createMany({
+          data: dedupedLinkIds.flatMap((linkedProductId) => [
+            { productId: created.id, linkedProductId },
+            { productId: linkedProductId, linkedProductId: created.id },
+          ]),
+          skipDuplicates: true,
+        });
+      }
+
       return created;
     });
 
@@ -352,7 +437,12 @@ router.post(
       }
     }
 
-    const finalProduct = stockEntries.length > 0
+    // Refetch if either post-transaction step ran: stock receipts update
+    // availability, and linked-product rows were written after `created` (and
+    // its PRODUCT_INCLUDE snapshot) were already fetched inside the
+    // transaction, so `product.linkedProducts` would otherwise still read
+    // empty on the response to this very request.
+    const finalProduct = stockEntries.length > 0 || dedupedLinkIds.length > 0
       ? await prisma.product.findUniqueOrThrow({ where: { id: product.id }, include: PRODUCT_INCLUDE })
       : product;
 
@@ -366,7 +456,7 @@ router.patch(
   requirePermission("catalog:write"),
   validateBody(productUpdateSchema),
   asyncHandler(async (req, res) => {
-    const { variants, images, categoryIds, ...productData } = req.body;
+    const { variants, images, categoryIds, linkedProductIds, ...productData } = req.body;
 
     if (variants) {
       // Partial updates only: adjust price/sku/details on existing variants,
@@ -406,6 +496,45 @@ router.patch(
       }
     }
 
+    if (linkedProductIds) {
+      // Full replace, like categoryIds above — but unlike categories, each
+      // link also has a mirrored row on the OTHER product (productId swapped)
+      // that this product's own submitted list knows nothing about. A plain
+      // "delete all my rows, recreate from the list" would correctly add new
+      // links both ways but would leave a stale reverse row on any product
+      // that just got REMOVED from this list, still pointing back at this one
+      // — so the removed side has to be diffed out and deleted explicitly on
+      // both sides, not just dropped from this product's own outgoing rows.
+      const dedupedLinkIds = [...new Set(linkedProductIds)].filter((id) => id !== req.params.id);
+      const existingLinks = await prisma.productLink.findMany({
+        where: { productId: req.params.id },
+        select: { linkedProductId: true },
+      });
+      const existingLinkIds = existingLinks.map((l) => l.linkedProductId);
+      const removedLinkIds = existingLinkIds.filter((id) => !dedupedLinkIds.includes(id));
+      const addedLinkIds = dedupedLinkIds.filter((id) => !existingLinkIds.includes(id));
+
+      if (removedLinkIds.length > 0) {
+        await prisma.productLink.deleteMany({
+          where: {
+            OR: [
+              { productId: req.params.id, linkedProductId: { in: removedLinkIds } },
+              { productId: { in: removedLinkIds }, linkedProductId: req.params.id },
+            ],
+          },
+        });
+      }
+      if (addedLinkIds.length > 0) {
+        await prisma.productLink.createMany({
+          data: addedLinkIds.flatMap((linkedProductId) => [
+            { productId: req.params.id, linkedProductId },
+            { productId: linkedProductId, linkedProductId: req.params.id },
+          ]),
+          skipDuplicates: true,
+        });
+      }
+    }
+
     const product = await prisma.product.update({
       where: { id: req.params.id },
       data: {
@@ -424,9 +553,28 @@ router.get(
   requireAuth,
   requirePermission("catalog:read"),
   asyncHandler(async (req, res) => {
+    const { q } = req.query;
+    // ?q is additive — omitting it keeps this endpoint's existing behavior
+    // (the full catalog, unfiltered) exactly as before, since the edit page
+    // already depends on that to find one product client-side by id. Used by
+    // the Linked Products picker (apps/admin/components/products/
+    // LinkedProductPicker.jsx) to search by name OR any variant's SKU without
+    // fetching the whole catalog — matches "add SKU" in the picker's search box.
+    const where = q
+      ? {
+          OR: [
+            { name: { contains: String(q), mode: "insensitive" } },
+            { variants: { some: { sku: { contains: String(q), mode: "insensitive" } } } },
+          ],
+        }
+      : undefined;
     const products = await prisma.product.findMany({
+      where,
       include: PRODUCT_INCLUDE,
       orderBy: { createdAt: "desc" },
+      // Only caps the search path — the unfiltered (no ?q) call the edit page
+      // relies on to load the full catalog is untouched.
+      take: q ? 20 : undefined,
     });
     res.json({ products: products.map(serializeProduct) });
   })

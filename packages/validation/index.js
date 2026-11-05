@@ -179,6 +179,12 @@ const productCreateSchema = z.object({
   isDeal: z.boolean().optional(),
   variants: z.array(variantCreateSchema).min(1),
   images: z.array(productImageInputSchema).optional(),
+  // Other, independently-sellable Products to cross-link (see ProductLink in
+  // schema.prisma) — distinct from `variants` above, which are color/size
+  // options of THIS product sharing one page. Full-replace semantics on
+  // update, same as categoryIds; written/removed as a symmetric pair in both
+  // directions by the route handler, never just this one direction.
+  linkedProductIds: z.array(z.string().uuid()).optional(),
   // Optional initial on-hand count per location, keyed by Location.id, e.g.
   // { "<showroomId>": 2, "<warehouseId>": 5 }. Applied via the same
   // inventoryService.adjustStock() used by the Inventory page's manual
