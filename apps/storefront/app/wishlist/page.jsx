@@ -10,18 +10,41 @@ import ProductCard from "@/components/home/ProductCard";
 import { useDemoCart } from "@/components/layout/DemoCartProvider";
 import { getProducts } from "@/lib/api/catalog";
 import { normalizeProductForCard } from "@/lib/api/normalize";
+import { shuffleProducts } from "@/lib/dailyRotation";
+
+// Bundles the fetched products with the day seed they were fetched alongside
+// so both land in a single setState call — currentDaySeed() (lib/
+// currentDaySeed.js) is server-only ("use cache"/cacheLife, Server-Component-
+// only), and this page is a Client Component (needs useDemoCart's wishlist
+// state), so Date.now() is read here instead. It can only be read after
+// mount (this app's cacheComponents config forbids it anywhere a prerender
+// could observe it — see
+// https://nextjs.org/docs/messages/blocking-prerender-current-time-client),
+// and react-hooks/set-state-in-effect flags a second, separate setState call
+// sitting directly in the effect body as a likely cascading-render bug — a
+// single state value holding both avoids needing either.
+const INITIAL_STATE = { products: [], daySeed: 0 };
 
 export default function WishlistPage() {
   const { wishlistIds } = useDemoCart();
-  const [products, setProducts] = useState([]);
+  const [{ products, daySeed }, setState] = useState(INITIAL_STATE);
 
   useEffect(() => {
     getProducts({ pageSize: 100, sort: "oldest" })
-      .then((data) => setProducts(data.products.map(normalizeProductForCard)))
-      .catch(() => setProducts([]));
+      .then((data) =>
+        setState({
+          products: data.products.map(normalizeProductForCard),
+          daySeed: Math.floor(Date.now() / 86_400_000),
+        })
+      )
+      .catch(() => setState(INITIAL_STATE));
   }, []);
 
-  const wishlistProducts = products.filter((product) => wishlistIds.includes(product.id));
+  const wishlistProducts = shuffleProducts(
+    products.filter((product) => wishlistIds.includes(product.id)),
+    daySeed,
+    "wishlist"
+  );
 
   return (
     <div className="pb-10">

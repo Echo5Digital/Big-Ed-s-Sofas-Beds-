@@ -13,7 +13,7 @@ const ZOOM_LEVEL = 2.5;
 // reused again further down the page as the large-format gallery section —
 // there's no separate "gallery" image set, just a different layout of the
 // same ordered list.
-export default function ProductImageGallery({ images, name, inStock }) {
+export default function ProductImageGallery({ images, name, inStock, discountPercent }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [zoom, setZoom] = useState(null);
   const frameRef = useRef(null);
@@ -69,6 +69,11 @@ export default function ProductImageGallery({ images, name, inStock }) {
         {!inStock && (
           <span className="absolute left-4 top-4 rounded px-2.5 py-1 text-xs font-bold tracking-wide bg-brand-charcoal/70 text-white">
             OUT OF STOCK
+          </span>
+        )}
+        {inStock && discountPercent > 0 && (
+          <span className="absolute left-4 top-4 rounded bg-brand-red px-2.5 py-1 text-xs font-bold tracking-wide text-white">
+            {discountPercent}% OFF
           </span>
         )}
       </div>

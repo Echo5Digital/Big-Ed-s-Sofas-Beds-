@@ -4,8 +4,11 @@
 // (product pool, calendar day), so ISR (see HOMEPAGE_REVALIDATE_SECONDS in
 // app/page.jsx) just needs to re-render at least once a day for the picks to
 // change on their own — every page render on the same UTC day is stable.
-
-import { cacheLife } from "next/cache";
+//
+// currentDaySeed() lives in lib/currentDaySeed.js, not here — it needs
+// "use cache"/cacheLife (next/cache), which is Server-Component-only, and
+// this module must stay importable from Client Components too (see
+// app/wishlist/page.jsx, which uses shuffleProducts below).
 
 // mulberry32 — small, fast, deterministic PRNG. Math.random() is intentionally
 // never used here: the whole point is that the same (seed) input always
@@ -44,6 +47,17 @@ export function homepageDisplayRating(productId) {
   return Math.round(rating * 10) / 10;
 }
 
+// Decorative review count paired with homepageDisplayRating above — same
+// "not backed by real reviews" disclosure applies. A different hash salt
+// than homepageDisplayRating so the two don't move in lockstep (e.g. every
+// 4.9 getting the same count). Falls in [8, 400], skewed toward the lower
+// end (squared) so most products look newly-reviewed rather than all
+// clustering near 400.
+export function homepageDisplayReviewCount(productId) {
+  const rand = mulberry32(hashString(`reviews:${productId}`));
+  return Math.round(8 + rand() * rand() * 392);
+}
+
 // Applies the homepage-only "Sale" tag + decorative rating on top of an
 // already-normalized card (see normalizeProductForCard) without touching the
 // shared normalizer other pages (/shop, product detail, search, wishlist)
@@ -53,6 +67,20 @@ export function withHomepageAccents(product) {
     ...product,
     badge: product.badge ?? "SALE",
     rating: homepageDisplayRating(product.id),
+    reviewCount: homepageDisplayReviewCount(product.id),
+  };
+}
+
+// Same decorative rating/review treatment as withHomepageAccents, minus the
+// "Sale" badge override — used on /shop, /shop/[category], and the product
+// detail page's related-product rows, which should keep their real
+// OUT OF STOCK badge (from normalizeProductForCard) rather than always
+// claiming SALE.
+export function withDisplayRating(product) {
+  return {
+    ...product,
+    rating: homepageDisplayRating(product.id),
+    reviewCount: homepageDisplayReviewCount(product.id),
   };
 }
 
@@ -66,20 +94,21 @@ function seededShuffle(items, seed) {
   return result;
 }
 
-// Whole calendar day (UTC) since the epoch — increments once every 24h, so a
-// selection made with this as part of the seed is stable for a day and
-// changes the next. Reading Date.now() directly in a Server Component is a
-// build error under this app's cacheComponents config ("Next.js encountered
-// the unstable value Date.now() while prerendering") since it's normally a
-// sign of a value that can't be cached at all. "use cache" + cacheLife here
-// tells Next the opposite is true: this value is fine to cache, just only
-// for a day, which is exactly the rotation period we want — so it composes
-// with the page's own 60s ISR revalidate instead of forcing the whole
-// homepage dynamic.
-export async function currentDaySeed() {
-  "use cache";
-  cacheLife("days");
-  return Math.floor(Date.now() / 86_400_000);
+// Listing pages (/shop, /shop/[category], /deals, /wishlist, PDP "You May
+// Also Like") previously requested `sort: "oldest"` from the API, which is
+// literally database insertion order (apps/api/src/routes/catalog.routes.js
+// maps it to `orderBy: { createdAt: "asc" }`) — every visit showed the exact
+// same first-added-first sequence, making older stock look permanently
+// "featured" over newer arrivals. This reshuffles a full product array using
+// the same deterministic PRNG as the homepage's rotation (seededShuffle +
+// currentDaySeed above), salted per call site (`seedSalt`) so /shop and, say,
+// /shop/living-room don't happen to produce visibly-correlated orderings from
+// sharing the same day seed. Deterministic per (day, salt) — not
+// re-randomized on every request — so pagination and "page 2 still has what
+// I expect" stay stable within a single day; it changes again the next day,
+// same rotation cadence as the homepage sections.
+export function shuffleProducts(products, daySeed, seedSalt = "") {
+  return seededShuffle(products, daySeed + hashString(seedSalt));
 }
 
 // Picks `count` products out of `pool`, favoring variety across categories:

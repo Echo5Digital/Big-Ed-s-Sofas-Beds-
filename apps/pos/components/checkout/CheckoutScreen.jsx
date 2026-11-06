@@ -35,6 +35,7 @@ export default function CheckoutScreen() {
           productName: row.productName,
           variantName: row.variantName,
           priceCents: row.priceCents,
+          compareAtCents: row.compareAtCents,
           quantity: 1,
           maxAvailable: row.totalAvailable,
         },

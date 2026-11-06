@@ -49,6 +49,7 @@ function EditProductContent() {
   const [variantId, setVariantId] = useState(null);
   const [sku, setSku] = useState("");
   const [priceCents, setPriceCents] = useState("");
+  const [compareAtCents, setCompareAtCents] = useState("");
   const [itemName, setItemName] = useState("");
   const [color, setColor] = useState("");
   const [material, setMaterial] = useState("");
@@ -84,6 +85,7 @@ function EditProductContent() {
         setVariantId(variant?.id ?? null);
         setSku(variant?.sku ?? "");
         setPriceCents(variant ? (variant.priceCents / 100).toString() : "");
+        setCompareAtCents(variant?.compareAtCents ? (variant.compareAtCents / 100).toString() : "");
         setItemName(product.itemName ?? "");
         setColor(product.color ?? "");
         setMaterial(product.material ?? "");
@@ -120,6 +122,12 @@ function EditProductContent() {
     setError(null);
     setSubmitting(true);
 
+    if (compareAtCents !== "" && Number(compareAtCents) < Number(priceCents)) {
+      setError("Original Price must be greater than or equal to the Sale Price.");
+      setSubmitting(false);
+      return;
+    }
+
     try {
       const [primaryCategoryId, ...secondaryCategoryIds] = categoryIds;
 
@@ -135,7 +143,15 @@ function EditProductContent() {
         material: material || null,
         dimensions: dimensions || null,
         images: images.map(({ url, publicId, altText }) => ({ url, publicId, altText })),
-        variants: [{ id: variantId, sku, name, priceCents: Math.round(Number(priceCents) * 100) }],
+        variants: [
+          {
+            id: variantId,
+            sku,
+            name,
+            priceCents: Math.round(Number(priceCents) * 100),
+            compareAtCents: compareAtCents !== "" ? Math.round(Number(compareAtCents) * 100) : null,
+          },
+        ],
         // Full replace, same convention as categoryIds above — always sends
         // the complete current list, even empty, so removing the last linked
         // product actually clears it instead of being silently skipped.
@@ -205,7 +221,7 @@ function EditProductContent() {
 
             <div className="flex flex-col gap-1.5">
               <label htmlFor="primaryPrice" className="text-sm font-medium text-brand-charcoal">
-                Price (USD)
+                Sale Price (USD)
               </label>
               <input
                 id="primaryPrice"
@@ -215,6 +231,22 @@ function EditProductContent() {
                 step="0.01"
                 value={priceCents}
                 onChange={(e) => setPriceCents(e.target.value)}
+                className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="compareAtPrice" className="text-sm font-medium text-brand-charcoal">
+                Original Price (USD)
+              </label>
+              <input
+                id="compareAtPrice"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Optional — shown struck through"
+                value={compareAtCents}
+                onChange={(e) => setCompareAtCents(e.target.value)}
                 className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
               />
             </div>

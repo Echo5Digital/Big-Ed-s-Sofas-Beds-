@@ -8,6 +8,7 @@
     "migrate": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "seed": "node prisma/seed.js",
+    "backfill:compare-at-prices": "node prisma/backfill-compare-at-prices.js",
     "studio": "prisma studio"
   },
   "prisma": {

@@ -2,40 +2,16 @@
 export const instant = false;
 
 import Link from "next/link";
-import { ArrowRight, PackageSearch } from "lucide-react";
+import { PackageSearch } from "lucide-react";
 import Container from "@/components/ui/Container";
 import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import EmptyState from "@/components/ui/EmptyState";
-import PageHero from "@/components/ui/PageHero";
-import SectionHeading from "@/components/ui/SectionHeading";
-import ProductCard from "@/components/home/ProductCard";
-import { getProducts } from "@/lib/api/catalog";
+import ShopPageHero from "@/components/ui/ShopPageHero";
+import ProductGridWithControls from "@/components/shop/ProductGridWithControls";
+import { getAllProducts } from "@/lib/api/catalog";
 import { normalizeProductForCard } from "@/lib/api/normalize";
-
-// Mirrors the homepage's "Shop by Category" teaser and the top nav's five
-// top-level categories — see components/home/CategoryGrid.jsx and
-// packages/database/prisma/seed.js's categoryGroupDefs.
-const SECTIONS = [
-  { slug: "living-room", label: "Living Room" },
-  { slug: "bedroom", label: "Bedroom" },
-  { slug: "dining", label: "Dining" },
-  { slug: "office", label: "Office" },
-  { slug: "accessories", label: "Accessories" },
-];
-
-const PRODUCTS_PER_SECTION = 8;
-// Pool size to draw the random 8 from — large enough to give a real shuffle
-// across a category's catalog without fetching every product in it.
-const SECTION_FETCH_POOL = 40;
-
-function pickRandom(items, count) {
-  const pool = [...items];
-  for (let i = pool.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
-  return pool.slice(0, count);
-}
+import { shuffleProducts, withDisplayRating } from "@/lib/dailyRotation";
+import { currentDaySeed } from "@/lib/currentDaySeed";
 
 export const metadata = {
   title: "Shop All Furniture | Big Ed's Sofas & Beds",
@@ -43,20 +19,24 @@ export const metadata = {
     "Browse every category at Big Ed's Sofas & Beds — sofas, sectionals, recliners, bedroom sets, mattresses and dining sets.",
 };
 
+// Same full-catalog-plus-sidebar-filters treatment as /shop/[category] (see
+// that page and components/shop/ProductGridWithControls.jsx) instead of the
+// previous curated per-category row teaser — fetches every ACTIVE product
+// site-wide (getAllProducts with no category) so the price/material/color/
+// in-stock filters and sort correctly reach every product in the catalog,
+// not just a sampled handful per category.
 export default async function ShopAllPage() {
-  const sections = await Promise.all(
-    SECTIONS.map(async ({ slug, label }) => {
-      const { products: rawProducts } = await getProducts({ category: slug, pageSize: SECTION_FETCH_POOL });
-      const products = pickRandom(rawProducts, PRODUCTS_PER_SECTION).map(normalizeProductForCard);
-      return { slug, label, products };
-    })
-  );
-
-  const hasAnyProducts = sections.some((section) => section.products.length > 0);
+  const [{ products: rawProducts }, seed] = await Promise.all([
+    getAllProducts({ sort: "oldest" }),
+    currentDaySeed(),
+  ]);
+  const products = shuffleProducts(rawProducts, seed, "shop-all")
+    .map(normalizeProductForCard)
+    .map(withDisplayRating);
 
   return (
     <div className="pb-10">
-      <PageHero
+      <ShopPageHero
         title="Shop All Furniture"
         subtitle="Quality furniture for every room, at prices built for real budgets."
       />
@@ -69,34 +49,10 @@ export default async function ShopAllPage() {
           </Link>
         </div>
 
-        {hasAnyProducts ? (
-          <div className="mt-8 flex flex-col gap-12">
-            {sections
-              .filter((section) => section.products.length > 0)
-              .map((section) => (
-                <section key={section.slug} aria-label={section.label}>
-                  <SectionHeading
-                    title={section.label}
-                    action={
-                      <Link
-                        href={`/shop/${section.slug}`}
-                        className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-red-dark hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red"
-                      >
-                        View All
-                        <ArrowRight className="size-4" aria-hidden="true" />
-                      </Link>
-                    }
-                  />
-                  <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-                    {section.products.map((product) => (
-                      <ProductCard key={product.id} product={product} />
-                    ))}
-                  </div>
-                </section>
-              ))}
-          </div>
-        ) : (
-          <div className="mt-8">
+        <div className="mt-6">
+          {products.length > 0 ? (
+            <ProductGridWithControls products={products} />
+          ) : (
             <EmptyState
               icon={PackageSearch}
               title="No products found yet"
@@ -104,8 +60,8 @@ export default async function ShopAllPage() {
               actionLabel="View Deals"
               actionHref="/deals"
             />
-          </div>
-        )}
+          )}
+        </div>
       </Container>
     </div>
   );

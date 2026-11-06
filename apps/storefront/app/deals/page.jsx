@@ -9,6 +9,8 @@ import PageHero from "@/components/ui/PageHero";
 import ProductCard from "@/components/home/ProductCard";
 import { getProducts } from "@/lib/api/catalog";
 import { normalizeProductForCard } from "@/lib/api/normalize";
+import { shuffleProducts } from "@/lib/dailyRotation";
+import { currentDaySeed } from "@/lib/currentDaySeed";
 
 export const metadata = {
   title: "Deals | Big Ed's Sofas & Beds",
@@ -16,8 +18,11 @@ export const metadata = {
 };
 
 export default async function DealsPage() {
-  const { products: rawProducts } = await getProducts({ pageSize: 100, sort: "oldest", deals: true });
-  const deals = rawProducts.map(normalizeProductForCard);
+  const [{ products: rawProducts }, seed] = await Promise.all([
+    getProducts({ pageSize: 100, sort: "oldest", deals: true }),
+    currentDaySeed(),
+  ]);
+  const deals = shuffleProducts(rawProducts, seed, "deals").map(normalizeProductForCard);
 
   return (
     <div className="pb-10">

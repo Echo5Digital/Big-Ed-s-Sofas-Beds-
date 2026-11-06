@@ -134,7 +134,20 @@ const categoryCreateSchema = z.object({
   sortOrder: z.number().int().optional(),
 });
 
-const variantCreateSchema = z.object({
+// "Original Price" (compareAtCents) is shown struck through on the storefront
+// next to the (lower) Sale Price (priceCents) — must never be below
+// priceCents, or the discount display would be nonsensical/misleading.
+// Kept as a plain .refine() applied separately to the create/update object
+// shapes below, since z.object(...).refine(...) returns a ZodEffects, which
+// has no .extend() — variantUpdateSchema needs to add its own `id` field
+// onto the plain object shape first, then apply the same refinement.
+const comparePriceAboveSale = (data) => !data.compareAtCents || data.compareAtCents >= data.priceCents;
+const comparePriceRefinement = {
+  message: "Original Price must be greater than or equal to the Sale Price",
+  path: ["compareAtCents"],
+};
+
+const variantFields = {
   sku: z.string().min(1).max(64),
   name: z.string().min(1).max(160),
   color: z.string().max(80).optional().nullable(),
@@ -146,7 +159,9 @@ const variantCreateSchema = z.object({
   priceCents: z.number().int().nonnegative(),
   compareAtCents: z.number().int().nonnegative().optional().nullable(),
   costCents: z.number().int().nonnegative().optional().nullable(),
-});
+};
+
+const variantCreateSchema = z.object(variantFields).refine(comparePriceAboveSale, comparePriceRefinement);
 
 const productImageInputSchema = z.object({
   url: z.string().url(),
@@ -196,9 +211,9 @@ const productCreateSchema = z.object({
 
 // Variant identity on update must travel by id, not sku — sku is the field
 // being edited, so matching on its new value can never find the existing row.
-const variantUpdateSchema = variantCreateSchema.extend({
-  id: z.string().uuid().optional(),
-});
+const variantUpdateSchema = z
+  .object({ ...variantFields, id: z.string().uuid().optional() })
+  .refine(comparePriceAboveSale, comparePriceRefinement);
 
 const productUpdateSchema = productCreateSchema.partial().extend({
   variants: z.array(variantUpdateSchema).optional(),

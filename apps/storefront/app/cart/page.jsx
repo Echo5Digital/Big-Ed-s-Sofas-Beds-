@@ -10,6 +10,7 @@ import Button from "@/components/ui/Button";
 import PageHero from "@/components/ui/PageHero";
 import { useDemoCart } from "@/components/layout/DemoCartProvider";
 import { formatCurrency } from "@/utils/formatCurrency";
+import Price from "@/components/ui/Price";
 
 export default function CartPage() {
   const { cartItems, cartSubtotal, updateQuantity, removeFromCart } = useDemoCart();
@@ -65,6 +66,8 @@ export default function CartPage() {
                         <Trash2 className="size-4" aria-hidden="true" />
                       </button>
                     </div>
+
+                    <Price price={item.price} compareAtPrice={item.compareAtPrice} size="sm" />
 
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="inline-flex items-center rounded-full border border-brand-charcoal/20 bg-white">

@@ -22,6 +22,7 @@ function flattenVariants(products) {
         productName: product.name,
         variantName: variant.name,
         priceCents: variant.priceCents,
+        compareAtCents: variant.compareAtCents,
         locations: variant.availability.byLocation.filter((l) => l.availableToSell > 0),
         totalAvailable: variant.availability.totalAvailable,
       });
@@ -183,7 +184,14 @@ export default function ProductSearch({ onAdd }) {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
-                  <span className="font-semibold text-brand-red">{formatCents(row.priceCents)}</span>
+                  <span className="flex items-baseline gap-1.5">
+                    <span className="font-semibold text-brand-red">{formatCents(row.priceCents)}</span>
+                    {row.compareAtCents && (
+                      <span className="text-xs text-brand-charcoal/40 line-through">
+                        {formatCents(row.compareAtCents)}
+                      </span>
+                    )}
+                  </span>
                   <span className="rounded-full bg-brand-charcoal px-3 py-1.5 text-xs font-semibold text-white transition-colors">
                     + Add
                   </span>

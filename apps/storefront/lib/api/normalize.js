@@ -23,5 +23,10 @@ export function normalizeProductForCard(product) {
     totalAvailable,
     rating: null,
     reviewCount: null,
+    // Raw Product.material/color — free text, not guaranteed set. See
+    // lib/productAttributes.js for how the storefront buckets these into a
+    // filterable set of families despite inconsistent source data.
+    material: product.material ?? null,
+    color: product.color ?? null,
   };
 }

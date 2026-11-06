@@ -23,9 +23,9 @@ import BenefitsSection from "@/components/home/BenefitsSection";
 import ShowroomSection from "@/components/home/ShowroomSection";
 import TestimonialsSection from "@/components/home/TestimonialsSection";
 import NewsletterSignup from "@/components/home/NewsletterSignup";
-import FinancingBanner from "@/components/home/FinancingBanner";
 import { getCategories, getProducts } from "@/lib/api/catalog";
-import { currentDaySeed, pickDailyDiverse } from "@/lib/dailyRotation";
+import { pickDailyDiverse } from "@/lib/dailyRotation";
+import { currentDaySeed } from "@/lib/currentDaySeed";
 
 // Cache Components requires any fetch a route wants prerendered to be
 // explicitly marked cacheable (plain `fetch(...)`, even with
@@ -70,7 +70,6 @@ export default async function HomePage() {
       <ShowroomSection />
       <TestimonialsSection />
       <NewsletterSignup />
-      <FinancingBanner />
     </>
   );
 }

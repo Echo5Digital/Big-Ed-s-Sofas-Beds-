@@ -34,6 +34,7 @@ export default function ProductPurchasePanel({ product }) {
         name: `${stripInlineMarkdown(product.name)} — ${selectedVariant.name}`,
         image: product.images[0]?.url ?? null,
         price: selectedVariant.priceCents / 100,
+        compareAtPrice: selectedVariant.compareAtCents ? selectedVariant.compareAtCents / 100 : null,
       },
       quantity
     );

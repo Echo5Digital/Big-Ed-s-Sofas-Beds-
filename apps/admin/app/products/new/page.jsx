@@ -51,6 +51,7 @@ function NewProductContent() {
   const [status, setStatus] = useState("DRAFT");
   const [sku, setSku] = useState("");
   const [priceCents, setPriceCents] = useState("");
+  const [compareAtCents, setCompareAtCents] = useState("");
   const [itemName, setItemName] = useState("");
   const [color, setColor] = useState("");
   const [material, setMaterial] = useState("");
@@ -84,6 +85,12 @@ function NewProductContent() {
     setError(null);
     setSubmitting(true);
 
+    if (compareAtCents !== "" && Number(compareAtCents) < Number(priceCents)) {
+      setError("Original Price must be greater than or equal to the Sale Price.");
+      setSubmitting(false);
+      return;
+    }
+
     try {
       // The first checked category is the primary categoryId; the rest ride
       // along as categoryIds — the API dedupes and stores them in the
@@ -113,7 +120,14 @@ function NewProductContent() {
         // One sellable variant per product today — no separate "variant"
         // concept is exposed in this form, so its name mirrors the product
         // name (the API still requires every product to have a variant).
-        variants: [{ sku, name, priceCents: Math.round(Number(priceCents) * 100) }],
+        variants: [
+          {
+            sku,
+            name,
+            priceCents: Math.round(Number(priceCents) * 100),
+            compareAtCents: compareAtCents !== "" ? Math.round(Number(compareAtCents) * 100) : undefined,
+          },
+        ],
         linkedProductIds: linkedProducts.length ? linkedProducts.map((p) => p.id) : undefined,
         initialStock: Object.keys(initialStock).length ? initialStock : undefined,
       });
@@ -166,7 +180,7 @@ function NewProductContent() {
 
             <div className="flex flex-col gap-1.5">
               <label htmlFor="primaryPrice" className="text-sm font-medium text-brand-charcoal">
-                Price (USD)
+                Sale Price (USD)
               </label>
               <input
                 id="primaryPrice"
@@ -176,6 +190,22 @@ function NewProductContent() {
                 step="0.01"
                 value={priceCents}
                 onChange={(e) => setPriceCents(e.target.value)}
+                className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="compareAtPrice" className="text-sm font-medium text-brand-charcoal">
+                Original Price (USD)
+              </label>
+              <input
+                id="compareAtPrice"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Optional — shown struck through"
+                value={compareAtCents}
+                onChange={(e) => setCompareAtCents(e.target.value)}
                 className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
               />
             </div>

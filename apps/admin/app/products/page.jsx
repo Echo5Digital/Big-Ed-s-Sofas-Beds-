@@ -76,7 +76,20 @@ function ProductsContent() {
     { key: "sku", header: "SKU", render: (r) => r.variant.sku },
     { key: "name", header: "Product", render: (r) => r.product.name },
     { key: "category", header: "Category", render: (r) => r.product.displayCategory?.name ?? "—" },
-    { key: "price", header: "Price", render: (r) => formatCentsAsCurrency(r.variant.priceCents) },
+    {
+      key: "price",
+      header: "Sale Price",
+      render: (r) => (
+        <div className="flex items-baseline gap-1.5">
+          <span>{formatCentsAsCurrency(r.variant.priceCents)}</span>
+          {r.variant.compareAtCents && (
+            <span className="text-xs text-brand-charcoal/40 line-through">
+              {formatCentsAsCurrency(r.variant.compareAtCents)}
+            </span>
+          )}
+        </div>
+      ),
+    },
     {
       key: "stock",
       header: "Available",

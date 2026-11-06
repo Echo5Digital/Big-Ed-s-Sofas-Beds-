@@ -119,6 +119,7 @@ function serializeProductMinimal(product) {
       sku: v.sku,
       name: v.name,
       priceCents: v.priceCents,
+      compareAtCents: v.compareAtCents,
       isActive: v.isActive,
       availability: computeAvailability(v),
     })),

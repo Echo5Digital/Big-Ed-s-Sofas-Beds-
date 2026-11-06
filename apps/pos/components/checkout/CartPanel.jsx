@@ -24,7 +24,12 @@ export default function CartPanel({ cart, onUpdateQuantity, onRemove, onTakePaym
                 <p className="truncate text-sm font-semibold text-brand-charcoal">
                   {line.productName} — {line.variantName}
                 </p>
-                <p className="text-xs text-brand-charcoal/50">{formatCents(line.priceCents)} each</p>
+                <p className="text-xs text-brand-charcoal/50">
+                  {formatCents(line.priceCents)} each
+                  {line.compareAtCents && (
+                    <span className="ml-1.5 text-brand-charcoal/35 line-through">{formatCents(line.compareAtCents)}</span>
+                  )}
+                </p>
               </div>
 
               <div className="flex items-center gap-1.5">

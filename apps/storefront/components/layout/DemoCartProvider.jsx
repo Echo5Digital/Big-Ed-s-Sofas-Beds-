@@ -93,6 +93,7 @@ export function DemoCartProvider({ children }) {
           name: product.name,
           image: product.image,
           price: product.price,
+          compareAtPrice: product.compareAtPrice ?? null,
           quantity,
         },
       ];
