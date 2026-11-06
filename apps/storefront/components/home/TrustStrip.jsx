@@ -26,6 +26,8 @@ const ITEMS = [
     tag: "Doorstep Care",
     label: "Fast Delivery",
     description: "Carefully brought right to your room",
+    // Landscape 1536×1024 — needs a wider/taller container than the square badges
+    imageClass: "size-20 sm:size-22",
   },
   {
     image: "/Flexible_finance_BigEd.webp",
@@ -41,18 +43,18 @@ export default function TrustStrip() {
     <section className="relative z-10 border-t-2 border-brand-gold border-b border-brand-charcoal/10 bg-white shadow-xs">
       <Container>
         <div className="grid grid-cols-1 divide-y divide-brand-charcoal/10 sm:grid-cols-2 sm:divide-y-0 sm:gap-x-6 sm:gap-y-4 lg:grid-cols-4 lg:divide-x lg:gap-0">
-          {ITEMS.map(({ image, alt, tag, label, description }) => (
+          {ITEMS.map(({ image, alt, tag, label, description, imageClass }) => (
             <div
               key={label}
               className="group flex items-center justify-start lg:justify-center py-4 sm:py-5 lg:px-4 xl:px-6 transition-colors hover:bg-brand-cream/30"
             >
               <div className="flex items-center gap-3.5 sm:gap-4">
-                <div className="relative size-14 sm:size-16 shrink-0 transition-transform duration-200 group-hover:scale-105">
+                <div className={`relative shrink-0 transition-transform duration-200 group-hover:scale-105 ${imageClass ?? "size-14 sm:size-16"}`}>
                   <Image
                     src={image}
                     alt={alt}
                     fill
-                    sizes="(max-width: 640px) 56px, 64px"
+                    sizes="(max-width: 640px) 80px, 88px"
                     className="object-contain"
                   />
                 </div>
