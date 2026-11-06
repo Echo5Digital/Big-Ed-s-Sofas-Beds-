@@ -1,7 +1,6 @@
 import { Fredoka, Inter, Caveat, Luckiest_Guy, Lora } from "next/font/google";
 import "./globals.css";
 import { DemoCartProvider } from "@/components/layout/DemoCartProvider";
-import AnnouncementBar from "@/components/layout/AnnouncementBar";
 import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
 import FloatingContactButtons from "@/components/layout/FloatingContactButtons";
@@ -54,7 +53,6 @@ export default function RootLayout({ children }) {
     >
       <body className="min-h-full flex flex-col bg-brand-cream text-brand-charcoal">
         <DemoCartProvider>
-          <AnnouncementBar />
           <SiteHeader />
           <main className="flex-1">{children}</main>
           <SiteFooter />

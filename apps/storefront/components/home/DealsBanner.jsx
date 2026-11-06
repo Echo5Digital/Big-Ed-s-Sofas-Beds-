@@ -24,14 +24,14 @@ export default function DealsBanner({ deals: rawDeals }) {
 
   return (
     <section className="relative overflow-hidden bg-linear-to-br from-brand-red-dark via-brand-red to-black py-10 sm:py-14">
-      <Container className="flex flex-col gap-8 lg:flex-row lg:items-center lg:gap-10 xl:gap-14">
-        <div className="flex w-full flex-col items-center gap-6 lg:w-[58%] lg:shrink-0 xl:w-[60%]">
+      <Container className="flex flex-col gap-8 lg:flex-row lg:items-center lg:gap-8 xl:gap-12">
+        <div className="flex w-full flex-col items-center gap-6 lg:w-[54%] lg:shrink-0 xl:w-[52%]">
           <div className="relative aspect-1773/886 w-full md:-mb-4 lg:-mb-6">
             <Image
               src="/unbearably_good_deals.webp"
               alt="UnBEARably Good Deals! Big Ed mascot giving a thumbs up in a recliner"
               fill
-              sizes="(max-width: 1024px) 100vw, 58vw"
+              sizes="(max-width: 1024px) 100vw, 54vw"
               className="object-contain object-center"
             />
           </div>
@@ -51,10 +51,7 @@ export default function DealsBanner({ deals: rawDeals }) {
           </ul>
         </div>
 
-        <div className="w-full lg:w-[42%] xl:w-[40%]">
-          <h2 className="mb-4 text-center font-serif-heading text-xl font-bold text-white lg:text-left lg:text-2xl">
-            Today&rsquo;s Deals
-          </h2>
+        <div className="w-full lg:w-[46%] xl:w-[48%]">
           <DealsCarousel products={deals} />
         </div>
       </Container>
