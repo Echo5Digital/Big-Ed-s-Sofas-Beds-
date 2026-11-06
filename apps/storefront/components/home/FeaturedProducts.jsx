@@ -6,7 +6,10 @@ import ProductCard from "@/components/home/ProductCard";
 import { normalizeProductForCard } from "@/lib/api/normalize";
 import { withHomepageAccents } from "@/lib/dailyRotation";
 
-export const FEATURED_COUNT = 12;
+// 4 columns x 2 rows on desktop (see the grid below) — bigger cards than the
+// previous 6-column layout, shown deliberately as two full 4-wide rows
+// rather than a stray partial row.
+export const FEATURED_COUNT = 8;
 
 // Platform Bed Frame has no product photography yet (see
 // docs/requirements/open-questions.md — "Blocks: Real catalog data"), so it's
@@ -40,7 +43,7 @@ export default function FeaturedProducts({ products: rawProducts }) {
           }
         />
 
-        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="mt-6 grid grid-cols-2 gap-5 sm:gap-6 lg:grid-cols-4">
           {featured.map((product) => (
             <ProductCard key={product.id} product={product} showRatingValue />
           ))}

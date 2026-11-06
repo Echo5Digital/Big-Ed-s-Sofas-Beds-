@@ -15,6 +15,7 @@ const PRODUCT_POOL_SIZE = 100;
 
 import { cacheLife } from "next/cache";
 import HeroBanner from "@/components/home/HeroBanner";
+import TrustStrip from "@/components/home/TrustStrip";
 import CategoryGrid from "@/components/home/CategoryGrid";
 import FeaturedProducts, { FEATURED_COUNT } from "@/components/home/FeaturedProducts";
 import CategorySpotlight, { SPOTLIGHT_COUNT } from "@/components/home/CategorySpotlight";
@@ -24,8 +25,14 @@ import ShowroomSection from "@/components/home/ShowroomSection";
 import TestimonialsSection from "@/components/home/TestimonialsSection";
 import NewsletterSignup from "@/components/home/NewsletterSignup";
 import { getCategories, getProducts } from "@/lib/api/catalog";
-import { pickDailyDiverse } from "@/lib/dailyRotation";
+import { pickDailyDiverse, shuffleProducts } from "@/lib/dailyRotation";
 import { currentDaySeed } from "@/lib/currentDaySeed";
+
+// Pool for the Deals carousel — fetched separately from PRODUCT_POOL_SIZE's
+// everything-pool above since it needs the deals: true filter (only
+// staff-flagged markdowns, same gate /deals itself uses — see
+// apps/api/src/routes/catalog.routes.js), not a sample of the whole catalog.
+const DEALS_POOL_SIZE = 20;
 
 // Cache Components requires any fetch a route wants prerendered to be
 // explicitly marked cacheable (plain `fetch(...)`, even with
@@ -40,11 +47,12 @@ async function getHomepageData() {
   return Promise.all([
     getCategories(),
     getProducts({ pageSize: PRODUCT_POOL_SIZE }),
+    getProducts({ pageSize: DEALS_POOL_SIZE, sort: "oldest", deals: true }),
   ]);
 }
 
 export default async function HomePage() {
-  const [categories, { products: productPool }] = await getHomepageData();
+  const [categories, { products: productPool }, { products: dealsPool }] = await getHomepageData();
 
   const seed = await currentDaySeed();
   const featuredProducts = pickDailyDiverse(productPool, FEATURED_COUNT, seed);
@@ -54,13 +62,15 @@ export default async function HomePage() {
     seed,
     new Set(featuredProducts.map((p) => p.id))
   );
+  const deals = shuffleProducts(dealsPool, seed, "home-deals");
 
   return (
     <>
       <HeroBanner />
+      <TrustStrip />
       <CategoryGrid categories={categories} />
       <FeaturedProducts products={featuredProducts} />
-      <DealsBanner />
+      <DealsBanner deals={deals} />
       <BenefitsSection />
       <CategorySpotlight
         products={spotlightProducts}

@@ -31,13 +31,12 @@ export default function ProductCard({ product, showRatingValue = false }) {
 
   return (
     <div className="group flex h-full flex-col overflow-hidden rounded-xl border border-brand-charcoal/10 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
-      {/* Source product photography ranges from wide landscape room-scene
-          shots (a full sectional spanning the frame) to tall portrait shots
-          (a single nightstand) — there is no crop ratio that doesn't clip
-          *something*. object-contain on a fixed square frame shows the whole
-          product every time, the same convention professional e-commerce
-          grids (Amazon, IKEA, Wayfair) use for exactly this problem, at the
-          cost of some neutral padding around narrower/taller product shots. */}
+      {/* object-cover fills the frame edge-to-edge (per explicit product
+          request) — on wide landscape room-scene shots (e.g. a full
+          sectional spanning the source photo) or tall portrait shots (a
+          single nightstand), this does crop into the image rather than
+          letterbox it; that tradeoff was chosen deliberately over the
+          previous object-contain treatment. */}
       <div className="relative aspect-square shrink-0 overflow-hidden bg-brand-cream">
         <Link
           href={`/products/${product.slug}`}
@@ -49,7 +48,7 @@ export default function ProductCard({ product, showRatingValue = false }) {
               alt={plainName}
               fill
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
-              className="object-contain p-3 transition-transform duration-300 group-hover:scale-105"
+              className="object-cover transition-transform duration-300 group-hover:scale-105"
             />
           )}
         </Link>

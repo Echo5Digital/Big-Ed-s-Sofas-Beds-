@@ -14,6 +14,10 @@ export const siteConfig = {
   },
   phone: "(863) 555-0123",
   phoneHref: "tel:+18635550123",
+  // Same placeholder number as phone/phoneHref above — no separate WhatsApp
+  // Business number has been supplied yet. wa.me requires digits only (no
+  // "+", spaces, or punctuation).
+  whatsappHref: "https://wa.me/18635550123",
   hours: [
     { days: "Mon – Sat", time: "9AM – 7PM" },
     { days: "Sunday", time: "11AM – 5PM" },
