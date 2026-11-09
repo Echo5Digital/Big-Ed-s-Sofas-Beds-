@@ -8,7 +8,7 @@ import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import EmptyState from "@/components/ui/EmptyState";
 import ShopPageHero from "@/components/ui/ShopPageHero";
 import ProductGridWithControls from "@/components/shop/ProductGridWithControls";
-import { getAllProducts } from "@/lib/api/catalog";
+import { getAllProducts, getCategories } from "@/lib/api/catalog";
 import { normalizeProductForCard } from "@/lib/api/normalize";
 import { shuffleProducts, withDisplayRating } from "@/lib/dailyRotation";
 import { currentDaySeed } from "@/lib/currentDaySeed";
@@ -26,8 +26,9 @@ export const metadata = {
 // in-stock filters and sort correctly reach every product in the catalog,
 // not just a sampled handful per category.
 export default async function ShopAllPage() {
-  const [{ products: rawProducts }, seed] = await Promise.all([
+  const [{ products: rawProducts }, categories, seed] = await Promise.all([
     getAllProducts({ sort: "oldest" }),
+    getCategories(),
     currentDaySeed(),
   ]);
   const products = shuffleProducts(rawProducts, seed, "shop-all")
@@ -51,7 +52,7 @@ export default async function ShopAllPage() {
 
         <div className="mt-6">
           {products.length > 0 ? (
-            <ProductGridWithControls products={products} />
+            <ProductGridWithControls products={products} categories={categories} />
           ) : (
             <EmptyState
               icon={PackageSearch}

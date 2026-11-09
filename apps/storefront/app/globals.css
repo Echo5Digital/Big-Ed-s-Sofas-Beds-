@@ -60,4 +60,38 @@ body {
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  /* Two overlapping <input type="range"> elements share one visual track
+     (components/shop/PriceRangeSlider.jsx) — the input itself stays
+     invisible/click-through (pointer-events: none on the element, see that
+     component) so only its thumb is interactive, letting both sliders
+     coexist on the same line without one blocking the other's track clicks. */
+  .price-range-thumb::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    pointer-events: auto;
+    width: 18px;
+    height: 18px;
+    border-radius: 9999px;
+    background: var(--color-brand-red);
+    border: 2px solid white;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+  }
+
+  .price-range-thumb::-moz-range-thumb {
+    pointer-events: auto;
+    width: 14px;
+    height: 14px;
+    border-radius: 9999px;
+    background: var(--color-brand-red);
+    border: 2px solid white;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+  }
+
+  .price-range-thumb::-moz-range-track {
+    background: transparent;
+    border: none;
+  }
 }

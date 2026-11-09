@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronDown, RotateCcw, SlidersHorizontal, X } from "lucide-react";
 import { MATERIAL_FAMILY_ORDER, COLOR_FAMILY_ORDER, materialFamilyLabel, colorFamilyMeta } from "@/lib/productAttributes";
+import PriceRangeSlider from "@/components/shop/PriceRangeSlider";
 
 function FilterSection({ title, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -27,6 +28,9 @@ function FilterSection({ title, children, defaultOpen = true }) {
 // a third to a half of products have no material/color set at all (see
 // lib/productAttributes.js for why the source data is this incomplete).
 export default function FilterSidebar({
+  sort,
+  onSortChange,
+  sortOptions,
   priceInput,
   onPriceInputChange,
   onApplyPrice,
@@ -40,6 +44,9 @@ export default function FilterSidebar({
   availableColors,
   selectedColors,
   onToggleColor,
+  availableCategoryTree,
+  selectedCategoryIds,
+  onToggleCategory,
   activeFilterCount,
   onResetAll,
   onClose,
@@ -75,6 +82,20 @@ export default function FilterSidebar({
         </div>
       </div>
 
+      <FilterSection title="Sort By">
+        <select
+          value={sort}
+          onChange={(e) => onSortChange(e.target.value)}
+          className="w-full rounded-lg border border-brand-charcoal/15 bg-white px-2.5 py-1.5 text-sm font-medium text-brand-charcoal focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+        >
+          {sortOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </FilterSection>
+
       <FilterSection title="Availability">
         <label className="flex cursor-pointer items-center gap-2.5 text-sm text-brand-charcoal">
           <input
@@ -89,6 +110,15 @@ export default function FilterSidebar({
 
       <FilterSection title="Price Range">
         <div className="flex flex-col gap-3">
+          <PriceRangeSlider
+            min={priceBounds.min}
+            max={priceBounds.max}
+            value={{
+              min: priceInput.min === "" ? priceBounds.min : Number(priceInput.min),
+              max: priceInput.max === "" ? priceBounds.max : Number(priceInput.max),
+            }}
+            onChange={({ min, max }) => onPriceInputChange({ min: String(min), max: String(max) })}
+          />
           <div className="flex items-center gap-2">
             <div className="flex-1">
               <label className="text-xs text-brand-charcoal/50">Min</label>
@@ -178,6 +208,56 @@ export default function FilterSidebar({
                 </button>
               );
             })}
+          </div>
+        </FilterSection>
+      )}
+
+      {/* Only rendered when the caller passes the full site category tree
+          (today, just /shop — a page already scoped to one category, like
+          /shop/[category], has nothing broader left to filter by). Each
+          top-level category is a checkbox; selecting it rolls up every
+          product in its sub-categories too (see
+          expandCategoryIdWithChildren in lib/categoryTree.js). Sub-categories
+          are listed right under their parent, indented, as their own
+          checkboxes — a shopper can select a sub-category directly without
+          first selecting its parent. Placed last and collapsed by default
+          (unlike every other section here): it's the longest list in the
+          sidebar by far (5 parents + ~20 children), so left open it would
+          push every other filter below the fold. */}
+      {availableCategoryTree?.length > 0 && (
+        <FilterSection title="Category" defaultOpen={false}>
+          <div className="flex flex-col gap-3">
+            {availableCategoryTree.map((parent) => (
+              <div key={parent.id} className="flex flex-col gap-2">
+                <label className="flex cursor-pointer items-center gap-2.5 text-sm font-semibold text-brand-charcoal">
+                  <input
+                    type="checkbox"
+                    checked={selectedCategoryIds.includes(parent.id)}
+                    onChange={() => onToggleCategory(parent.id)}
+                    className="size-4 rounded border-brand-charcoal/30 text-brand-red focus:ring-brand-red"
+                  />
+                  {parent.name}
+                </label>
+                {parent.children.length > 0 && (
+                  <div className="ml-6 flex flex-col gap-2 border-l border-brand-charcoal/10 pl-3">
+                    {parent.children.map((child) => (
+                      <label
+                        key={child.id}
+                        className="flex cursor-pointer items-center gap-2.5 text-sm text-brand-charcoal"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedCategoryIds.includes(child.id)}
+                          onChange={() => onToggleCategory(child.id)}
+                          className="size-4 rounded border-brand-charcoal/30 text-brand-red focus:ring-brand-red"
+                        />
+                        {child.name}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </FilterSection>
       )}

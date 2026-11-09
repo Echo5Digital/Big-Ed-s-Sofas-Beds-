@@ -7,6 +7,7 @@ import ProductCard from "@/components/home/ProductCard";
 import FilterSidebar from "@/components/shop/FilterSidebar";
 import ClientPagination from "@/components/shop/ClientPagination";
 import { classifyMaterial, classifyColor } from "@/lib/productAttributes";
+import { buildCategoryTree, expandCategoryIdWithChildren } from "@/lib/categoryTree";
 
 const SORT_OPTIONS = [
   { value: "relevance", label: "Relevance" },
@@ -38,8 +39,13 @@ function priceBoundsOf(products) {
 // slice over the filtered result — this ordering is what makes a filter
 // correctly reach every matching product in the category instead of only
 // whichever page happened to be loaded when the filter was applied.
-export default function ProductGridWithControls({ products, gridClassName }) {
+export default function ProductGridWithControls({ products, categories, gridClassName }) {
   const bounds = useMemo(() => priceBoundsOf(products), [products]);
+  // Only meaningful on pages that pass the full site category tree (today,
+  // just /shop — a category-scoped page like /shop/[category] has nothing
+  // broader to filter by, so it omits this prop and the Category filter
+  // section below simply doesn't render, same as Material/Color when empty).
+  const categoryTree = useMemo(() => buildCategoryTree(categories ?? []), [categories]);
 
   const [sort, setSort] = useState("relevance");
   const [appliedPriceRange, setAppliedPriceRange] = useState(null);
@@ -47,6 +53,7 @@ export default function ProductGridWithControls({ products, gridClassName }) {
   const [inStockOnly, setInStockOnly] = useState(false);
   const [selectedMaterials, setSelectedMaterials] = useState([]);
   const [selectedColors, setSelectedColors] = useState([]);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState([]);
   const [page, setPage] = useState(1);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
@@ -72,11 +79,37 @@ export default function ProductGridWithControls({ products, gridClassName }) {
     [taggedProducts]
   );
 
+  // Same "only show options the current product set can actually match"
+  // convention as availableMaterials/availableColors above — a parent is kept
+  // if it (or any of its children, since selecting a parent rolls up its
+  // children's products) has at least one matching product; a child is kept
+  // only if it directly has one.
+  const availableCategoryTree = useMemo(() => {
+    const allProductCategoryIds = new Set(taggedProducts.flatMap((p) => p.categoryIds ?? []));
+    return categoryTree
+      .map((parent) => ({
+        ...parent,
+        children: parent.children.filter((child) => allProductCategoryIds.has(child.id)),
+      }))
+      .filter((parent) => allProductCategoryIds.has(parent.id) || parent.children.length > 0);
+  }, [categoryTree, taggedProducts]);
+
   // The full filtered/sorted result across the WHOLE category (products is
   // already the complete category set — see getAllProducts in
   // lib/api/catalog.js — not just one server page), so a color/material/
   // price filter here correctly matches against every product in the
   // category, not just whichever page the shopper happened to be on.
+  // Expanding each selected id to include its children (for a selected
+  // parent) happens once per selection change, not per product checked below
+  // — expandCategoryIdWithChildren is a no-op-ish lookup for a selected leaf
+  // (no children), and the parent case is exactly the confirmed rollup
+  // behavior: selecting "Living Room" must also match products tagged only to
+  // "Sectionals", "Recliners", etc.
+  const expandedSelectedCategoryIds = useMemo(() => {
+    if (selectedCategoryIds.length === 0) return [];
+    return [...new Set(selectedCategoryIds.flatMap((id) => expandCategoryIdWithChildren(id, categories ?? [])))];
+  }, [selectedCategoryIds, categories]);
+
   const filteredProducts = useMemo(() => {
     let result = taggedProducts;
 
@@ -92,6 +125,9 @@ export default function ProductGridWithControls({ products, gridClassName }) {
     if (selectedColors.length > 0) {
       result = result.filter((p) => selectedColors.includes(p.colorFamily));
     }
+    if (expandedSelectedCategoryIds.length > 0) {
+      result = result.filter((p) => (p.categoryIds ?? []).some((id) => expandedSelectedCategoryIds.includes(id)));
+    }
 
     if (sort === "relevance") return result;
 
@@ -100,7 +136,7 @@ export default function ProductGridWithControls({ products, gridClassName }) {
     else if (sort === "price-desc") sorted.sort((a, b) => b.price - a.price);
     else if (sort === "rating-desc") sorted.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
     return sorted;
-  }, [taggedProducts, sort, appliedPriceRange, inStockOnly, selectedMaterials, selectedColors]);
+  }, [taggedProducts, sort, appliedPriceRange, inStockOnly, selectedMaterials, selectedColors, expandedSelectedCategoryIds]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
 
@@ -147,17 +183,30 @@ export default function ProductGridWithControls({ products, gridClassName }) {
     setSelectedColors((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
   }
 
+  function toggleCategory(id) {
+    setSelectedCategoryIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
+  }
+
   function resetAll() {
+    setSort("relevance");
     handleResetPrice();
     setInStockOnly(false);
     setSelectedMaterials([]);
     setSelectedColors([]);
+    setSelectedCategoryIds([]);
   }
 
   const activeFilterCount =
-    (appliedPriceRange ? 1 : 0) + (inStockOnly ? 1 : 0) + selectedMaterials.length + selectedColors.length;
+    (appliedPriceRange ? 1 : 0) +
+    (inStockOnly ? 1 : 0) +
+    selectedMaterials.length +
+    selectedColors.length +
+    selectedCategoryIds.length;
 
   const filterSidebarProps = {
+    sort,
+    onSortChange: setSort,
+    sortOptions: SORT_OPTIONS,
     priceInput,
     onPriceInputChange: setPriceInput,
     onApplyPrice: handleApplyPrice,
@@ -171,6 +220,9 @@ export default function ProductGridWithControls({ products, gridClassName }) {
     availableColors,
     selectedColors,
     onToggleColor: toggleColor,
+    availableCategoryTree,
+    selectedCategoryIds,
+    onToggleCategory: toggleCategory,
     activeFilterCount,
     onResetAll: resetAll,
   };
@@ -221,25 +273,10 @@ export default function ProductGridWithControls({ products, gridClassName }) {
             )}
           </button>
 
-          <span className="flex items-center gap-1.5 text-sm font-semibold text-brand-charcoal/70">
+          <span className="ml-auto flex items-center gap-1.5 text-sm font-semibold text-brand-charcoal/70 lg:ml-0">
             <SlidersHorizontal className="hidden size-4 lg:inline" aria-hidden="true" />
             {filteredProducts.length} {filteredProducts.length === 1 ? "item" : "items"}
           </span>
-
-          <label className="ml-auto flex items-center gap-2 text-sm">
-            <span className="text-brand-charcoal/60">Sort by:</span>
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value)}
-              className="rounded-lg border border-brand-charcoal/15 bg-white px-2.5 py-1.5 text-sm font-medium text-brand-charcoal focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-            >
-              {SORT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
 
         {visibleProducts.length > 0 ? (

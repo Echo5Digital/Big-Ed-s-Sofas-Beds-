@@ -17,6 +17,15 @@ export function normalizeProductForCard(product) {
     price: variant ? variant.priceCents / 100 : 0,
     compareAtPrice: variant?.compareAtCents ? variant.compareAtCents / 100 : null,
     category: product.category?.slug ?? null,
+    // Every category id this product belongs to — its primary category plus
+    // any secondary ProductCategory tags (see schema.prisma) — used by the
+    // shop filter's category matching (components/shop/ProductGridWithControls.jsx),
+    // which needs ids (to check against a selected category's sub-category
+    // ids) rather than just the single primary slug above.
+    categoryIds: [
+      ...(product.category ? [product.category.id] : []),
+      ...(product.categories ?? []).map((c) => c.id),
+    ],
     createdAt: product.createdAt ?? null,
     isDeal: product.isDeal ?? false,
     badge: totalAvailable <= 0 ? "OUT OF STOCK" : null,

@@ -13,7 +13,8 @@ import ProductCard from "@/components/home/ProductCard";
 import ProductImageGallery from "@/components/products/ProductImageGallery";
 import ProductAttributes from "@/components/products/ProductAttributes";
 import ProductPurchasePanel from "@/components/products/ProductPurchasePanel";
-import { getProductBySlug, getProducts } from "@/lib/api/catalog";
+import FrequentlyBoughtTogether from "@/components/products/FrequentlyBoughtTogether";
+import { getProductBySlug, getProducts, getCategories } from "@/lib/api/catalog";
 import { normalizeProductForCard } from "@/lib/api/normalize";
 import {
   homepageDisplayRating,
@@ -22,6 +23,8 @@ import {
   withDisplayRating,
 } from "@/lib/dailyRotation";
 import { currentDaySeed } from "@/lib/currentDaySeed";
+import { topLevelCategorySlugFor } from "@/lib/categoryTree";
+import { pairedCategorySlugsFor } from "@/lib/categoryPairings";
 import { ApiClientError } from "@/lib/api/client";
 
 // Matches the trust-badge strip pattern on the reference sites (free
@@ -101,6 +104,35 @@ export default async function ProductDetailPage({ params }) {
   // never needs to be set from both products' admin pages.
   const linkedProducts = (product.linkedProducts ?? []).map(normalizeProductForCard).map(withDisplayRating);
 
+  // "Frequently Bought Together" deliberately pairs this product with OTHER-
+  // category products (see lib/categoryPairings.js) — the opposite axis from
+  // `related` above, which is same-category. One product is picked per
+  // paired category (not a pool of many) to keep the bundle widget small and
+  // scannable, same reasoning FBT widgets on reference sites use.
+  const FBT_PICK_COUNT = 2;
+  let frequentlyBoughtTogether = [];
+  if (product.category) {
+    const categories = await getCategories();
+    const topLevelSlug = topLevelCategorySlugFor(product.category, categories);
+    const pairedSlugs = pairedCategorySlugsFor(topLevelSlug).slice(0, FBT_PICK_COUNT);
+    const daySeed = await currentDaySeed();
+
+    const picks = (
+      await Promise.all(
+        pairedSlugs.map(async (slug) => {
+          const { products: candidates } = await getProducts({ category: slug, pageSize: 20, sort: "oldest" });
+          const inStockCandidates = candidates.filter((p) => p.id !== product.id);
+          if (inStockCandidates.length === 0) return null;
+          return shuffleProducts(inStockCandidates, daySeed, `fbt-${product.id}-${slug}`)[0];
+        })
+      )
+    ).filter(Boolean);
+
+    if (picks.length > 0) {
+      frequentlyBoughtTogether = [product, ...picks].map(normalizeProductForCard).map(withDisplayRating);
+    }
+  }
+
   const displayRating = homepageDisplayRating(product.id);
   const displayReviewCount = homepageDisplayReviewCount(product.id);
 
@@ -117,7 +149,7 @@ export default async function ProductDetailPage({ params }) {
         />
       </Container>
 
-      <Container className="mt-5 grid grid-cols-1 gap-8 lg:grid-cols-2 lg:gap-12">
+      <Container className="mt-5 grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start lg:gap-12">
         <ProductImageGallery
           images={product.images}
           name={plainName}
@@ -191,6 +223,17 @@ export default async function ProductDetailPage({ params }) {
           )}
         </div>
       </Container>
+
+      {frequentlyBoughtTogether.length > 1 && (
+        <Container className="mt-10">
+          <h2 className="font-display text-xl font-semibold text-brand-charcoal sm:text-2xl">
+            Frequently Bought Together
+          </h2>
+          <div className="mt-5">
+            <FrequentlyBoughtTogether items={frequentlyBoughtTogether} />
+          </div>
+        </Container>
+      )}
 
       {product.description && (
         <Container className="mt-10">

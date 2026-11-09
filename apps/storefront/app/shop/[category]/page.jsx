@@ -14,25 +14,40 @@ import { normalizeProductForCard } from "@/lib/api/normalize";
 import { shuffleProducts, withDisplayRating } from "@/lib/dailyRotation";
 import { currentDaySeed } from "@/lib/currentDaySeed";
 
-// Resolves a /shop/[category] slug against the live category list. Supports
-// nested categories (via Category.parentId) transparently: a parent slug
-// shows its children as sub-category links, a leaf slug shows its own
-// products directly — today's seed data is flat (no parent/child relations
-// set), so every slug currently behaves as a leaf category page.
+// Resolves a /shop/[category] slug against the live category list. Categories
+// are a real two-level tree (Category.parentId, seeded in
+// packages/database/prisma/seed.js — e.g. Living Room -> Stationary Sofas &
+// Loveseats, Sectionals, Recliners, etc.): a parent slug shows its children as
+// sub-category links AND rolls up every product from those sub-categories (a
+// product tagged only to "Stationary Sofas & Loveseats" still shows up on
+// /shop/living-room), not just products tagged directly to the parent itself
+// — matching the same rollup behavior as the /shop page's category filter
+// (see components/shop/ProductGridWithControls.jsx). A leaf slug (no
+// children) shows only its own directly-tagged products, same as before.
 //
-// Fetches every product in the category (getAllProducts loops the API's
-// paginated endpoint), not just one page of it — the sidebar filters
-// (price/material/color/in-stock) and sort in ProductGridWithControls need
-// the complete set to work correctly; pagination now happens client-side,
-// over the filtered result, instead of being a server-side page boundary a
-// filter could never see past.
+// Fetches every product across the category (+ children, for a parent) via
+// getAllProducts (loops the API's paginated endpoint per slug), not just one
+// page of it — the sidebar filters (price/material/color/in-stock) and sort
+// in ProductGridWithControls need the complete set to work correctly;
+// pagination happens client-side, over the filtered result.
 async function resolveCategory(slug) {
   const categories = await getCategories();
   const category = categories.find((c) => c.slug === slug);
   if (!category) return null;
 
   const children = categories.filter((c) => c.parentId === category.id);
-  const { products } = await getAllProducts({ category: slug, sort: "oldest" });
+  const slugsToFetch = [slug, ...children.map((c) => c.slug)];
+
+  const results = await Promise.all(
+    slugsToFetch.map((s) => getAllProducts({ category: s, sort: "oldest" }))
+  );
+  // A product tagged to BOTH the parent and one of its children (via primary
+  // + secondary category tags) would otherwise appear twice once their
+  // product lists are merged.
+  const seenIds = new Set();
+  const products = results
+    .flatMap((r) => r.products)
+    .filter((p) => (seenIds.has(p.id) ? false : (seenIds.add(p.id), true)));
 
   return { category, children, products };
 }
