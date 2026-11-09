@@ -16,7 +16,7 @@ export const secondaryButtonClass =
 export const smallPrimaryButtonClass =
   "rounded-full bg-brand-red px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark disabled:cursor-not-allowed disabled:opacity-60";
 export const linkButtonClass =
-  "text-sm font-semibold text-brand-red underline-offset-2 hover:text-brand-red-dark hover:underline focus-visible:outline-2 focus-visible:outline-brand-red disabled:cursor-not-allowed disabled:text-brand-charcoal/40 disabled:no-underline";
+  "-my-2 inline-block py-2 text-sm font-semibold text-brand-red underline-offset-2 hover:text-brand-red-dark hover:underline focus-visible:outline-2 focus-visible:outline-brand-red disabled:cursor-not-allowed disabled:text-brand-charcoal/40 disabled:no-underline";
 
 export function reasonOf(error) {
   return error instanceof ApiClientError ? error.details?.reason : undefined;

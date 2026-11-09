@@ -37,7 +37,7 @@ export default function ClientPagination({ page, totalPages, onPageChange }) {
         onClick={() => goTo(page - 1)}
         aria-label="Previous page"
         disabled={page <= 1}
-        className={`flex size-9 items-center justify-center rounded-full border border-brand-charcoal/15 text-brand-charcoal transition-colors sm:size-10 ${
+        className={`flex size-10 items-center justify-center rounded-full border border-brand-charcoal/15 text-brand-charcoal transition-colors ${
           page <= 1 ? "pointer-events-none opacity-40" : "hover:border-brand-red hover:text-brand-red-dark"
         }`}
       >
@@ -56,7 +56,7 @@ export default function ClientPagination({ page, totalPages, onPageChange }) {
               onClick={() => goTo(pageNumber)}
               aria-label={`Page ${pageNumber}`}
               aria-current={pageNumber === page ? "page" : undefined}
-              className={`flex size-9 items-center justify-center rounded-full text-sm font-semibold transition-colors sm:size-10 ${
+              className={`flex size-10 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
                 pageNumber === page ? "bg-brand-red text-white" : "text-brand-charcoal hover:bg-brand-charcoal/5"
               }`}
             >
@@ -71,7 +71,7 @@ export default function ClientPagination({ page, totalPages, onPageChange }) {
         onClick={() => goTo(page + 1)}
         aria-label="Next page"
         disabled={page >= totalPages}
-        className={`flex size-9 items-center justify-center rounded-full border border-brand-charcoal/15 text-brand-charcoal transition-colors sm:size-10 ${
+        className={`flex size-10 items-center justify-center rounded-full border border-brand-charcoal/15 text-brand-charcoal transition-colors ${
           page >= totalPages ? "pointer-events-none opacity-40" : "hover:border-brand-red hover:text-brand-red-dark"
         }`}
       >

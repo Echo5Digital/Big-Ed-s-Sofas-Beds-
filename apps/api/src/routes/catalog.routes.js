@@ -5,7 +5,7 @@ const { productCreateSchema, productUpdateSchema, categoryCreateSchema } = requi
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
-const { NotFoundError, ValidationError } = require("../lib/errors");
+const { NotFoundError, ValidationError, ConflictError } = require("../lib/errors");
 const cloudinary = require("../lib/cloudinary");
 const inventoryService = require("../services/inventory.service");
 
@@ -36,6 +36,92 @@ function uploadBufferToCloudinary(buffer) {
     );
     stream.end(buffer);
   });
+}
+
+// Links are maintained as a fully-connected group (clique), not just pairwise
+// edges back to whichever product was being edited: if E submits
+// linkedProductIds [A, B, C, D], then A, B, C, and D must all end up linked
+// to each other too, not only back to E. Submitting a product that already
+// belongs to ITS OWN existing group (e.g. A was already linked to X) merges
+// that group in as well, so the end state is always one single clique
+// containing every product transitively reachable from the edit — there is
+// no modeled "group id", just the invariant that every product's `linkedTo`
+// always equals its whole clique minus itself.
+//
+// Removal means leaving the group entirely (confirmed product behavior): if
+// B is dropped from this submission, B is unlinked from EVERY other member of
+// the group it was just in, not just from the product being edited — a
+// partial edge removal would leave a clique that isn't actually a clique
+// anymore.
+//
+// `tx` may be the plain `prisma` client or a `$transaction` callback's `tx` —
+// both expose the same `productLink` delegate.
+async function syncProductLinksAsGroup(tx, productId, submittedLinkIds) {
+  const dedupedSubmittedIds = [...new Set(submittedLinkIds)].filter((id) => id !== productId);
+
+  const existingLinks = await tx.productLink.findMany({
+    where: { productId },
+    select: { linkedProductId: true },
+  });
+  const oldGroup = new Set([productId, ...existingLinks.map((l) => l.linkedProductId)]);
+
+  // Any existing member of this product's group that wasn't resubmitted is
+  // being dropped from the group entirely. Computed up front, before merging
+  // in submitted members' own existing links below — those links still
+  // include stale edges to exactly these about-to-be-dropped members (they
+  // haven't been deleted yet), so without this exclusion a dropped member
+  // would get pulled straight back into newGroup via its old clique-mate's
+  // `theirLinks` row.
+  const droppedMembers = new Set([...oldGroup].filter((id) => id !== productId && !dedupedSubmittedIds.includes(id)));
+
+  // Start the new group from this product plus whatever was just submitted,
+  // then pull in each submitted product's OWN existing group (minus anyone
+  // being dropped, per above) so two previously-separate cliques correctly
+  // merge into one instead of the newly-added member staying only
+  // half-linked.
+  const newGroup = new Set([productId, ...dedupedSubmittedIds]);
+  if (dedupedSubmittedIds.length > 0) {
+    const theirLinks = await tx.productLink.findMany({
+      where: { productId: { in: dedupedSubmittedIds } },
+      select: { productId: true, linkedProductId: true },
+    });
+    for (const link of theirLinks) {
+      if (!droppedMembers.has(link.productId)) newGroup.add(link.productId);
+      if (!droppedMembers.has(link.linkedProductId)) newGroup.add(link.linkedProductId);
+    }
+  }
+
+  const leavingMembers = [...oldGroup].filter((id) => !newGroup.has(id));
+
+  // Anyone leaving the group is unlinked from every other member of the
+  // group they were just part of (oldGroup ∪ newGroup, so this also covers
+  // links to members only present in the merged-in group), not just from
+  // `productId`.
+  const allTouchedIds = new Set([...oldGroup, ...newGroup]);
+  if (leavingMembers.length > 0) {
+    await tx.productLink.deleteMany({
+      where: {
+        OR: [
+          { productId: { in: leavingMembers }, linkedProductId: { in: [...allTouchedIds] } },
+          { productId: { in: [...allTouchedIds] }, linkedProductId: { in: leavingMembers } },
+        ],
+      },
+    });
+  }
+
+  // Close the remaining group into a full clique: every ordered pair within
+  // it gets a ProductLink row. skipDuplicates makes this safe to run even
+  // for pairs that are already linked.
+  const finalGroup = [...newGroup];
+  if (finalGroup.length > 1) {
+    const pairs = [];
+    for (const a of finalGroup) {
+      for (const b of finalGroup) {
+        if (a !== b) pairs.push({ productId: a, linkedProductId: b });
+      }
+    }
+    await tx.productLink.createMany({ data: pairs, skipDuplicates: true });
+  }
 }
 
 // linkedTo (see ProductLink in schema.prisma) resolves each cross-linked
@@ -399,17 +485,12 @@ router.post(
         });
       }
 
-      // Each selected product gets BOTH directions written in the same
-      // transaction — (new product -> it) and (it -> new product) — so the
-      // link is never visible from only one side, even momentarily.
+      // Links the new product into a full clique with every selected product
+      // (and whatever groups those products already belonged to) — see
+      // syncProductLinksAsGroup. The new product can't have any existing
+      // links of its own yet, so this only ever adds, never removes.
       if (dedupedLinkIds.length > 0) {
-        await tx.productLink.createMany({
-          data: dedupedLinkIds.flatMap((linkedProductId) => [
-            { productId: created.id, linkedProductId },
-            { productId: linkedProductId, linkedProductId: created.id },
-          ]),
-          skipDuplicates: true,
-        });
+        await syncProductLinksAsGroup(tx, created.id, dedupedLinkIds);
       }
 
       return created;
@@ -498,42 +579,11 @@ router.patch(
     }
 
     if (linkedProductIds) {
-      // Full replace, like categoryIds above — but unlike categories, each
-      // link also has a mirrored row on the OTHER product (productId swapped)
-      // that this product's own submitted list knows nothing about. A plain
-      // "delete all my rows, recreate from the list" would correctly add new
-      // links both ways but would leave a stale reverse row on any product
-      // that just got REMOVED from this list, still pointing back at this one
-      // — so the removed side has to be diffed out and deleted explicitly on
-      // both sides, not just dropped from this product's own outgoing rows.
-      const dedupedLinkIds = [...new Set(linkedProductIds)].filter((id) => id !== req.params.id);
-      const existingLinks = await prisma.productLink.findMany({
-        where: { productId: req.params.id },
-        select: { linkedProductId: true },
-      });
-      const existingLinkIds = existingLinks.map((l) => l.linkedProductId);
-      const removedLinkIds = existingLinkIds.filter((id) => !dedupedLinkIds.includes(id));
-      const addedLinkIds = dedupedLinkIds.filter((id) => !existingLinkIds.includes(id));
-
-      if (removedLinkIds.length > 0) {
-        await prisma.productLink.deleteMany({
-          where: {
-            OR: [
-              { productId: req.params.id, linkedProductId: { in: removedLinkIds } },
-              { productId: { in: removedLinkIds }, linkedProductId: req.params.id },
-            ],
-          },
-        });
-      }
-      if (addedLinkIds.length > 0) {
-        await prisma.productLink.createMany({
-          data: addedLinkIds.flatMap((linkedProductId) => [
-            { productId: req.params.id, linkedProductId },
-            { productId: linkedProductId, linkedProductId: req.params.id },
-          ]),
-          skipDuplicates: true,
-        });
-      }
+      // Full replace, like categoryIds above — maintained as a fully-connected
+      // group rather than plain pairwise edges, and any member dropped from
+      // the submission leaves the whole group, not just its edge to this
+      // product. See syncProductLinksAsGroup.
+      await syncProductLinksAsGroup(prisma, req.params.id, linkedProductIds);
     }
 
     const product = await prisma.product.update({
@@ -546,6 +596,130 @@ router.patch(
     });
 
     res.json({ product: serializeProduct(product) });
+  })
+);
+
+// Archive/unarchive is the normal, always-available "delete" for staff: it
+// flips Product.status to ARCHIVED, which GET /products (storefront) already
+// excludes by default (see that route's status filter above) — the product
+// disappears from the live site immediately, with every Variant, StockBalance,
+// StockMovement, OrderLine, Reservation, Transfer, and POLine left completely
+// intact, so order/inventory history is never at risk. This is deliberately a
+// separate, dedicated action from PATCH /products/:id's general-purpose
+// status field so it gets its own audit action name (product.archive /
+// product.unarchive), matching users.routes.js's isActive activate/deactivate
+// pattern — a raw status PATCH would work but wouldn't leave this audit trail.
+router.patch(
+  "/products/:id/archive",
+  requireAuth,
+  requirePermission("catalog:write"),
+  asyncHandler(async (req, res) => {
+    const existing = await prisma.product.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!existing) throw new NotFoundError("Product not found");
+
+    const product = await prisma.product.update({
+      where: { id: req.params.id },
+      data: { status: "ARCHIVED" },
+      include: PRODUCT_INCLUDE,
+    });
+
+    await prisma.auditLog.create({
+      data: { userId: req.user.id, action: "product.archive", entityType: "Product", entityId: product.id },
+    });
+
+    res.json({ product: serializeProduct(product) });
+  })
+);
+
+router.patch(
+  "/products/:id/unarchive",
+  requireAuth,
+  requirePermission("catalog:write"),
+  asyncHandler(async (req, res) => {
+    const existing = await prisma.product.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!existing) throw new NotFoundError("Product not found");
+
+    // Lands back in DRAFT, not ACTIVE: restoring a product shouldn't make it
+    // instantly live again without a staff member reviewing it first (price,
+    // stock, photos may be stale after however long it sat archived) — the
+    // same reasoning new products already go through via productCreateSchema's
+    // default DRAFT status.
+    const product = await prisma.product.update({
+      where: { id: req.params.id },
+      data: { status: "DRAFT" },
+      include: PRODUCT_INCLUDE,
+    });
+
+    await prisma.auditLog.create({
+      data: { userId: req.user.id, action: "product.unarchive", entityType: "Product", entityId: product.id },
+    });
+
+    res.json({ product: serializeProduct(product) });
+  })
+);
+
+// A real, permanent delete — offered ONLY when none of this product's
+// variants have ever touched the immutable/history-bearing tables (an
+// append-only ledger, a placed order, an active reservation, a stock
+// transfer, or a purchase-order line). Those five relations are all
+// onDelete: Restrict in schema.prisma specifically so a hard delete can never
+// silently destroy sales/audit history — this route checks for exactly that
+// history up front and refuses with a clear 409 instead of letting the
+// Prisma call fail with an opaque foreign-key-violation error. A product with
+// no such history has nothing worth preserving, so hard-deleting it (which
+// cascades to its Variants, StockBalance, PriceHistory, ProductImage,
+// ProductCategory, and ProductLink rows — all onDelete: Cascade) is safe.
+// For every other product, archive (above) is the only option, by design.
+// Counts every row across the five history-bearing, onDelete: Restrict
+// tables for a given set of variant ids. Extracted from the DELETE route
+// below so tests can exercise the exact same check the route relies on,
+// rather than a separately-maintained copy that could drift out of sync.
+async function getProductDeleteBlockers(variantIds) {
+  const [stockMovementCount, orderLineCount, reservationCount, transferCount, poLineCount] = await Promise.all([
+    prisma.stockMovement.count({ where: { variantId: { in: variantIds } } }),
+    prisma.orderLine.count({ where: { variantId: { in: variantIds } } }),
+    prisma.reservation.count({ where: { variantId: { in: variantIds } } }),
+    prisma.transfer.count({ where: { variantId: { in: variantIds } } }),
+    prisma.pOLine.count({ where: { variantId: { in: variantIds } } }),
+  ]);
+  return { stockMovementCount, orderLineCount, reservationCount, transferCount, poLineCount };
+}
+
+router.delete(
+  "/products/:id",
+  requireAuth,
+  requirePermission("catalog:write"),
+  asyncHandler(async (req, res) => {
+    const product = await prisma.product.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, name: true, variants: { select: { id: true } } },
+    });
+    if (!product) throw new NotFoundError("Product not found");
+
+    const variantIds = product.variants.map((v) => v.id);
+    const blockers = await getProductDeleteBlockers(variantIds);
+    const historyCount = Object.values(blockers).reduce((sum, n) => sum + n, 0);
+
+    if (historyCount > 0) {
+      throw new ConflictError(
+        "This product has stock, order, reservation, transfer, or purchase-order history and can't be permanently deleted — archive it instead.",
+        blockers
+      );
+    }
+
+    await prisma.product.delete({ where: { id: product.id } });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: "product.delete",
+        entityType: "Product",
+        entityId: product.id,
+        metadata: { name: product.name },
+      },
+    });
+
+    res.json({ success: true });
   })
 );
 
@@ -583,3 +757,5 @@ router.get(
 
 module.exports = router;
 module.exports.pickDisplayCategory = pickDisplayCategory;
+module.exports.syncProductLinksAsGroup = syncProductLinksAsGroup;
+module.exports.getProductDeleteBlockers = getProductDeleteBlockers;

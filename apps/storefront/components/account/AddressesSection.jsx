@@ -188,7 +188,7 @@ export default function AddressesSection({ onSessionExpired }) {
             onChange={setField("city")}
           />
         </div>
-        <div className="sm:col-span-1">
+        <div className="sm:col-span-2">
           <Field
             id={`${uid}-state`}
             label="State"
@@ -199,7 +199,7 @@ export default function AddressesSection({ onSessionExpired }) {
             onChange={setField("state")}
           />
         </div>
-        <div className="sm:col-span-2">
+        <div className="sm:col-span-1">
           <Field
             id={`${uid}-zip`}
             label="ZIP Code"

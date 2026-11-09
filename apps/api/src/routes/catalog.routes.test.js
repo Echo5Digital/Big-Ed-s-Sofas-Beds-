@@ -1,7 +1,7 @@
 const { prisma } = require("@big-eds/database");
 const { productCreateSchema, productUpdateSchema } = require("@big-eds/validation");
 const inventoryService = require("../services/inventory.service");
-const { pickDisplayCategory } = require("./catalog.routes");
+const { pickDisplayCategory, syncProductLinksAsGroup, getProductDeleteBlockers } = require("./catalog.routes");
 
 // Runs against the real dev database (same convention as auth.routes.test.js
 // and pos.service.test.js — no Prisma mock layer). Regression test for a bug
@@ -439,12 +439,14 @@ describe("catalog.routes — POST /products accepts every existing category", ()
   });
 });
 
-// Mirrors POST /products' + PATCH /products/:id's linkedProductIds handling
-// exactly (see catalog.routes.js) — the non-negotiable property here is
-// symmetry: adding B under A must make A appear under B with no separate
-// action, and removing B from A must remove A from B too, never leaving a
-// one-directional stale link on either side.
-describe("catalog.routes — linkedProductIds symmetry", () => {
+// Exercises the real syncProductLinksAsGroup from catalog.routes.js directly
+// (imported, not reimplemented) — the non-negotiable property here is that
+// links form a fully-connected group (clique), not just pairwise edges back
+// to whichever product was being edited: linking A, B, C, D under E must make
+// A, B, C, D all mutually linked to each other too, and a member dropped from
+// a submission must leave the whole group, not just lose its edge to the
+// product being edited.
+describe("catalog.routes — linkedProductIds group (clique) semantics", () => {
   const createdProductIds = [];
 
   afterAll(async () => {
@@ -471,109 +473,257 @@ describe("catalog.routes — linkedProductIds symmetry", () => {
     return created;
   }
 
-  // Exercises the exact create-path logic from POST /products: write both
-  // (A, B) and (B, A) ProductLink rows in response to A's linkedProductIds alone.
-  async function createLinksSymmetric(productId, linkedProductIds) {
-    const dedupedLinkIds = [...new Set(linkedProductIds)];
-    if (dedupedLinkIds.length === 0) return;
-    await prisma.productLink.createMany({
-      data: dedupedLinkIds.flatMap((linkedProductId) => [
-        { productId, linkedProductId },
-        { productId: linkedProductId, linkedProductId: productId },
-      ]),
-      skipDuplicates: true,
-    });
+  async function linksOf(productId) {
+    const links = await prisma.productLink.findMany({ where: { productId }, select: { linkedProductId: true } });
+    return links.map((l) => l.linkedProductId).sort();
   }
 
-  // Exercises the exact update-path diff/replace logic from PATCH /products/:id.
-  async function replaceLinksSymmetric(productId, linkedProductIds) {
-    const dedupedLinkIds = [...new Set(linkedProductIds)].filter((id) => id !== productId);
-    const existingLinks = await prisma.productLink.findMany({
-      where: { productId },
-      select: { linkedProductId: true },
-    });
-    const existingLinkIds = existingLinks.map((l) => l.linkedProductId);
-    const removedLinkIds = existingLinkIds.filter((id) => !dedupedLinkIds.includes(id));
-    const addedLinkIds = dedupedLinkIds.filter((id) => !existingLinkIds.includes(id));
+  it("linking A, B, C, D under E makes every one of them mutually linked, not just back to E", async () => {
+    const e = await createTestProduct("E");
+    const a = await createTestProduct("A");
+    const b = await createTestProduct("B");
+    const c = await createTestProduct("C");
+    const d = await createTestProduct("D");
 
-    if (removedLinkIds.length > 0) {
-      await prisma.productLink.deleteMany({
-        where: {
-          OR: [
-            { productId, linkedProductId: { in: removedLinkIds } },
-            { productId: { in: removedLinkIds }, linkedProductId: productId },
-          ],
-        },
-      });
+    const result = productUpdateSchema.safeParse({ linkedProductIds: [a.id, b.id, c.id, d.id] });
+    expect(result.success, `safeParse failed: ${JSON.stringify(result.error?.flatten())}`).toBe(true);
+    await syncProductLinksAsGroup(prisma, e.id, result.data.linkedProductIds);
+
+    const group = [e.id, a.id, b.id, c.id, d.id];
+    for (const member of group) {
+      const expected = group.filter((id) => id !== member).sort();
+      expect(await linksOf(member)).toEqual(expected);
     }
-    if (addedLinkIds.length > 0) {
-      await prisma.productLink.createMany({
-        data: addedLinkIds.flatMap((linkedProductId) => [
-          { productId, linkedProductId },
-          { productId: linkedProductId, linkedProductId: productId },
-        ]),
-        skipDuplicates: true,
-      });
-    }
-  }
+  });
 
   it("linking B under A on create also makes A appear under B, with no action on B", async () => {
     const a = await createTestProduct("A");
     const b = await createTestProduct("B");
 
-    await createLinksSymmetric(a.id, [b.id]);
+    await syncProductLinksAsGroup(prisma, a.id, [b.id]);
 
-    const aLinks = await prisma.productLink.findMany({ where: { productId: a.id } });
-    const bLinks = await prisma.productLink.findMany({ where: { productId: b.id } });
-    expect(aLinks.map((l) => l.linkedProductId)).toEqual([b.id]);
-    expect(bLinks.map((l) => l.linkedProductId)).toEqual([a.id]);
+    expect(await linksOf(a.id)).toEqual([b.id]);
+    expect(await linksOf(b.id)).toEqual([a.id]);
   });
 
   it("removing B from A's linked list on update also removes A from B's list", async () => {
     const a = await createTestProduct("A");
     const b = await createTestProduct("B");
-    await createLinksSymmetric(a.id, [b.id]);
+    await syncProductLinksAsGroup(prisma, a.id, [b.id]);
 
     // Validate the update payload the same way the route does.
     const result = productUpdateSchema.safeParse({ linkedProductIds: [] });
     expect(result.success).toBe(true);
-    await replaceLinksSymmetric(a.id, result.data.linkedProductIds);
+    await syncProductLinksAsGroup(prisma, a.id, result.data.linkedProductIds);
 
-    const aLinks = await prisma.productLink.findMany({ where: { productId: a.id } });
-    const bLinks = await prisma.productLink.findMany({ where: { productId: b.id } });
-    expect(aLinks).toHaveLength(0);
-    expect(bLinks).toHaveLength(0);
+    expect(await linksOf(a.id)).toHaveLength(0);
+    expect(await linksOf(b.id)).toHaveLength(0);
   });
 
   it("replacing A's links from [B] to [C] drops the B<->A pair and adds the C<->A pair", async () => {
     const a = await createTestProduct("A");
     const b = await createTestProduct("B");
     const c = await createTestProduct("C");
-    await createLinksSymmetric(a.id, [b.id]);
+    await syncProductLinksAsGroup(prisma, a.id, [b.id]);
 
-    await replaceLinksSymmetric(a.id, [c.id]);
+    await syncProductLinksAsGroup(prisma, a.id, [c.id]);
 
-    const aLinks = (await prisma.productLink.findMany({ where: { productId: a.id } })).map((l) => l.linkedProductId);
-    const bLinks = await prisma.productLink.findMany({ where: { productId: b.id } });
-    const cLinks = (await prisma.productLink.findMany({ where: { productId: c.id } })).map((l) => l.linkedProductId);
-
-    expect(aLinks).toEqual([c.id]);
-    expect(bLinks).toHaveLength(0);
-    expect(cLinks).toEqual([a.id]);
+    expect(await linksOf(a.id)).toEqual([c.id]);
+    expect(await linksOf(b.id)).toHaveLength(0);
+    expect(await linksOf(c.id)).toEqual([a.id]);
   });
 
   it("submitting a product's own id in its update payload does not create a self-link", async () => {
     const a = await createTestProduct("A");
 
-    // Mirrors PATCH /products/:id's dedupedLinkIds filter: a product's own id
-    // can legitimately end up in the submitted list (e.g. a stale admin-form
-    // search result from before an edit), so the route filters it out before
-    // diffing/writing, same as this helper does.
+    // Mirrors syncProductLinksAsGroup's dedupedSubmittedIds filter: a
+    // product's own id can legitimately end up in the submitted list (e.g. a
+    // stale admin-form search result from before an edit), so it's filtered
+    // out before diffing/writing.
     const result = productUpdateSchema.safeParse({ linkedProductIds: [a.id] });
     expect(result.success).toBe(true);
-    await replaceLinksSymmetric(a.id, result.data.linkedProductIds);
+    await syncProductLinksAsGroup(prisma, a.id, result.data.linkedProductIds);
 
     const selfLinks = await prisma.productLink.findMany({ where: { productId: a.id, linkedProductId: a.id } });
     expect(selfLinks).toHaveLength(0);
+  });
+
+  it("dropping a member from an existing clique removes it from every other member, not just the edited product", async () => {
+    // Build the clique {E, A, B, C, D} first.
+    const e = await createTestProduct("E");
+    const a = await createTestProduct("A");
+    const b = await createTestProduct("B");
+    const c = await createTestProduct("C");
+    const d = await createTestProduct("D");
+    await syncProductLinksAsGroup(prisma, e.id, [a.id, b.id, c.id, d.id]);
+
+    // Now edit E's list to drop B — B must leave the WHOLE group (lose its
+    // links to A, C, D too), not just its link to E.
+    const result = productUpdateSchema.safeParse({ linkedProductIds: [a.id, c.id, d.id] });
+    expect(result.success).toBe(true);
+    await syncProductLinksAsGroup(prisma, e.id, result.data.linkedProductIds);
+
+    expect(await linksOf(b.id)).toHaveLength(0);
+
+    const remainingGroup = [e.id, a.id, c.id, d.id];
+    for (const member of remainingGroup) {
+      const expected = remainingGroup.filter((id) => id !== member).sort();
+      expect(await linksOf(member)).toEqual(expected);
+    }
+  });
+
+  it("linking a product that already belongs to its own group merges both groups into one clique", async () => {
+    // Pre-existing group {A, B}.
+    const a = await createTestProduct("A");
+    const b = await createTestProduct("B");
+    await syncProductLinksAsGroup(prisma, a.id, [b.id]);
+
+    // Separate group {E} links in A — must pull B along too, merging into {E, A, B}.
+    const e = await createTestProduct("E");
+    const result = productUpdateSchema.safeParse({ linkedProductIds: [a.id] });
+    expect(result.success).toBe(true);
+    await syncProductLinksAsGroup(prisma, e.id, result.data.linkedProductIds);
+
+    const mergedGroup = [e.id, a.id, b.id];
+    for (const member of mergedGroup) {
+      const expected = mergedGroup.filter((id) => id !== member).sort();
+      expect(await linksOf(member)).toEqual(expected);
+    }
+  });
+});
+
+// Covers the admin "delete product" feature: archive (status flip, always
+// available, non-destructive) and permanent delete (only when no history
+// exists anywhere across the product's variants — see DELETE /products/:id
+// and getProductDeleteBlockers in catalog.routes.js).
+describe("catalog.routes — product archive and delete", () => {
+  const createdProductIds = [];
+  let location;
+
+  beforeAll(async () => {
+    location = await prisma.location.create({
+      data: { name: "Delete Test Location", type: "WAREHOUSE", isActive: true },
+    });
+  });
+
+  afterAll(async () => {
+    for (const id of createdProductIds) {
+      await prisma.stockMovement.deleteMany({ where: { variant: { productId: id } } });
+      await prisma.reservation.deleteMany({ where: { variant: { productId: id } } });
+      await prisma.transfer.deleteMany({ where: { variant: { productId: id } } });
+      await prisma.stockBalance.deleteMany({ where: { variant: { productId: id } } });
+      await prisma.variant.deleteMany({ where: { productId: id } });
+      await prisma.product.delete({ where: { id } }).catch(() => {});
+    }
+    await prisma.location.delete({ where: { id: location.id } }).catch(() => {});
+  });
+
+  async function createTestProduct(label) {
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const payload = {
+      name: `Delete Test ${label} ${suffix}`,
+      slug: `delete-test-${label.toLowerCase()}-${suffix}`,
+      status: "ACTIVE",
+      variants: [{ sku: `DELETE-TEST-${label}-${suffix}`, name: `Delete Test ${label}`, priceCents: 1000 }],
+    };
+    const result = productCreateSchema.safeParse(payload);
+    expect(result.success, `safeParse failed: ${JSON.stringify(result.error?.flatten())}`).toBe(true);
+    const { variants, ...productData } = result.data;
+    const created = await prisma.product.create({
+      data: { ...productData, variants: { create: variants } },
+      include: { variants: true },
+    });
+    createdProductIds.push(created.id);
+    return created;
+  }
+
+  it("archiving a product sets status to ARCHIVED without touching its variants", async () => {
+    const product = await createTestProduct("Archive");
+
+    const updated = await prisma.product.update({ where: { id: product.id }, data: { status: "ARCHIVED" } });
+
+    expect(updated.status).toBe("ARCHIVED");
+    const variant = await prisma.variant.findUnique({ where: { id: product.variants[0].id } });
+    expect(variant).not.toBeNull();
+  });
+
+  it("unarchiving a product returns it to DRAFT, not ACTIVE", async () => {
+    const product = await createTestProduct("Unarchive");
+    await prisma.product.update({ where: { id: product.id }, data: { status: "ARCHIVED" } });
+
+    const restored = await prisma.product.update({ where: { id: product.id }, data: { status: "DRAFT" } });
+
+    expect(restored.status).toBe("DRAFT");
+  });
+
+  it("getProductDeleteBlockers reports zero for a product with no stock/order/reservation/transfer/PO history", async () => {
+    const product = await createTestProduct("Unused");
+
+    const blockers = await getProductDeleteBlockers(product.variants.map((v) => v.id));
+
+    expect(Object.values(blockers).every((n) => n === 0)).toBe(true);
+  });
+
+  it("getProductDeleteBlockers reports a non-zero count when a StockMovement references the variant", async () => {
+    const product = await createTestProduct("WithMovement");
+    const variantId = product.variants[0].id;
+    await prisma.stockMovement.create({
+      data: { variantId, locationId: location.id, type: "ADJUSTMENT_INCREASE", quantity: 1 },
+    });
+
+    const blockers = await getProductDeleteBlockers([variantId]);
+
+    expect(blockers.stockMovementCount).toBe(1);
+    expect(Object.values(blockers).reduce((sum, n) => sum + n, 0)).toBeGreaterThan(0);
+  });
+
+  it("getProductDeleteBlockers reports a non-zero count when a Reservation references the variant", async () => {
+    const product = await createTestProduct("WithReservation");
+    const variantId = product.variants[0].id;
+    await prisma.reservation.create({
+      data: { variantId, locationId: location.id, quantity: 1, status: "ACTIVE", expiresAt: new Date(Date.now() + 60_000) },
+    });
+
+    const blockers = await getProductDeleteBlockers([variantId]);
+
+    expect(blockers.reservationCount).toBe(1);
+  });
+
+  it("getProductDeleteBlockers reports a non-zero count when a Transfer references the variant", async () => {
+    const secondLocation = await prisma.location.create({
+      data: { name: "Delete Test Location 2", type: "WAREHOUSE", isActive: true },
+    });
+    const product = await createTestProduct("WithTransfer");
+    const variantId = product.variants[0].id;
+    await prisma.transfer.create({
+      data: {
+        variantId,
+        fromLocationId: location.id,
+        toLocationId: secondLocation.id,
+        quantity: 1,
+        status: "PENDING",
+      },
+    });
+
+    const blockers = await getProductDeleteBlockers([variantId]);
+
+    expect(blockers.transferCount).toBe(1);
+
+    await prisma.transfer.deleteMany({ where: { variantId } });
+    await prisma.location.delete({ where: { id: secondLocation.id } });
+  });
+
+  it("a product with no history can be hard-deleted and cascades its variants", async () => {
+    const product = await createTestProduct("HardDelete");
+    const variantId = product.variants[0].id;
+
+    const blockers = await getProductDeleteBlockers([variantId]);
+    expect(Object.values(blockers).every((n) => n === 0)).toBe(true);
+
+    await prisma.product.delete({ where: { id: product.id } });
+    createdProductIds.splice(createdProductIds.indexOf(product.id), 1);
+
+    expect(await prisma.product.findUnique({ where: { id: product.id } })).toBeNull();
+    expect(await prisma.variant.findUnique({ where: { id: variantId } })).toBeNull();
   });
 });

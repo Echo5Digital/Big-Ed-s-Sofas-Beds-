@@ -55,7 +55,7 @@ export default function ProductPurchasePanel({ product }) {
                 onClick={() => setSelectedVariantId(variant.id)}
                 disabled={!variant.isActive}
                 aria-pressed={selectedVariantId === variant.id}
-                className={`rounded-xl border px-3 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                className={`rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                   selectedVariantId === variant.id
                     ? "border-brand-red bg-brand-red/5 text-brand-red-dark"
                     : "border-brand-charcoal/20 text-brand-charcoal hover:border-brand-charcoal/40"
@@ -193,8 +193,9 @@ export default function ProductPurchasePanel({ product }) {
           </button>
         )}
       </div>
-      {/* Spacer so sticky bar doesn't cover content on mobile */}
-      <div className="h-16 sm:hidden" aria-hidden="true" />
+      {/* Spacer so sticky bar doesn't cover content on mobile — matches the
+          bar's actual rendered height (p-3 + py-3.5 button + text line ≈ 76px) */}
+      <div className="h-20 sm:hidden" aria-hidden="true" />
     </div>
   );
 }

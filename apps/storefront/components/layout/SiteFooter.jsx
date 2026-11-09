@@ -41,8 +41,8 @@ function FooterColumn({ title, links }) {
 export default function SiteFooter() {
   return (
     <footer className="bg-brand-charcoal text-white">
-      <Container className="grid grid-cols-2 gap-10 py-12 sm:grid-cols-2 lg:grid-cols-5">
-        <div className="col-span-2 flex flex-col items-start gap-3 lg:col-span-1">
+      <Container className="grid grid-cols-1 gap-10 py-12 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="col-span-1 flex flex-col items-start gap-3 sm:col-span-2 lg:col-span-1">
           <Image
             src={siteConfig.logo.src}
             alt={siteConfig.logo.alt}

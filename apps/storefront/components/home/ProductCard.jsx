@@ -54,7 +54,7 @@ export default function ProductCard({ product, showRatingValue = false }) {
         </Link>
         {product.badge && (
           <span
-            className={`pointer-events-none absolute left-2.5 top-2.5 rounded px-2 py-1 text-[10px] font-bold tracking-wide ${BADGE_STYLES[product.badge] ?? "bg-brand-gold text-brand-charcoal"}`}
+            className={`pointer-events-none absolute left-2 top-2 max-w-[calc(100%-3.25rem)] truncate rounded px-1.5 py-1 text-[9px] font-bold tracking-wide sm:left-2.5 sm:top-2.5 sm:max-w-[calc(100%-3.5rem)] sm:px-2 sm:text-[10px] ${BADGE_STYLES[product.badge] ?? "bg-brand-gold text-brand-charcoal"}`}
           >
             {product.badge}
           </span>
@@ -64,10 +64,10 @@ export default function ProductCard({ product, showRatingValue = false }) {
           onClick={() => toggleWishlist(product.id)}
           aria-pressed={isWishlisted}
           aria-label={isWishlisted ? `Remove ${plainName} from wishlist` : `Add ${plainName} to wishlist`}
-          className="absolute right-2.5 top-2.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-white/90 text-brand-charcoal shadow-sm hover:text-brand-red focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red"
+          className="absolute right-2 top-2 flex size-9 shrink-0 items-center justify-center rounded-full bg-white/90 text-brand-charcoal shadow-sm hover:text-brand-red focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red sm:right-2.5 sm:top-2.5 sm:size-10"
         >
           <Heart
-            className="size-4"
+            className="size-4 sm:size-4.5"
             aria-hidden="true"
             fill={isWishlisted ? "currentColor" : "none"}
             strokeWidth={isWishlisted ? 0 : 2}
@@ -91,7 +91,7 @@ export default function ProductCard({ product, showRatingValue = false }) {
         {isInCart && !justAdded ? (
           <Link
             href="/cart"
-            className="mt-auto flex items-center justify-center gap-2 rounded-full bg-brand-red px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark"
+            className="mt-auto flex items-center justify-center gap-2 rounded-full bg-brand-red px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark"
           >
             <ShoppingCart className="size-4 shrink-0" aria-hidden="true" />
             Go to Cart
@@ -101,7 +101,7 @@ export default function ProductCard({ product, showRatingValue = false }) {
             type="button"
             onClick={handleAddToCart}
             disabled={product.totalAvailable === 0}
-            className="mt-auto flex items-center justify-center gap-2 rounded-full bg-brand-red px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark disabled:cursor-not-allowed disabled:bg-brand-charcoal/20 disabled:text-brand-charcoal/50"
+            className="mt-auto flex items-center justify-center gap-2 rounded-full bg-brand-red px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark disabled:cursor-not-allowed disabled:bg-brand-charcoal/20 disabled:text-brand-charcoal/50"
           >
             {justAdded ? (
               <>

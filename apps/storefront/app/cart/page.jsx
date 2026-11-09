@@ -61,7 +61,7 @@ export default function CartPage() {
                         type="button"
                         onClick={() => removeFromCart(item.variantId)}
                         aria-label={`Remove ${item.name} from cart`}
-                        className="rounded-full p-2.5 text-brand-charcoal/40 hover:bg-brand-red/5 hover:text-brand-red-dark focus-visible:outline-2 focus-visible:outline-brand-red"
+                        className="flex size-10 shrink-0 items-center justify-center rounded-full text-brand-charcoal/40 hover:bg-brand-red/5 hover:text-brand-red-dark focus-visible:outline-2 focus-visible:outline-brand-red"
                       >
                         <Trash2 className="size-4" aria-hidden="true" />
                       </button>

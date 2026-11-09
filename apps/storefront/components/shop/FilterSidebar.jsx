@@ -42,6 +42,7 @@ export default function FilterSidebar({
   onToggleColor,
   activeFilterCount,
   onResetAll,
+  onClose,
 }) {
   return (
     <aside className="flex flex-col gap-1 rounded-xl border border-brand-charcoal/10 bg-white p-4 lg:sticky lg:top-4 lg:h-fit">
@@ -50,16 +51,28 @@ export default function FilterSidebar({
           <SlidersHorizontal className="size-4" aria-hidden="true" />
           Filters
         </h2>
-        {activeFilterCount > 0 && (
-          <button
-            type="button"
-            onClick={onResetAll}
-            className="flex items-center gap-1 text-xs font-semibold text-brand-red-dark hover:underline"
-          >
-            <X className="size-3.5" aria-hidden="true" />
-            Clear ({activeFilterCount})
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {activeFilterCount > 0 && (
+            <button
+              type="button"
+              onClick={onResetAll}
+              className="flex items-center gap-1 text-xs font-semibold text-brand-red-dark hover:underline"
+            >
+              <X className="size-3.5" aria-hidden="true" />
+              Clear ({activeFilterCount})
+            </button>
+          )}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close filters"
+              className="flex size-9 items-center justify-center rounded-full text-brand-charcoal hover:bg-brand-charcoal/5 lg:hidden"
+            >
+              <X className="size-5" aria-hidden="true" />
+            </button>
+          )}
+        </div>
       </div>
 
       <FilterSection title="Availability">

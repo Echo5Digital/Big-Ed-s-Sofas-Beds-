@@ -81,7 +81,7 @@ export default function AboutPage() {
           <h2 className="text-center font-display text-2xl font-semibold text-brand-charcoal">
             What We Stand For
           </h2>
-          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {values.map(({ icon: Icon, title, description }) => (
               <div key={title} className="flex flex-col items-center gap-3 rounded-xl border border-brand-charcoal/10 bg-white p-6 text-center">
                 <Icon className="size-8 text-brand-red" aria-hidden="true" strokeWidth={1.75} />

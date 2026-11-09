@@ -11,8 +11,8 @@ import Container from "@/components/ui/Container";
 // homepage.
 export default function ShopPageHero({ title, subtitle }) {
   return (
-    <section className="relative overflow-hidden bg-brand-charcoal">
-      <div className="relative h-72 w-full sm:h-80 lg:h-96">
+    <section className="relative min-h-72 overflow-hidden bg-brand-charcoal sm:min-h-80 lg:min-h-96">
+      <div className="absolute inset-0 h-full w-full">
         <Image
           src="/Shop your dream furniture BigED.webp"
           alt=""
@@ -24,8 +24,10 @@ export default function ShopPageHero({ title, subtitle }) {
         <div className="absolute inset-0 bg-gradient-to-r from-brand-charcoal/65 via-brand-charcoal/30 to-transparent" />
       </div>
 
-      <Container className="absolute inset-0 flex flex-col justify-center gap-3 text-left">
-        <h1 className="font-display text-4xl font-bold text-brand-gold drop-shadow-md sm:text-5xl">{title}</h1>
+      <Container className="relative flex min-h-72 flex-col justify-center gap-3 py-10 text-left sm:min-h-80 lg:min-h-96">
+        <h1 className="max-w-xl font-display text-3xl font-bold text-brand-gold drop-shadow-md sm:text-5xl">
+          {title}
+        </h1>
         {subtitle && (
           <p className="max-w-xl text-base text-white/90 drop-shadow-md sm:text-lg">{subtitle}</p>
         )}

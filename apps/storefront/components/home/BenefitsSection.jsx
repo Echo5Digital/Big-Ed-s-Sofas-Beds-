@@ -22,7 +22,7 @@ function Burst({ className }) {
 
 export default function BenefitsSection() {
   return (
-    <section className="relative flex min-h-screen flex-col justify-center overflow-hidden bg-brand-charcoal py-12 sm:py-16">
+    <section className="relative flex flex-col justify-center overflow-hidden bg-brand-charcoal py-12 sm:py-16 sm:min-h-screen">
       <Image
         src="/BigEdsSofas&Beds.webp"
         alt=""

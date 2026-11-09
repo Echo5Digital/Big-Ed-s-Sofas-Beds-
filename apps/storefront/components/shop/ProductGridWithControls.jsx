@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { SlidersHorizontal } from "lucide-react";
 import ProductCard from "@/components/home/ProductCard";
 import FilterSidebar from "@/components/shop/FilterSidebar";
@@ -47,6 +48,7 @@ export default function ProductGridWithControls({ products, gridClassName }) {
   const [selectedMaterials, setSelectedMaterials] = useState([]);
   const [selectedColors, setSelectedColors] = useState([]);
   const [page, setPage] = useState(1);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   // Computed once per product set (not per filter change) since a product's
   // own material/color never changes as other filters are toggled — only
@@ -155,30 +157,72 @@ export default function ProductGridWithControls({ products, gridClassName }) {
   const activeFilterCount =
     (appliedPriceRange ? 1 : 0) + (inStockOnly ? 1 : 0) + selectedMaterials.length + selectedColors.length;
 
+  const filterSidebarProps = {
+    priceInput,
+    onPriceInputChange: setPriceInput,
+    onApplyPrice: handleApplyPrice,
+    onResetPrice: handleResetPrice,
+    priceBounds: bounds,
+    inStockOnly,
+    onInStockChange: setInStockOnly,
+    availableMaterials,
+    selectedMaterials,
+    onToggleMaterial: toggleMaterial,
+    availableColors,
+    selectedColors,
+    onToggleColor: toggleColor,
+    activeFilterCount,
+    onResetAll: resetAll,
+  };
+
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[240px_1fr]">
-      <FilterSidebar
-        priceInput={priceInput}
-        onPriceInputChange={setPriceInput}
-        onApplyPrice={handleApplyPrice}
-        onResetPrice={handleResetPrice}
-        priceBounds={bounds}
-        inStockOnly={inStockOnly}
-        onInStockChange={setInStockOnly}
-        availableMaterials={availableMaterials}
-        selectedMaterials={selectedMaterials}
-        onToggleMaterial={toggleMaterial}
-        availableColors={availableColors}
-        selectedColors={selectedColors}
-        onToggleColor={toggleColor}
-        activeFilterCount={activeFilterCount}
-        onResetAll={resetAll}
-      />
+      <div className="hidden lg:block">
+        <FilterSidebar {...filterSidebarProps} />
+      </div>
+
+      {mobileFiltersOpen &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 z-50 lg:hidden">
+            <button
+              type="button"
+              aria-label="Close filters"
+              className="absolute inset-0 bg-black/40"
+              onClick={() => setMobileFiltersOpen(false)}
+            />
+            <div className="absolute inset-y-0 left-0 w-[85%] max-w-sm overflow-y-auto bg-brand-cream p-4 shadow-xl">
+              <FilterSidebar {...filterSidebarProps} onClose={() => setMobileFiltersOpen(false)} />
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen(false)}
+                className="mt-4 w-full rounded-full bg-brand-red px-6 py-3 text-sm font-semibold text-white hover:bg-brand-red-dark"
+              >
+                Show {filteredProducts.length} {filteredProducts.length === 1 ? "item" : "items"}
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
 
       <div>
         <div className="flex flex-wrap items-center gap-3 border-y border-brand-charcoal/10 py-3">
-          <span className="flex items-center gap-1.5 text-sm font-semibold text-brand-charcoal/70">
+          <button
+            type="button"
+            onClick={() => setMobileFiltersOpen(true)}
+            className="flex items-center gap-1.5 rounded-full border border-brand-charcoal/15 px-3 py-2 text-sm font-semibold text-brand-charcoal hover:border-brand-red hover:text-brand-red-dark lg:hidden"
+          >
             <SlidersHorizontal className="size-4" aria-hidden="true" />
+            Filters
+            {activeFilterCount > 0 && (
+              <span className="flex size-5 items-center justify-center rounded-full bg-brand-red text-[11px] font-bold text-white">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+
+          <span className="flex items-center gap-1.5 text-sm font-semibold text-brand-charcoal/70">
+            <SlidersHorizontal className="hidden size-4 lg:inline" aria-hidden="true" />
             {filteredProducts.length} {filteredProducts.length === 1 ? "item" : "items"}
           </span>
 

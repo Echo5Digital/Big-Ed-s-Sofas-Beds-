@@ -62,7 +62,7 @@ export default function FinancingPage() {
       <Container className="mt-8">
         <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Financing" }]} />
 
-        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {highlights.map(({ icon: Icon, title, description }) => (
             <div key={title} className="rounded-xl border border-brand-charcoal/10 bg-white p-5">
               <Icon className="size-7 text-brand-red" aria-hidden="true" strokeWidth={1.75} />
@@ -108,11 +108,11 @@ export default function FinancingPage() {
           </div>
           <div className="mt-4 flex flex-col divide-y divide-brand-charcoal/10 rounded-xl border border-brand-charcoal/10 bg-white">
             {faqs.map((faq) => (
-              <details key={faq.question} className="group p-5">
-                <summary className="cursor-pointer list-none font-semibold text-brand-charcoal marker:content-none">
+              <details key={faq.question} className="group px-5 py-1">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center py-3 font-semibold text-brand-charcoal marker:content-none">
                   {faq.question}
                 </summary>
-                <p className="mt-2 text-sm text-brand-charcoal/70">{faq.answer}</p>
+                <p className="mt-2 pb-3 text-sm text-brand-charcoal/70">{faq.answer}</p>
               </details>
             ))}
           </div>

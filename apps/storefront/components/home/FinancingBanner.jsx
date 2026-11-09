@@ -8,13 +8,13 @@ export default function FinancingBanner() {
   return (
     <section className="bg-brand-charcoal py-10 sm:py-12">
       <Container className="flex flex-col items-center gap-8 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col items-center gap-3 text-center sm:flex-row sm:items-center sm:gap-4 sm:text-left">
           <Image
             src="/images/mascot/big-ed-thumbsup.webp"
             alt="Big Ed mascot giving a thumbs up"
             width={1583}
             height={992}
-            className="h-28 w-auto shrink-0 sm:h-32 lg:h-36"
+            className="h-20 w-auto shrink-0 sm:h-32 lg:h-36"
           />
           <div>
             <h2 className="font-serif-heading text-2xl font-bold tracking-tight text-brand-gold sm:text-3xl">
