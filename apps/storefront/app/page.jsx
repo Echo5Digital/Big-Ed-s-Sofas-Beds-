@@ -19,6 +19,7 @@ import TrustStrip from "@/components/home/TrustStrip";
 import FeaturedProducts, { FEATURED_COUNT } from "@/components/home/FeaturedProducts";
 import CategorySpotlight, { SPOTLIGHT_COUNT } from "@/components/home/CategorySpotlight";
 import DealsBanner from "@/components/home/DealsBanner";
+import DoorbusterDeals from "@/components/home/DoorbusterDeals";
 import BenefitsSection from "@/components/home/BenefitsSection";
 import ShowroomSection from "@/components/home/ShowroomSection";
 import TestimonialsSection from "@/components/home/TestimonialsSection";
@@ -26,6 +27,7 @@ import NewsletterSignup from "@/components/home/NewsletterSignup";
 import { getProducts } from "@/lib/api/catalog";
 import { pickDailyDiverse, shuffleProducts } from "@/lib/dailyRotation";
 import { currentDaySeed } from "@/lib/currentDaySeed";
+import { getDoorbusterDeals } from "@/lib/doorbusterDeals";
 
 // Pool for the Deals carousel — fetched separately from PRODUCT_POOL_SIZE's
 // everything-pool above since it needs the deals: true filter (only
@@ -50,7 +52,12 @@ async function getHomepageData() {
 }
 
 export default async function HomePage() {
-  const [{ products: productPool }, { products: dealsPool }] = await getHomepageData();
+  // The hand-picked doorbuster products are fetched alongside the product
+  // pools rather than after them.
+  const [[{ products: productPool }, { products: dealsPool }], doorbusterDeals] = await Promise.all([
+    getHomepageData(),
+    getDoorbusterDeals(),
+  ]);
 
   const seed = await currentDaySeed();
   const featuredProducts = pickDailyDiverse(productPool, FEATURED_COUNT, seed);
@@ -68,6 +75,7 @@ export default async function HomePage() {
       <TrustStrip />
       <FeaturedProducts products={featuredProducts} />
       <DealsBanner deals={deals} />
+      <DoorbusterDeals deals={doorbusterDeals} />
       <BenefitsSection />
       <CategorySpotlight
         products={spotlightProducts}

@@ -27,7 +27,9 @@ Ed's Sofas & Beds homepage and the conventions that later pages followed.
   (body/UI text), Caveat (the handwritten hero accent). Anton (the condensed
   poster face of the homepage promo ticker) is loaded inside
   `components/home/PromoTicker.jsx` rather than the root layout, so it is only
-  requested on the homepage.
+  requested on the homepage. Montserrat (the heavy italic headline and prices
+  of the doorbuster section) is loaded the same way, inside
+  `components/home/DoorbusterDeals.jsx`.
 - **Images:** `next/image`, configured in [next.config.mjs](../../next.config.mjs)
   to allow the `images.unsplash.com` remote pattern for placeholder photography.
 
@@ -50,7 +52,12 @@ components/
                      "Grand Opening Sale" bar above the banner; CSS keyframes
                      live in globals.css, honours prefers-reduced-motion),
                      CategoryGrid/CategoryCard,
-                     FeaturedProducts/ProductCard, DealsBanner, BenefitsSection,
+                     FeaturedProducts/ProductCard, DealsBanner, DoorbusterDeals
+                     (the "Featured Doorbuster Deals" section just above "Why
+                     Shop Big Ed's?" — a hand-picked list of product slugs in
+                     lib/doorbusterDeals.js; price, compare-at price, photo and
+                     stock are fetched live, and missing/out-of-stock products
+                     are skipped), BenefitsSection,
                      ShowroomSection, TestimonialsSection, FinancingBanner,
                      NewsletterSignup
   ui/               Reusable primitives: Button, Container, SectionHeading,
@@ -62,7 +69,7 @@ utils/              formatCurrency.js
 
 Server components are used by default throughout; `"use client"` is applied
 only where interaction requires it (header state, search, cart/wishlist demo
-state, product card add-to-cart, newsletter form, mobile nav, promo ticker arrows).
+state, product card add-to-cart, newsletter form, mobile nav).
 
 ## Mock data
 

@@ -35,7 +35,7 @@ body {
 /* Homepage promo ticker (components/home/PromoTicker.jsx).
    The track holds two identical groups, so sliding it by -50% lands exactly on
    a repeat of the start: a seamless, endless loop (36s = one pass through a
-   group; the speed is tuned by eye, ~70px/s at desktop size). */
+   group, tuned by eye to read comfortably at desktop size). */
 @keyframes promo-ticker-scroll {
   from {
     transform: translate3d(0, 0, 0);
@@ -55,42 +55,16 @@ body {
   }
 }
 
-@keyframes promo-ticker-flame {
-  0%,
-  100% {
-    transform: translateY(0) scale(1) rotate(0deg);
-  }
-  20% {
-    transform: translateY(-1px) scale(1.16) rotate(-7deg);
-  }
-  45% {
-    transform: translateY(0) scale(0.95) rotate(5deg);
-  }
-  70% {
-    transform: translateY(-1px) scale(1.1) rotate(-3deg);
-  }
-}
-
-@keyframes promo-ticker-pop {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.18);
-  }
-}
-
 @layer utilities {
   .promo-ticker-track {
     animation: promo-ticker-scroll 36s linear infinite;
     will-change: transform;
   }
 
-  /* Fade the scrolling text out under the arrow buttons at both ends. */
+  /* Fade the scrolling text in and out at both edges of the bar. */
   .promo-ticker-mask {
-    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 4.5rem, #000 calc(100% - 4.5rem), transparent 100%);
-    mask-image: linear-gradient(90deg, transparent 0, #000 4.5rem, #000 calc(100% - 4.5rem), transparent 100%);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 2.5rem, #000 calc(100% - 2.5rem), transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0, #000 2.5rem, #000 calc(100% - 2.5rem), transparent 100%);
   }
 
   /* Glossy highlight that sweeps across the bar every few seconds. */
@@ -106,20 +80,6 @@ body {
     animation: promo-ticker-shine 6s ease-in-out infinite;
   }
 
-  .promo-ticker-flame,
-  .promo-ticker-pop {
-    display: inline-block;
-  }
-
-  .promo-ticker-flame {
-    transform-origin: 50% 85%;
-    animation: promo-ticker-flame 1.3s ease-in-out infinite;
-  }
-
-  .promo-ticker-pop {
-    animation: promo-ticker-pop 1.6s ease-in-out infinite;
-  }
-
   /* Pause while a mouse is over the text so it can be read. Scoped to real
      hover devices — on touch screens a tap would leave it stuck paused. */
   @media (hover: hover) and (pointer: fine) {
@@ -128,8 +88,8 @@ body {
     }
   }
 
-  /* Reduced-motion: no scrolling or flicker. Show one static, centred copy of
-     the messages instead (the repeats and the arrows exist only for the loop). */
+  /* Reduced-motion: no scrolling. Show one static, centred copy of the
+     messages instead (the repeats and the separators exist only for the loop). */
   @media (prefers-reduced-motion: reduce) {
     .promo-ticker-track {
       animation: none;
@@ -167,13 +127,10 @@ body {
     }
 
     .promo-ticker-dup,
-    .promo-ticker-sep,
-    .promo-ticker-controls {
+    .promo-ticker-sep {
       display: none;
     }
 
-    .promo-ticker-flame,
-    .promo-ticker-pop,
     .promo-ticker-shine::after {
       animation: none;
     }
