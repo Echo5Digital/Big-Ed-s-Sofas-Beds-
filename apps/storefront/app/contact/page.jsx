@@ -3,7 +3,6 @@
 import { useId, useState } from "react";
 import { MapPin, Phone, Clock, Mail } from "lucide-react";
 import Container from "@/components/ui/Container";
-import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import PageHero from "@/components/ui/PageHero";
 import { siteConfig } from "@/lib/mock-data/site-config";
 
@@ -46,9 +45,7 @@ export default function ContactPage() {
       />
 
       <Container className="mt-8">
-        <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Contact" }]} />
-
-        <div className="mt-6 grid grid-cols-1 gap-10 lg:grid-cols-5 lg:gap-12">
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-5 lg:gap-12">
           <div className="lg:col-span-3">
             <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4 rounded-xl border border-brand-charcoal/10 bg-white p-5 sm:p-6">
               <div>

@@ -45,6 +45,7 @@ export default function FilterSidebar({
   selectedColors,
   onToggleColor,
   availableCategoryTree,
+  hideParentCategoryCheckbox,
   selectedCategoryIds,
   onToggleCategory,
   activeFilterCount,
@@ -52,7 +53,13 @@ export default function FilterSidebar({
   onClose,
 }) {
   return (
-    <aside className="flex flex-col gap-1 rounded-xl border border-brand-charcoal/10 bg-white p-4 lg:sticky lg:top-4 lg:h-fit">
+    <aside
+      className="flex flex-col gap-1 rounded-xl border border-brand-charcoal/10 bg-white p-4 lg:sticky lg:overflow-y-auto"
+      style={{
+        top: "calc(var(--header-height, 80px) + 1rem)",
+        maxHeight: "calc(100vh - var(--header-height, 80px) - 2rem)",
+      }}
+    >
       <div className="flex items-center justify-between pb-3">
         <h2 className="flex items-center gap-1.5 text-sm font-bold text-brand-charcoal">
           <SlidersHorizontal className="size-4" aria-hidden="true" />
@@ -165,6 +172,81 @@ export default function FilterSidebar({
         </div>
       </FilterSection>
 
+      {/* Only rendered when the caller passes a non-empty category tree:
+          /shop passes the full site-wide tree, /shop/[category] passes just
+          the current room's own parent+children on Living Room/Bedroom/Dining
+          (see CATEGORY_FILTER_PARENT_SLUGS in
+          app/shop/[category]/page.jsx — Office/Accessories pass none, same
+          as every other page). Each top-level category is normally its own
+          checkbox (selecting it rolls up every product in its
+          sub-categories too — see expandCategoryIdWithChildren in
+          lib/categoryTree.js) with its children listed right under it,
+          indented, as their own checkboxes. hideParentCategoryCheckbox skips
+          that parent checkbox and the indent: on /shop/[category] the parent
+          IS the page you're already on, so a redundant "Living Room"
+          checkbox while standing on /shop/living-room would be confusing —
+          only the sub-category checkboxes are useful there. Placed right
+          after Price (ahead of Material/Color): narrowing by room/category
+          first is the more common shopper flow than narrowing by material or
+          color first. Collapsed by default (unlike every other section
+          here): on /shop it's the longest list in the sidebar by far (5
+          parents + ~20 children), so left open it would push every other
+          filter below the fold. */}
+      {availableCategoryTree?.length > 0 && (
+        <FilterSection title="Category" defaultOpen={false}>
+          <div className="flex flex-col gap-3">
+            {availableCategoryTree.map((parent) =>
+              hideParentCategoryCheckbox ? (
+                parent.children.map((child) => (
+                  <label
+                    key={child.id}
+                    className="flex cursor-pointer items-center gap-2.5 text-sm text-brand-charcoal"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedCategoryIds.includes(child.id)}
+                      onChange={() => onToggleCategory(child.id)}
+                      className="size-4 rounded border-brand-charcoal/30 text-brand-red focus:ring-brand-red"
+                    />
+                    {child.name}
+                  </label>
+                ))
+              ) : (
+                <div key={parent.id} className="flex flex-col gap-2">
+                  <label className="flex cursor-pointer items-center gap-2.5 text-sm font-semibold text-brand-charcoal">
+                    <input
+                      type="checkbox"
+                      checked={selectedCategoryIds.includes(parent.id)}
+                      onChange={() => onToggleCategory(parent.id)}
+                      className="size-4 rounded border-brand-charcoal/30 text-brand-red focus:ring-brand-red"
+                    />
+                    {parent.name}
+                  </label>
+                  {parent.children.length > 0 && (
+                    <div className="ml-6 flex flex-col gap-2 border-l border-brand-charcoal/10 pl-3">
+                      {parent.children.map((child) => (
+                        <label
+                          key={child.id}
+                          className="flex cursor-pointer items-center gap-2.5 text-sm text-brand-charcoal"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedCategoryIds.includes(child.id)}
+                            onChange={() => onToggleCategory(child.id)}
+                            className="size-4 rounded border-brand-charcoal/30 text-brand-red focus:ring-brand-red"
+                          />
+                          {child.name}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            )}
+          </div>
+        </FilterSection>
+      )}
+
       {availableMaterials.length > 0 && (
         <FilterSection title="Material">
           <div className="flex flex-col gap-2">
@@ -208,56 +290,6 @@ export default function FilterSidebar({
                 </button>
               );
             })}
-          </div>
-        </FilterSection>
-      )}
-
-      {/* Only rendered when the caller passes the full site category tree
-          (today, just /shop — a page already scoped to one category, like
-          /shop/[category], has nothing broader left to filter by). Each
-          top-level category is a checkbox; selecting it rolls up every
-          product in its sub-categories too (see
-          expandCategoryIdWithChildren in lib/categoryTree.js). Sub-categories
-          are listed right under their parent, indented, as their own
-          checkboxes — a shopper can select a sub-category directly without
-          first selecting its parent. Placed last and collapsed by default
-          (unlike every other section here): it's the longest list in the
-          sidebar by far (5 parents + ~20 children), so left open it would
-          push every other filter below the fold. */}
-      {availableCategoryTree?.length > 0 && (
-        <FilterSection title="Category" defaultOpen={false}>
-          <div className="flex flex-col gap-3">
-            {availableCategoryTree.map((parent) => (
-              <div key={parent.id} className="flex flex-col gap-2">
-                <label className="flex cursor-pointer items-center gap-2.5 text-sm font-semibold text-brand-charcoal">
-                  <input
-                    type="checkbox"
-                    checked={selectedCategoryIds.includes(parent.id)}
-                    onChange={() => onToggleCategory(parent.id)}
-                    className="size-4 rounded border-brand-charcoal/30 text-brand-red focus:ring-brand-red"
-                  />
-                  {parent.name}
-                </label>
-                {parent.children.length > 0 && (
-                  <div className="ml-6 flex flex-col gap-2 border-l border-brand-charcoal/10 pl-3">
-                    {parent.children.map((child) => (
-                      <label
-                        key={child.id}
-                        className="flex cursor-pointer items-center gap-2.5 text-sm text-brand-charcoal"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedCategoryIds.includes(child.id)}
-                          onChange={() => onToggleCategory(child.id)}
-                          className="size-4 rounded border-brand-charcoal/30 text-brand-red focus:ring-brand-red"
-                        />
-                        {child.name}
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
           </div>
         </FilterSection>
       )}

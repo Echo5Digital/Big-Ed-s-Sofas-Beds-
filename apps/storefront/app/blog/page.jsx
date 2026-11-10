@@ -2,7 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, Calendar, Clock } from "lucide-react";
 import Container from "@/components/ui/Container";
-import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import PageHero from "@/components/ui/PageHero";
 import { blogPosts } from "@/lib/mock-data/blog";
 
@@ -28,9 +27,7 @@ export default function BlogIndexPage() {
       />
 
       <Container className="mt-8">
-        <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Blog" }]} />
-
-        <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2">
           {blogPosts.map((post) => (
             <Link
               key={post.slug}

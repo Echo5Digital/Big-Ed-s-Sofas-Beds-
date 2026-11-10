@@ -3,7 +3,6 @@ export const instant = false;
 
 import { Tag } from "lucide-react";
 import Container from "@/components/ui/Container";
-import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import EmptyState from "@/components/ui/EmptyState";
 import PageHero from "@/components/ui/PageHero";
 import ProductCard from "@/components/home/ProductCard";
@@ -33,8 +32,6 @@ export default async function DealsPage() {
       />
 
       <Container className="mt-8">
-        <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Deals" }]} />
-
         <div className="mt-6">
           {deals.length > 0 ? (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">

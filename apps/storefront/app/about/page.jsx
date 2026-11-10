@@ -1,7 +1,6 @@
 import Image from "next/image";
 import { MapPin, Phone, Clock, Heart, Handshake, Sparkles } from "lucide-react";
 import Container from "@/components/ui/Container";
-import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import Button from "@/components/ui/Button";
 import BearMascot from "@/components/ui/BearMascot";
 import { siteConfig } from "@/lib/mock-data/site-config";
@@ -48,9 +47,7 @@ export default function AboutPage() {
       </section>
 
       <Container className="mt-10">
-        <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "About" }]} />
-
-        <div className="mt-6 grid grid-cols-1 gap-10 lg:grid-cols-2 lg:gap-16">
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:gap-16">
           <div className="flex flex-col gap-4">
             <h2 className="font-display text-2xl font-semibold text-brand-charcoal">Our Story</h2>
             <p className="text-sm text-brand-charcoal/75 sm:text-base">

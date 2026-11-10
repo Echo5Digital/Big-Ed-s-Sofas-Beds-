@@ -4,7 +4,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight } from "lucide-react";
 import Container from "@/components/ui/Container";
-import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import EmptyState from "@/components/ui/EmptyState";
 import Button from "@/components/ui/Button";
 import PageHero from "@/components/ui/PageHero";
@@ -20,8 +19,6 @@ export default function CartPage() {
       <PageHero title="Your Cart" showMascot={false} />
 
       <Container className="mt-8">
-        <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Cart" }]} />
-
         {cartItems.length === 0 ? (
           <div className="mt-8">
             <EmptyState

@@ -4,7 +4,6 @@ export const instant = false;
 import Link from "next/link";
 import { PackageSearch } from "lucide-react";
 import Container from "@/components/ui/Container";
-import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import EmptyState from "@/components/ui/EmptyState";
 import ShopPageHero from "@/components/ui/ShopPageHero";
 import ProductGridWithControls from "@/components/shop/ProductGridWithControls";
@@ -43,8 +42,7 @@ export default async function ShopAllPage() {
       />
 
       <Container className="mt-8">
-        <div className="flex items-center justify-between gap-4">
-          <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Shop All" }]} />
+        <div className="flex items-center justify-end gap-4">
           <Link href="/deals" className="text-sm font-semibold text-brand-red-dark hover:underline">
             View Deals
           </Link>

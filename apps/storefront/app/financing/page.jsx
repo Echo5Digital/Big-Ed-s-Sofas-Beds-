@@ -1,7 +1,6 @@
 import Image from "next/image";
 import { CreditCard, Calendar, ShieldCheck, HelpCircle } from "lucide-react";
 import Container from "@/components/ui/Container";
-import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import PageHero from "@/components/ui/PageHero";
 import { financingProviders } from "@/lib/mock-data/site-config";
 
@@ -60,9 +59,7 @@ export default function FinancingPage() {
       />
 
       <Container className="mt-8">
-        <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Financing" }]} />
-
-        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {highlights.map(({ icon: Icon, title, description }) => (
             <div key={title} className="rounded-xl border border-brand-charcoal/10 bg-white p-5">
               <Icon className="size-7 text-brand-red" aria-hidden="true" strokeWidth={1.75} />

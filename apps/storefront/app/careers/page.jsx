@@ -1,6 +1,5 @@
 import { Briefcase, Mail } from "lucide-react";
 import Container from "@/components/ui/Container";
-import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import PageHero from "@/components/ui/PageHero";
 
 export const metadata = {
@@ -14,9 +13,7 @@ export default function CareersPage() {
       <PageHero title="Careers" showMascot={false} />
 
       <Container className="mt-8 max-w-2xl">
-        <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Careers" }]} />
-
-        <div className="mt-6 rounded-2xl border border-brand-charcoal/10 bg-white p-6 text-center sm:p-10">
+        <div className="rounded-2xl border border-brand-charcoal/10 bg-white p-6 text-center sm:p-10">
           <span className="mx-auto flex size-14 items-center justify-center rounded-full bg-brand-red/10 text-brand-red">
             <Briefcase className="size-7" aria-hidden="true" />
           </span>

@@ -5,7 +5,6 @@ import { notFound } from "next/navigation";
 import { CheckCircle2, AlertCircle, Truck, RotateCcw, ShieldCheck } from "lucide-react";
 import { stripInlineMarkdown } from "@big-eds/ui";
 import Container from "@/components/ui/Container";
-import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import Price from "@/components/ui/Price";
 import StarRating from "@/components/ui/StarRating";
 import InlineMarkdown from "@/components/ui/InlineMarkdown";
@@ -138,18 +137,7 @@ export default async function ProductDetailPage({ params }) {
 
   return (
     <div className="pb-10">
-      <Container className="pt-6">
-        <Breadcrumbs
-          items={[
-            { label: "Home", href: "/" },
-            { label: "Shop All", href: "/shop" },
-            ...(product.category ? [{ label: product.category.name, href: `/shop/${product.category.slug}` }] : []),
-            { label: plainName },
-          ]}
-        />
-      </Container>
-
-      <Container className="mt-5 grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start lg:gap-12">
+      <Container className="pt-6 grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start lg:gap-12">
         <ProductImageGallery
           images={product.images}
           name={plainName}

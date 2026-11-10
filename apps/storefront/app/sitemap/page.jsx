@@ -3,7 +3,6 @@ export const instant = false;
 
 import Link from "next/link";
 import Container from "@/components/ui/Container";
-import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import PageHero from "@/components/ui/PageHero";
 import { getCategories, getProducts } from "@/lib/api/catalog";
 import { blogPosts } from "@/lib/mock-data/blog";
@@ -75,9 +74,7 @@ export default async function SitemapPage() {
       <PageHero title="Site Map" subtitle="A full listing of every page on the Big Ed's Sofas & Beds website." showMascot={false} />
 
       <Container className="mt-8">
-        <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Site Map" }]} />
-
-        <div className="mt-6 grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-3">
           <SitemapSection title="Main Pages" links={mainPages} />
           <SitemapSection title="Shop by Room" links={shopByRoom} />
           <SitemapSection title="Shop by Category" links={shopByCategory} />

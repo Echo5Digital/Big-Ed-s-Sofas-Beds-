@@ -16,12 +16,10 @@ const SORT_OPTIONS = [
   { value: "rating-desc", label: "Avg. Rating" },
 ];
 
-// Matches the page size /shop/[category] used when pagination was still
-// server-side (one API page = 20 products) — kept the same so the grid's
-// density on screen doesn't change, even though pagination is now a client-
-// side slice of the full, already-filtered product array instead of a
-// server page boundary.
-const PAGE_SIZE = 20;
+// Products per page for both /shop and /shop/[category], which share this
+// component. Pagination is a client-side slice of the full, already-
+// filtered product array (see the comment on the component below).
+const PAGE_SIZE = 18;
 
 function priceBoundsOf(products) {
   if (products.length === 0) return { min: 0, max: 0 };
@@ -39,12 +37,14 @@ function priceBoundsOf(products) {
 // slice over the filtered result — this ordering is what makes a filter
 // correctly reach every matching product in the category instead of only
 // whichever page happened to be loaded when the filter was applied.
-export default function ProductGridWithControls({ products, categories, gridClassName }) {
+export default function ProductGridWithControls({ products, categories, gridClassName, hideParentCategoryCheckbox }) {
   const bounds = useMemo(() => priceBoundsOf(products), [products]);
-  // Only meaningful on pages that pass the full site category tree (today,
-  // just /shop — a category-scoped page like /shop/[category] has nothing
-  // broader to filter by, so it omits this prop and the Category filter
-  // section below simply doesn't render, same as Material/Color when empty).
+  // `categories` is whatever subtree the caller passes: /shop passes the full
+  // site-wide list; /shop/[category] passes just the current room's own
+  // parent+children (Living Room/Bedroom/Dining only — see
+  // CATEGORY_FILTER_PARENT_SLUGS in app/shop/[category]/page.jsx) or an empty
+  // array everywhere else, in which case the Category filter section below
+  // simply doesn't render, same as Material/Color when empty.
   const categoryTree = useMemo(() => buildCategoryTree(categories ?? []), [categories]);
 
   const [sort, setSort] = useState("relevance");
@@ -221,6 +221,7 @@ export default function ProductGridWithControls({ products, categories, gridClas
     selectedColors,
     onToggleColor: toggleColor,
     availableCategoryTree,
+    hideParentCategoryCheckbox,
     selectedCategoryIds,
     onToggleCategory: toggleCategory,
     activeFilterCount,

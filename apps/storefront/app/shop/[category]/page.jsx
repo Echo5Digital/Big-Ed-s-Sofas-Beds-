@@ -2,10 +2,8 @@
 export const instant = false;
 
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { PackageSearch } from "lucide-react";
 import Container from "@/components/ui/Container";
-import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import EmptyState from "@/components/ui/EmptyState";
 import ShopPageHero from "@/components/ui/ShopPageHero";
 import ProductGridWithControls from "@/components/shop/ProductGridWithControls";
@@ -14,16 +12,22 @@ import { normalizeProductForCard } from "@/lib/api/normalize";
 import { shuffleProducts, withDisplayRating } from "@/lib/dailyRotation";
 import { currentDaySeed } from "@/lib/currentDaySeed";
 
+// Only these top-level categories get a sub-category filter in the sidebar
+// (Office and Accessories each have just one trivial catch-all child, so a
+// sub-category filter for them would be pointless — confirmed product
+// decision).
+const CATEGORY_FILTER_PARENT_SLUGS = ["living-room", "bedroom", "dining"];
+
 // Resolves a /shop/[category] slug against the live category list. Categories
 // are a real two-level tree (Category.parentId, seeded in
 // packages/database/prisma/seed.js — e.g. Living Room -> Stationary Sofas &
-// Loveseats, Sectionals, Recliners, etc.): a parent slug shows its children as
-// sub-category links AND rolls up every product from those sub-categories (a
-// product tagged only to "Stationary Sofas & Loveseats" still shows up on
-// /shop/living-room), not just products tagged directly to the parent itself
-// — matching the same rollup behavior as the /shop page's category filter
-// (see components/shop/ProductGridWithControls.jsx). A leaf slug (no
-// children) shows only its own directly-tagged products, same as before.
+// Loveseats, Sectionals, Recliners, etc.): a parent slug rolls up every
+// product from its sub-categories too (a product tagged only to "Stationary
+// Sofas & Loveseats" still shows up on /shop/living-room), not just products
+// tagged directly to the parent itself — matching the same rollup behavior as
+// the /shop page's category filter (see
+// components/shop/ProductGridWithControls.jsx). A leaf slug (no children)
+// shows only its own directly-tagged products, same as before.
 //
 // Fetches every product across the category (+ children, for a parent) via
 // getAllProducts (loops the API's paginated endpoint per slug), not just one
@@ -49,7 +53,16 @@ async function resolveCategory(slug) {
     .flatMap((r) => r.products)
     .filter((p) => (seenIds.has(p.id) ? false : (seenIds.add(p.id), true)));
 
-  return { category, children, products };
+  // Scoped down to just this parent + its own children — ProductGridWithControls
+  // builds a Category filter tree from whatever `categories` it's given (see
+  // buildCategoryTree in lib/categoryTree.js), so passing the full site-wide
+  // list here would surface every other room's categories too. Only built for
+  // the rooms in CATEGORY_FILTER_PARENT_SLUGS; everywhere else this stays
+  // empty and ProductGridWithControls's Category filter section doesn't render
+  // (same as /shop/[category] behaved before this filter existed).
+  const categoriesForFilter = CATEGORY_FILTER_PARENT_SLUGS.includes(slug) ? [category, ...children] : [];
+
+  return { category, children, products, categoriesForFilter };
 }
 
 export async function generateMetadata({ params }) {
@@ -71,7 +84,7 @@ export default async function ShopCategoryPage({ params }) {
     notFound();
   }
 
-  const { category, children, products: rawProducts } = resolved;
+  const { category, products: rawProducts, categoriesForFilter } = resolved;
   const seed = await currentDaySeed();
   const products = shuffleProducts(rawProducts, seed, `category-${slug}`)
     .map(normalizeProductForCard)
@@ -82,27 +95,13 @@ export default async function ShopCategoryPage({ params }) {
       <ShopPageHero title={category.name} />
 
       <Container className="mt-8">
-        <Breadcrumbs
-          items={[{ label: "Home", href: "/" }, { label: "Shop All", href: "/shop" }, { label: category.name }]}
-        />
-
-        {children.length > 0 && (
-          <div className="mt-6 flex flex-wrap gap-2">
-            {children.map((sub) => (
-              <Link
-                key={sub.slug}
-                href={`/shop/${sub.slug}`}
-                className="rounded-full border border-brand-charcoal/15 bg-white px-4 py-2 text-sm font-semibold text-brand-charcoal hover:border-brand-red hover:text-brand-red-dark"
-              >
-                {sub.name}
-              </Link>
-            ))}
-          </div>
-        )}
-
         <div className="mt-6">
           {products.length > 0 ? (
-            <ProductGridWithControls products={products} />
+            <ProductGridWithControls
+              products={products}
+              categories={categoriesForFilter}
+              hideParentCategoryCheckbox={CATEGORY_FILTER_PARENT_SLUGS.includes(slug)}
+            />
           ) : (
             <EmptyState
               icon={PackageSearch}

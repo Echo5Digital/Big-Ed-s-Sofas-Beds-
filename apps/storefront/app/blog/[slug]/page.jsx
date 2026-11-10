@@ -3,7 +3,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { Calendar, Clock, ArrowLeft } from "lucide-react";
 import Container from "@/components/ui/Container";
-import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import { blogPosts } from "@/lib/mock-data/blog";
 
 export function generateStaticParams() {
@@ -40,13 +39,7 @@ export default async function BlogPostPage({ params }) {
 
   return (
     <div className="pb-10">
-      <Container className="pt-6">
-        <Breadcrumbs
-          items={[{ label: "Home", href: "/" }, { label: "Blog", href: "/blog" }, { label: post.title }]}
-        />
-      </Container>
-
-      <Container className="mt-5 max-w-3xl">
+      <Container className="mt-6 max-w-3xl">
         <span className="inline-flex rounded-full bg-brand-gold px-3 py-1 text-xs font-bold text-brand-charcoal">
           {post.category}
         </span>

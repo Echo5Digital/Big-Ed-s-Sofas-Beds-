@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Heart, User, ShoppingBag, Menu, ArrowRight, MapPin, ChevronDown } from "lucide-react";
@@ -79,9 +79,28 @@ function NavItem({ item }) {
 export default function SiteHeader() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { cartCount, wishlistIds } = useDemoCart();
+  const headerRef = useRef(null);
+
+  // Exposes the sticky header's real, responsive height as a CSS variable so
+  // other sticky elements below it (e.g. the shop filter sidebar — see
+  // FilterSidebar.jsx) can offset themselves by the right amount instead of
+  // guessing a pixel value that would drift whenever this header's layout
+  // changes (nav row wrapping, logo size per breakpoint, etc.).
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    const observer = new ResizeObserver(([entry]) => {
+      document.documentElement.style.setProperty("--header-height", `${entry.target.offsetHeight}px`);
+    });
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-brand-charcoal/10 bg-brand-cream/95 backdrop-blur">
+    <header
+      ref={headerRef}
+      className="sticky top-0 z-40 border-b border-brand-charcoal/10 bg-brand-cream/95 backdrop-blur"
+    >
       <div className="mx-auto flex w-full max-w-[1440px] items-center gap-2 px-4 py-3 sm:px-6 lg:gap-1.5 lg:px-3 xl:gap-3 xl:px-8">
         <Link href="/" className="flex shrink-0 items-center">
           <Image

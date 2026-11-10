@@ -7,7 +7,6 @@ import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Truck, Store, ClipboardCheck, ShoppingBag, LogIn } from "lucide-react";
 import Container from "@/components/ui/Container";
-import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import EmptyState from "@/components/ui/EmptyState";
 import PageHero from "@/components/ui/PageHero";
 import AccountPanel from "@/components/account/AccountPanel";
@@ -102,7 +101,6 @@ export default function CheckoutPage() {
       <div className="pb-10">
         <PageHero title="Checkout" showMascot={false} />
         <Container className="mt-8">
-          <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Checkout" }]} />
           <div className="mt-8">
             <EmptyState
               icon={ShoppingBag}
@@ -122,7 +120,6 @@ export default function CheckoutPage() {
       <div className="pb-10">
         <PageHero title="Checkout" showMascot={false} />
         <Container className="mt-8">
-          <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Cart", href: "/cart" }, { label: "Checkout" }]} />
           {authStatus === "checking" ? (
             <p role="status" aria-busy="true" className="mt-8 text-center text-sm text-brand-charcoal/60">
               Loading&hellip;
@@ -185,8 +182,6 @@ export default function CheckoutPage() {
           showMascot={false}
         />
         <Container className="mt-8">
-          <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Cart", href: "/cart" }, { label: "Checkout" }]} />
-
           <div className="mt-6 max-w-lg">
             {stripePromise ? (
               <Elements stripe={stripePromise} options={{ clientSecret }}>
@@ -213,8 +208,6 @@ export default function CheckoutPage() {
     <div className="pb-24">
       <PageHero title="Checkout" showMascot={false} />
       <Container className="mt-8">
-        <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Cart", href: "/cart" }, { label: "Checkout" }]} />
-
         {error && (
           <p role="alert" className="mt-3 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}

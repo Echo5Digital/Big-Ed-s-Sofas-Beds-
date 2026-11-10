@@ -1,5 +1,4 @@
 import Container from "@/components/ui/Container";
-import Breadcrumbs from "@/components/ui/Breadcrumbs";
 import PageHero from "@/components/ui/PageHero";
 import AccountPanel from "@/components/account/AccountPanel";
 
@@ -15,7 +14,6 @@ export default function AccountPage() {
       <PageHero title="Account" showMascot={false} />
 
       <Container className="mt-8">
-        <Breadcrumbs items={[{ label: "Home", href: "/" }, { label: "Account" }]} />
         <AccountPanel />
       </Container>
     </div>

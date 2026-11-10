@@ -24,7 +24,7 @@ export default function ShopPageHero({ title, subtitle }) {
         <div className="absolute inset-0 bg-gradient-to-r from-brand-charcoal/65 via-brand-charcoal/30 to-transparent" />
       </div>
 
-      <Container className="relative flex min-h-72 flex-col justify-center gap-3 py-10 text-left sm:min-h-80 lg:min-h-96">
+      <Container className="relative flex min-h-72 flex-col items-center justify-center gap-3 py-10 text-center sm:min-h-80 lg:min-h-96">
         <h1 className="max-w-xl font-display text-3xl font-bold text-brand-gold drop-shadow-md sm:text-5xl">
           {title}
         </h1>
