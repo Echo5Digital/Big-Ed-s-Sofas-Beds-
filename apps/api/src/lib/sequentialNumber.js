@@ -5,7 +5,14 @@
 // sales/orders), retry the whole generate-and-create step on exactly that
 // collision: the retry re-reads a fresh count, so it converges quickly
 // without blocking anything that isn't actually colliding.
-const MAX_ATTEMPTS = 5;
+//
+// Was 5 — observed exhausting all 5 attempts in the test suite (real
+// contention against the remote dev Postgres instance, not test-only
+// pollution: reproduced on an otherwise-clean, gap-free order sequence) once
+// several orders got created back-to-back. 15 gives real collisions enough
+// room to converge without materially slowing down the rare case that
+// actually needs more than one attempt.
+const MAX_ATTEMPTS = 15;
 
 async function createWithSequentialNumber(createFn) {
   let lastError;

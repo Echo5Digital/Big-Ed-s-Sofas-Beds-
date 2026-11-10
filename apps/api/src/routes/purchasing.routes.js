@@ -11,6 +11,7 @@ const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
 const { NotFoundError, ConflictError } = require("../lib/errors");
 const { createWithSequentialNumber } = require("../lib/sequentialNumber");
+const purchasingService = require("../services/purchasing.service");
 
 const router = express.Router();
 
@@ -239,97 +240,12 @@ router.post(
   requirePermission("purchasing:receive"),
   validateBody(goodsReceiptCreateSchema),
   asyncHandler(async (req, res) => {
-    const po = await prisma.purchaseOrder.findUnique({
-      where: { id: req.params.id },
-      include: { lines: true },
-    });
-    if (!po) throw new NotFoundError("Purchase order not found");
-    if (!["SENT_TO_VENDOR", "PARTIALLY_RECEIVED"].includes(po.status)) {
-      throw new ConflictError(`Cannot receive against a PO in status ${po.status}`);
-    }
-
-    const receipt = await prisma.$transaction(async (tx) => {
-      const createdReceipt = await tx.goodsReceipt.create({
-        data: {
-          purchaseOrderId: po.id,
-          locationId: req.body.locationId,
-          receivedById: req.user.id,
-          notes: req.body.notes,
-          lines: {
-            create: req.body.lines.map((l) => ({
-              poLineId: l.poLineId,
-              acceptedQty: l.acceptedQty,
-              damagedQty: l.damagedQty ?? 0,
-              differenceNotes: l.differenceNotes,
-            })),
-          },
-        },
-        include: { lines: true },
-      });
-
-      for (const receiptLine of req.body.lines) {
-        const poLine = po.lines.find((l) => l.id === receiptLine.poLineId);
-        if (!poLine) continue;
-
-        const newReceivedQty = poLine.receivedQty + receiptLine.acceptedQty;
-        if (newReceivedQty > poLine.expectedQty) {
-          throw new ConflictError(
-            `Receiving ${receiptLine.acceptedQty} units for SKU ${poLine.skuSnapshot} would exceed the expected quantity`,
-            { expectedQty: poLine.expectedQty, alreadyReceived: poLine.receivedQty }
-          );
-        }
-
-        await tx.pOLine.update({
-          where: { id: poLine.id },
-          data: { receivedQty: newReceivedQty },
-        });
-
-        if (receiptLine.acceptedQty > 0) {
-          const balance = await tx.stockBalance.upsert({
-            where: { variantId_locationId: { variantId: poLine.variantId, locationId: req.body.locationId } },
-            update: {},
-            create: { variantId: poLine.variantId, locationId: req.body.locationId },
-          });
-          await tx.stockBalance.update({
-            where: { id: balance.id },
-            data: { onHand: { increment: receiptLine.acceptedQty } },
-          });
-          await tx.stockMovement.create({
-            data: {
-              variantId: poLine.variantId,
-              locationId: req.body.locationId,
-              type: "RECEIPT",
-              quantity: receiptLine.acceptedQty,
-              referenceType: "GoodsReceipt",
-              referenceId: createdReceipt.id,
-              performedById: req.user.id,
-            },
-          });
-        }
-
-        if (receiptLine.damagedQty > 0) {
-          const balance = await tx.stockBalance.upsert({
-            where: { variantId_locationId: { variantId: poLine.variantId, locationId: req.body.locationId } },
-            update: {},
-            create: { variantId: poLine.variantId, locationId: req.body.locationId },
-          });
-          await tx.stockBalance.update({
-            where: { id: balance.id },
-            data: { quarantined: { increment: receiptLine.damagedQty } },
-          });
-        }
-      }
-
-      const refreshedLines = await tx.pOLine.findMany({ where: { purchaseOrderId: po.id } });
-      const fullyReceived = refreshedLines.every((l) => l.receivedQty >= l.expectedQty);
-      const anyReceived = refreshedLines.some((l) => l.receivedQty > 0);
-
-      await tx.purchaseOrder.update({
-        where: { id: po.id },
-        data: { status: fullyReceived ? "RECEIVED" : anyReceived ? "PARTIALLY_RECEIVED" : po.status },
-      });
-
-      return createdReceipt;
+    const receipt = await purchasingService.receivePurchaseOrder({
+      purchaseOrderId: req.params.id,
+      locationId: req.body.locationId,
+      notes: req.body.notes,
+      lines: req.body.lines,
+      receivedById: req.user.id,
     });
 
     res.status(201).json({ goodsReceipt: receipt });

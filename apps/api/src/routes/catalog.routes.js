@@ -243,7 +243,13 @@ function computeAvailability(variant) {
   return { byLocation, totalAvailable };
 }
 
-function serializeProduct(product) {
+// `includeCost` must default to false and must only ever be passed `true` by
+// an admin route that has already checked the caller holds
+// "catalog:cost:view" (see GET /admin/products below) — this function is
+// also called directly by the two public storefront routes (GET /products,
+// GET /products/:slug) with no auth at all, so costCents must never be
+// reachable through any code path that doesn't explicitly opt in per-request.
+function serializeProduct(product, { includeCost = false } = {}) {
   return {
     id: product.id,
     name: product.name,
@@ -278,6 +284,7 @@ function serializeProduct(product) {
       },
       priceCents: v.priceCents,
       compareAtCents: v.compareAtCents,
+      ...(includeCost ? { costCents: v.costCents } : null),
       isActive: v.isActive,
       availability: computeAvailability(v),
     })),
@@ -372,7 +379,13 @@ router.get(
     ]);
 
     res.json({
-      products: products.map(minimal ? serializeProductMinimal : serializeProduct),
+      // Passed as a wrapped arrow, not the bare function reference: Array.map
+      // calls its callback with (element, index, array) — serializeProduct's
+      // second parameter is a destructured options object, and passing the
+      // bare function would hand it `index` (a number) as that second arg,
+      // throwing on every request ("Cannot destructure property 'includeCost'
+      // of ... as it is not an object").
+      products: products.map((p) => (minimal ? serializeProductMinimal(p) : serializeProduct(p))),
       pagination: { page: Number(page) || 1, pageSize: take, total },
     });
   })
@@ -751,7 +764,12 @@ router.get(
       // relies on to load the full catalog is untouched.
       take: q ? 20 : undefined,
     });
-    res.json({ products: products.map(serializeProduct) });
+    // Independent of "catalog:read" (required just to hit this route at all,
+    // via requirePermission above) — a role can list/edit products without
+    // seeing cost, so this is checked per-request rather than folded into
+    // the route-level permission gate.
+    const includeCost = req.user.permissions.has("catalog:cost:view");
+    res.json({ products: products.map((p) => serializeProduct(p, { includeCost })) });
   })
 );
 
@@ -759,3 +777,4 @@ module.exports = router;
 module.exports.pickDisplayCategory = pickDisplayCategory;
 module.exports.syncProductLinksAsGroup = syncProductLinksAsGroup;
 module.exports.getProductDeleteBlockers = getProductDeleteBlockers;
+module.exports.serializeProduct = serializeProduct;

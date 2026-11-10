@@ -42,47 +42,66 @@ export default function FrequentlyBoughtTogether({ items }) {
   }
 
   return (
-    <div className="rounded-2xl border border-brand-charcoal/10 bg-white p-5">
-      <div className="flex flex-wrap items-start gap-4 sm:flex-nowrap sm:items-center">
-        {items.map((item, index) => (
-          <div key={item.id} className="flex items-center gap-2">
-            <label className="flex w-24 shrink-0 flex-col items-center gap-2 text-center sm:w-28">
-              <span className="relative aspect-square w-full overflow-hidden rounded-xl bg-brand-cream">
-                {item.image && (
-                  <Image src={item.image} alt={stripInlineMarkdown(item.name)} fill sizes="112px" className="object-cover" />
-                )}
-                <input
-                  type="checkbox"
-                  checked={checkedIds.has(item.id)}
-                  onChange={() => toggleItem(item.id)}
-                  aria-label={`Include ${stripInlineMarkdown(item.name)} in the bundle`}
-                  className="absolute left-1.5 top-1.5 size-4 rounded border-brand-charcoal/30 text-brand-red focus:ring-brand-red"
-                />
-              </span>
-              <Link
-                href={`/products/${item.slug}`}
-                className="line-clamp-2 text-xs font-semibold text-brand-charcoal hover:text-brand-red-dark"
-              >
-                {stripInlineMarkdown(item.name)}
-              </Link>
-              <span className="text-xs font-bold text-brand-charcoal">{formatCurrency(item.price)}</span>
-            </label>
-            {index < items.length - 1 && (
-              <Plus className="size-4 shrink-0 text-brand-charcoal/30" aria-hidden="true" />
-            )}
-          </div>
-        ))}
+    <div className="rounded-2xl border border-brand-charcoal/10 bg-white p-5 sm:p-6">
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+          {items.map((item, index) => (
+            <div key={item.id} className="flex items-center gap-3 sm:gap-4">
+              <label className="group flex w-28 shrink-0 flex-col items-center gap-2 text-center sm:w-32">
+                <span
+                  className={`relative aspect-square w-full overflow-hidden rounded-xl border-2 bg-brand-cream transition-colors ${
+                    checkedIds.has(item.id)
+                      ? "border-brand-red"
+                      : "border-transparent group-hover:border-brand-charcoal/15"
+                  }`}
+                >
+                  {item.image && (
+                    <Image src={item.image} alt={stripInlineMarkdown(item.name)} fill sizes="128px" className="object-cover" />
+                  )}
+                  <span
+                    className={`absolute left-2 top-2 flex size-5 items-center justify-center rounded-full border-2 transition-colors ${
+                      checkedIds.has(item.id)
+                        ? "border-brand-red bg-brand-red text-white"
+                        : "border-white bg-white/80 text-transparent"
+                    }`}
+                  >
+                    <Check className="size-3.5" strokeWidth={3} aria-hidden="true" />
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={checkedIds.has(item.id)}
+                    onChange={() => toggleItem(item.id)}
+                    aria-label={`Include ${stripInlineMarkdown(item.name)} in the bundle`}
+                    className="absolute inset-0 size-full cursor-pointer opacity-0"
+                  />
+                </span>
+                <Link
+                  href={`/products/${item.slug}`}
+                  className="line-clamp-2 text-xs font-semibold text-brand-charcoal hover:text-brand-red-dark"
+                >
+                  {stripInlineMarkdown(item.name)}
+                </Link>
+                <span className="text-xs font-bold text-brand-charcoal">{formatCurrency(item.price)}</span>
+              </label>
+              {index < items.length - 1 && (
+                <Plus className="size-4 shrink-0 text-brand-charcoal/25" aria-hidden="true" />
+              )}
+            </div>
+          ))}
+        </div>
 
-        <div className="flex w-full flex-col gap-2 border-t border-brand-charcoal/10 pt-4 sm:ml-auto sm:w-auto sm:border-t-0 sm:border-l sm:pl-5 sm:pt-0">
-          <p className="text-xs text-brand-charcoal/60">
-            Total for {checkedItems.length} item{checkedItems.length === 1 ? "" : "s"}
-          </p>
-          <p className="text-xl font-bold text-brand-charcoal">{formatCurrency(combinedTotal)}</p>
+        <div className="flex items-center justify-between gap-4 rounded-xl bg-brand-cream px-5 py-4 lg:ml-8 lg:w-72 lg:shrink-0 lg:flex-col lg:items-stretch lg:gap-3">
+          <div className="lg:text-center">
+            <p className="text-xs text-brand-charcoal/60">
+              Total for {checkedItems.length} item{checkedItems.length === 1 ? "" : "s"}
+            </p>
+            <p className="text-2xl font-bold text-brand-charcoal">{formatCurrency(combinedTotal)}</p>
+          </div>
           <button
             type="button"
             onClick={handleAddSelected}
             disabled={checkedItems.length === 0}
-            className="flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-brand-red px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark disabled:cursor-not-allowed disabled:bg-brand-charcoal/20 disabled:text-brand-charcoal/50"
+            className="flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-red-dark disabled:cursor-not-allowed disabled:bg-brand-charcoal/20 disabled:text-brand-charcoal/50 disabled:shadow-none"
           >
             {justAdded ? (
               <>

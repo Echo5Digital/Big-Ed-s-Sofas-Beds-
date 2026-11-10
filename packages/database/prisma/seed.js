@@ -6,6 +6,7 @@ const prisma = new PrismaClient();
 const PERMISSIONS = [
   { key: "catalog:read", description: "View products and categories" },
   { key: "catalog:write", description: "Create/edit products and categories" },
+  { key: "catalog:cost:view", description: "View purchase/cost price (margin-sensitive, hidden from storefront and most staff)" },
   { key: "inventory:read", description: "View stock levels and movements" },
   { key: "inventory:adjust", description: "Adjust stock, transfer, count" },
   { key: "purchasing:read", description: "View suppliers and purchase orders" },
@@ -28,6 +29,7 @@ const ROLE_PERMISSIONS = {
   MANAGER: [
     "catalog:read",
     "catalog:write",
+    "catalog:cost:view",
     "inventory:read",
     "inventory:adjust",
     "purchasing:read",
@@ -48,6 +50,7 @@ const ROLE_PERMISSIONS = {
   ],
   CASHIER: [
     "catalog:read",
+    "catalog:cost:view",
     "inventory:read",
     "orders:read",
     "pos:register:open",

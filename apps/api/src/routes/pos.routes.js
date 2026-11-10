@@ -44,6 +44,39 @@ function serializeOrder(order) {
   };
 }
 
+// POS's product search (ProductSearch.jsx) hits the public GET /catalog/
+// products?fields=minimal — unauthenticated by design, shared with the
+// storefront, so it can never safely carry costCents. This is the
+// authenticated alternative the POS cart uses instead: given the variant ids
+// already in the cashier's cart, return just their costCents, gated by
+// "catalog:cost:view" like every other cost-visibility surface. Returns {}
+// (no costs) rather than 403 for a cashier without the permission — the
+// cart still works identically, it just shows no cost-floor warning (the
+// server-side hard-block in pos.service.js's ringSale is the real guardrail
+// regardless of what this endpoint returns).
+router.get(
+  "/cart-costs",
+  requirePermission("pos:sell"),
+  asyncHandler(async (req, res) => {
+    if (!req.user.permissions.has("catalog:cost:view")) {
+      return res.json({ costsByVariantId: {} });
+    }
+    const ids = String(req.query.variantIds ?? "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+    if (ids.length === 0) {
+      return res.json({ costsByVariantId: {} });
+    }
+    const variants = await prisma.variant.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, costCents: true },
+    });
+    const costsByVariantId = Object.fromEntries(variants.map((v) => [v.id, v.costCents]));
+    res.json({ costsByVariantId });
+  })
+);
+
 router.get(
   "/registers",
   requirePermission("pos:register:open"),

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import RequireAuth from "@/components/layout/RequireAuth";
+import { useAuth } from "@/lib/hooks/useAuth";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -40,6 +41,8 @@ function describeApiError(err, fallback) {
 
 function NewProductContent() {
   const router = useRouter();
+  const { hasPermission } = useAuth();
+  const canViewCost = hasPermission("catalog:cost:view");
   const [categories, setCategories] = useState([]);
   const [locations, setLocations] = useState([]);
   const [stockQuantities, setStockQuantities] = useState({});
@@ -50,6 +53,7 @@ function NewProductContent() {
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("DRAFT");
   const [sku, setSku] = useState("");
+  const [costCents, setCostCents] = useState("");
   const [priceCents, setPriceCents] = useState("");
   const [compareAtCents, setCompareAtCents] = useState("");
   const [itemName, setItemName] = useState("");
@@ -126,6 +130,7 @@ function NewProductContent() {
             name,
             priceCents: Math.round(Number(priceCents) * 100),
             compareAtCents: compareAtCents !== "" ? Math.round(Number(compareAtCents) * 100) : undefined,
+            costCents: canViewCost && costCents !== "" ? Math.round(Number(costCents) * 100) : undefined,
           },
         ],
         linkedProductIds: linkedProducts.length ? linkedProducts.map((p) => p.id) : undefined,
@@ -177,6 +182,24 @@ function NewProductContent() {
                 className="rounded-lg border border-black/15 px-3 py-2 text-sm font-mono focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
               />
             </div>
+
+            {canViewCost && (
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="purchasePrice" className="text-sm font-medium text-brand-charcoal">
+                  Purchase Price (USD)
+                </label>
+                <input
+                  id="purchasePrice"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="What we pay the manufacturer — not shown to customers"
+                  value={costCents}
+                  onChange={(e) => setCostCents(e.target.value)}
+                  className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+                />
+              </div>
+            )}
 
             <div className="flex flex-col gap-1.5">
               <label htmlFor="primaryPrice" className="text-sm font-medium text-brand-charcoal">

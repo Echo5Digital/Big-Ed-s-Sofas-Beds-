@@ -217,4 +217,105 @@ router.get(
   })
 );
 
+// Profit/margin report: revenue, cost, and margin $/% for a date range,
+// broken down by product and summarized store-wide. Gated by
+// "catalog:cost:view" IN ADDITION TO "reports:read" (already required for
+// this whole router above) — this is the one report that reveals supplier
+// cost, so it needs the same permission as every other cost-visibility
+// surface (admin product form, POS checkout), not just general report access.
+//
+// Cost is read from OrderLine.unitPriceCents (the real historical sale
+// price, snapshotted at the time of sale — see OrderLine's own comment in
+// schema.prisma) against the variant's CURRENT Variant.costCents, not a
+// historical cost looked up from PriceHistory by sale date. This is a
+// deliberate simplification: PriceHistory only starts getting real entries
+// once the Purchase Price feature and PO-receive cost sync ship (see
+// purchasing.service.js's receivePurchaseOrder), so a sale from before a
+// supplier cost was ever recorded has no historical row to look up anyway.
+// Margin on long-past orders will drift from what it would have shown at
+// the time if a product's cost has since changed — acceptable for now since
+// this is the first version of margin reporting, not a point this report
+// claims to guarantee.
+router.get(
+  "/margin",
+  requirePermission("catalog:cost:view"),
+  asyncHandler(async (req, res) => {
+    const { start, end } = req.query.month ? parseMonthRange(req.query.month) : parseDayRange(req.query.date);
+
+    const lines = await prisma.orderLine.findMany({
+      where: {
+        order: { createdAt: { gte: start, lt: end }, status: { not: "CANCELED" } },
+      },
+      select: {
+        quantity: true,
+        unitPriceCents: true,
+        discountCents: true,
+        lineTotalCents: true,
+        variantId: true,
+        nameSnapshot: true,
+        skuSnapshot: true,
+        variant: { select: { costCents: true } },
+      },
+    });
+
+    const byProduct = new Map();
+    let revenueCents = 0;
+    let costCents = 0;
+    let unknownCostQuantity = 0;
+
+    for (const line of lines) {
+      const lineRevenueCents = line.lineTotalCents;
+      // Null costCents (no PO receipt or backfill has reached this variant
+      // yet) contributes 0 cost for that line rather than skipping it or
+      // guessing — same "never fabricate a number we don't have" rule as
+      // the POS cost-floor check in pos.service.js. unknownCostQuantity
+      // surfaces how many units this affects so the report can disclose it
+      // rather than silently overstating margin.
+      const known = line.variant?.costCents != null;
+      const lineCostCents = known ? line.variant.costCents * line.quantity : 0;
+      if (!known) unknownCostQuantity += line.quantity;
+
+      revenueCents += lineRevenueCents;
+      costCents += lineCostCents;
+
+      const key = line.variantId;
+      const existing = byProduct.get(key) ?? {
+        variantId: line.variantId,
+        name: line.nameSnapshot,
+        sku: line.skuSnapshot,
+        quantity: 0,
+        revenueCents: 0,
+        costCents: 0,
+        unknownCostQuantity: 0,
+      };
+      existing.quantity += line.quantity;
+      existing.revenueCents += lineRevenueCents;
+      existing.costCents += lineCostCents;
+      if (!known) existing.unknownCostQuantity += line.quantity;
+      byProduct.set(key, existing);
+    }
+
+    const products = [...byProduct.values()]
+      .map((p) => ({
+        ...p,
+        marginCents: p.revenueCents - p.costCents,
+        marginPercent: p.revenueCents > 0 ? ((p.revenueCents - p.costCents) / p.revenueCents) * 100 : 0,
+      }))
+      .sort((a, b) => b.marginCents - a.marginCents);
+
+    const marginCents = revenueCents - costCents;
+
+    res.json({
+      date: start.toISOString(),
+      rangeEnd: end.toISOString(),
+      revenueCents,
+      costCents,
+      marginCents,
+      marginPercent: revenueCents > 0 ? (marginCents / revenueCents) * 100 : 0,
+      unknownCostQuantity,
+      products,
+    });
+  })
+);
+
 module.exports = router;

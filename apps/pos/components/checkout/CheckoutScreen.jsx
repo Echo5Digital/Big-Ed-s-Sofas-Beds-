@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LogOut, ShoppingCart, ChevronDown } from "lucide-react";
 import { api, ApiClientError } from "@/lib/api/client";
 import { useRegisterSession } from "@/lib/hooks/useRegisterSession";
@@ -20,6 +20,36 @@ export default function CheckoutScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [completedSale, setCompletedSale] = useState(null);
+  const [costsByVariantId, setCostsByVariantId] = useState({});
+
+  // Cost is fetched separately from the (unauthenticated, storefront-shared)
+  // product search results — see GET /pos/cart-costs in pos.routes.js for
+  // why this can't just ride along on ProductSearch's existing request.
+  // Keyed by a stable, order-independent string of the cart's variant ids so
+  // adding/removing quantity on an item already in the cart (not changing
+  // which variants are present) doesn't re-fetch. No empty-cart branch
+  // needed here: an empty cartVariantIdsKey just skips the fetch below, and
+  // totalCostCents (computed from the current cart, not from this state
+  // directly) naturally reads as 0 once cart is empty regardless of
+  // whatever this map still holds from before the last item was removed.
+  const cartVariantIdsKey = [...new Set(cart.map((l) => l.variantId))].sort().join(",");
+  useEffect(() => {
+    if (!cartVariantIdsKey) return;
+    let cancelled = false;
+    api
+      .get(`/pos/cart-costs?variantIds=${encodeURIComponent(cartVariantIdsKey)}`)
+      .then((data) => {
+        if (!cancelled) setCostsByVariantId(data.costsByVariantId);
+      })
+      .catch(() => {
+        // Non-fatal: the cart just shows no cost-floor warning for this
+        // round of items — the server-side hard-block in ringSale is the
+        // real guardrail and still applies regardless of this fetch.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cartVariantIdsKey]);
 
   function handleAdd(row) {
     setCart((prev) => {
@@ -60,6 +90,11 @@ export default function CheckoutScreen() {
 
   const itemCount = cart.reduce((sum, l) => sum + l.quantity, 0);
   const subtotalCents = cart.reduce((sum, l) => sum + l.priceCents * l.quantity, 0);
+  // Missing entries (cost not loaded yet, or costCents still null for that
+  // variant) contribute 0 — same "only warn on a KNOWN loss" rule as the
+  // server-side hard floor in pos.service.js's ringSale, so this preview
+  // warning and the authoritative block never disagree about what counts.
+  const totalCostCents = cart.reduce((sum, l) => sum + (costsByVariantId[l.variantId] ?? 0) * l.quantity, 0);
 
   async function handleConfirmPayment({ tenderMethod, tenderedCents, depositAmountCents, discountCents, discountReasonCode }) {
     setError(null);
@@ -158,6 +193,7 @@ export default function CheckoutScreen() {
           setError(null);
         }}
         subtotalCents={subtotalCents}
+        totalCostCents={totalCostCents}
         onConfirm={handleConfirmPayment}
         submitting={submitting}
         error={error}

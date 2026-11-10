@@ -122,6 +122,24 @@ async function ringSale({
     throw new ConflictError("Discount cannot exceed the order subtotal", { subtotalCents, discountCents });
   }
   const totalCents = subtotalCents - (discountCents || 0);
+
+  // Hard floor: a discount (or combination of discounted lines) is never
+  // allowed to bring the order total below what we paid for the goods in
+  // it — confirmed product decision, no manager override today. Variants
+  // with costCents still null (no PO receipt or backfill has reached them
+  // yet) contribute 0 to totalCostCents rather than blocking the sale on
+  // unknown data; this only ever protects against a KNOWN loss, never
+  // guesses one.
+  const totalCostCents = lines.reduce(
+    (sum, l) => sum + (variantById.get(l.variantId).costCents ?? 0) * l.quantity,
+    0
+  );
+  if (totalCents < totalCostCents) {
+    throw new ConflictError("This sale's total is below the cost of the items in it — adjust the discount", {
+      totalCents,
+      totalCostCents,
+    });
+  }
   const saleAmountCents = tenderMethod === "DEPOSIT" ? depositAmountCents : totalCents;
 
   if (tenderMethod === "DEPOSIT" && (!depositAmountCents || depositAmountCents > totalCents)) {

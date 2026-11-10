@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Banknote, CreditCard, HandCoins } from "lucide-react";
+import { Banknote, CreditCard, HandCoins, AlertTriangle } from "lucide-react";
 import { formatCents } from "@/lib/format";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
@@ -12,7 +12,7 @@ const TENDERS = [
   { key: "DEPOSIT", label: "Deposit", icon: HandCoins },
 ];
 
-export default function TenderModal({ open, onClose, subtotalCents, onConfirm, submitting, error }) {
+export default function TenderModal({ open, onClose, subtotalCents, totalCostCents = 0, onConfirm, submitting, error }) {
   const [tenderMethod, setTenderMethod] = useState("CASH");
   const [tendered, setTendered] = useState("");
   const [depositAmount, setDepositAmount] = useState("");
@@ -25,14 +25,33 @@ export default function TenderModal({ open, onClose, subtotalCents, onConfirm, s
   const totalCents = Math.max(0, subtotalCents - discountCents);
   const amountDueCents = tenderMethod === "DEPOSIT" ? depositAmountCents : totalCents;
   const changeDueCents = tenderMethod === "CASH" ? Math.max(0, tenderedCents - amountDueCents) : 0;
+  // Mirrors the hard floor pos.service.js's ringSale enforces server-side —
+  // shown here so a cashier sees the problem before tendering, not only
+  // after the sale is rejected. totalCostCents is 0 when the signed-in
+  // cashier can't see cost (see GET /pos/cart-costs), so this never fires
+  // for a role without catalog:cost:view — consistent with the earlier
+  // instruction that Purchase Price visibility, not just the block itself,
+  // is gated by permission.
+  const belowCost = totalCostCents > 0 && totalCents < totalCostCents;
 
   const canConfirm = useMemo(() => {
     if (tenderMethod === "CARD") return false;
     if (discountCents > subtotalCents) return false;
     if (discountCents > 0 && !discountReasonCode.trim()) return false;
     if (tenderMethod === "DEPOSIT" && (!depositAmountCents || depositAmountCents > totalCents)) return false;
+    if (belowCost) return false;
     return tenderedCents >= amountDueCents;
-  }, [tenderMethod, tenderedCents, amountDueCents, depositAmountCents, totalCents, discountCents, subtotalCents, discountReasonCode]);
+  }, [
+    tenderMethod,
+    tenderedCents,
+    amountDueCents,
+    depositAmountCents,
+    totalCents,
+    discountCents,
+    subtotalCents,
+    discountReasonCode,
+    belowCost,
+  ]);
 
   function handleConfirm() {
     onConfirm({
@@ -97,6 +116,14 @@ export default function TenderModal({ open, onClose, subtotalCents, onConfirm, s
               />
             )}
           </div>
+        )}
+
+        {belowCost && (
+          <p role="alert" className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-700">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            This sale&apos;s total ({formatCents(totalCents)}) is below what we paid for these items (
+            {formatCents(totalCostCents)}). Reduce the discount to continue.
+          </p>
         )}
 
         {tenderMethod === "DEPOSIT" && (

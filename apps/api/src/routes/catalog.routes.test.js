@@ -1,7 +1,7 @@
 const { prisma } = require("@big-eds/database");
 const { productCreateSchema, productUpdateSchema } = require("@big-eds/validation");
 const inventoryService = require("../services/inventory.service");
-const { pickDisplayCategory, syncProductLinksAsGroup, getProductDeleteBlockers } = require("./catalog.routes");
+const { pickDisplayCategory, syncProductLinksAsGroup, getProductDeleteBlockers, serializeProduct } = require("./catalog.routes");
 
 // Runs against the real dev database (same convention as auth.routes.test.js
 // and pos.service.test.js — no Prisma mock layer). Regression test for a bug
@@ -725,5 +725,91 @@ describe("catalog.routes — product archive and delete", () => {
 
     expect(await prisma.product.findUnique({ where: { id: product.id } })).toBeNull();
     expect(await prisma.variant.findUnique({ where: { id: variantId } })).toBeNull();
+  });
+});
+
+// serializeProduct's `includeCost` option (default false) is the ONLY thing
+// standing between Variant.costCents (the margin-sensitive "Purchase Price")
+// and the two public, unauthenticated storefront routes (GET /products,
+// GET /products/:slug) that call this exact function with no second
+// argument — a regression here would leak supplier cost to every customer.
+// GET /admin/products is the only caller that ever passes includeCost: true,
+// and only after checking req.user.permissions.has("catalog:cost:view")
+// (see that route handler in catalog.routes.js).
+describe("catalog.routes — serializeProduct cost visibility", () => {
+  const createdProductIds = [];
+
+  afterAll(async () => {
+    for (const id of createdProductIds) {
+      await prisma.stockBalance.deleteMany({ where: { variant: { productId: id } } });
+      await prisma.variant.deleteMany({ where: { productId: id } });
+      await prisma.product.delete({ where: { id } });
+    }
+  });
+
+  async function createProductWithCost() {
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const created = await prisma.product.create({
+      data: {
+        name: `Cost Visibility Test ${suffix}`,
+        slug: `cost-visibility-test-${suffix}`,
+        status: "ACTIVE",
+        variants: {
+          create: [
+            {
+              sku: `COST-VIS-TEST-${suffix}`,
+              name: `Cost Visibility Test ${suffix}`,
+              priceCents: 50000,
+              costCents: 25000,
+            },
+          ],
+        },
+      },
+      include: {
+        category: true,
+        categoryTags: { include: { category: true } },
+        images: { orderBy: { sortOrder: "asc" } },
+        variants: { include: { stockBalances: { include: { location: true } } } },
+        linkedTo: { include: { linkedProduct: { select: { id: true, slug: true, name: true, images: true, variants: true } } } },
+      },
+    });
+    createdProductIds.push(created.id);
+    return created;
+  }
+
+  it("omits costCents by default (the shape every public storefront route gets)", async () => {
+    const product = await createProductWithCost();
+
+    const serialized = serializeProduct(product);
+
+    expect(serialized.variants[0]).not.toHaveProperty("costCents");
+  });
+
+  it("omits costCents when includeCost is explicitly false", async () => {
+    const product = await createProductWithCost();
+
+    const serialized = serializeProduct(product, { includeCost: false });
+
+    expect(serialized.variants[0]).not.toHaveProperty("costCents");
+  });
+
+  it("includes the real costCents value only when includeCost is true (the admin-only path)", async () => {
+    const product = await createProductWithCost();
+
+    const serialized = serializeProduct(product, { includeCost: true });
+
+    expect(serialized.variants[0].costCents).toBe(25000);
+  });
+
+  it("GET /products-style map callback never crashes serializeProduct by passing it an array index", () => {
+    // Regression test for a real bug caught during review: `products.map(fn)`
+    // calls fn(element, index, array) — passing the bare `serializeProduct`
+    // reference (instead of wrapping it in an arrow) handed its second
+    // parameter (an options object) the numeric array index instead, which
+    // crashed destructuring ({ includeCost } of a number) on every request
+    // past the first. Exercises the exact call shape GET /products now uses.
+    const products = [{ variants: [], images: [], categoryTags: [], linkedTo: [] }, { variants: [], images: [], categoryTags: [], linkedTo: [] }];
+
+    expect(() => products.map((p) => serializeProduct(p))).not.toThrow();
   });
 });

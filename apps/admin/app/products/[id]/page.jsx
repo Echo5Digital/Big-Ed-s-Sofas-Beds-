@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import RequireAuth from "@/components/layout/RequireAuth";
+import { useAuth } from "@/lib/hooks/useAuth";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -38,6 +39,8 @@ function describeApiError(err, fallback) {
 function EditProductContent() {
   const router = useRouter();
   const { id } = useParams();
+  const { hasPermission } = useAuth();
+  const canViewCost = hasPermission("catalog:cost:view");
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -48,6 +51,7 @@ function EditProductContent() {
   const [status, setStatus] = useState("DRAFT");
   const [variantId, setVariantId] = useState(null);
   const [sku, setSku] = useState("");
+  const [costCents, setCostCents] = useState("");
   const [priceCents, setPriceCents] = useState("");
   const [compareAtCents, setCompareAtCents] = useState("");
   const [itemName, setItemName] = useState("");
@@ -84,6 +88,7 @@ function EditProductContent() {
         setStatus(product.status);
         setVariantId(variant?.id ?? null);
         setSku(variant?.sku ?? "");
+        setCostCents(variant?.costCents ? (variant.costCents / 100).toString() : "");
         setPriceCents(variant ? (variant.priceCents / 100).toString() : "");
         setCompareAtCents(variant?.compareAtCents ? (variant.compareAtCents / 100).toString() : "");
         setItemName(product.itemName ?? "");
@@ -150,6 +155,11 @@ function EditProductContent() {
             name,
             priceCents: Math.round(Number(priceCents) * 100),
             compareAtCents: compareAtCents !== "" ? Math.round(Number(compareAtCents) * 100) : null,
+            // Omitted entirely (not sent as null) when the signed-in user can't
+            // view/edit cost — leaves the existing costCents untouched server-
+            // side rather than risking this form silently wiping it for a role
+            // that never saw the field to begin with.
+            costCents: canViewCost ? (costCents !== "" ? Math.round(Number(costCents) * 100) : null) : undefined,
           },
         ],
         // Full replace, same convention as categoryIds above — always sends
@@ -218,6 +228,24 @@ function EditProductContent() {
                 className="rounded-lg border border-black/15 px-3 py-2 text-sm font-mono focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
               />
             </div>
+
+            {canViewCost && (
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="purchasePrice" className="text-sm font-medium text-brand-charcoal">
+                  Purchase Price (USD)
+                </label>
+                <input
+                  id="purchasePrice"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="What we pay the manufacturer — not shown to customers"
+                  value={costCents}
+                  onChange={(e) => setCostCents(e.target.value)}
+                  className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+                />
+              </div>
+            )}
 
             <div className="flex flex-col gap-1.5">
               <label htmlFor="primaryPrice" className="text-sm font-medium text-brand-charcoal">
