@@ -28,8 +28,8 @@ Ed's Sofas & Beds homepage and the conventions that later pages followed.
   poster face of the homepage promo ticker) is loaded inside
   `components/home/PromoTicker.jsx` rather than the root layout, so it is only
   requested on the homepage. Montserrat (the heavy italic headline and prices
-  of the doorbuster section) is loaded the same way, inside
-  `components/home/DoorbusterDeals.jsx`.
+  of the doorbuster section and the sale page) is loaded the same way, from
+  `lib/doorbusterFont.js`, so only those pages request it.
 - **Images:** `next/image`, configured in [next.config.mjs](../../next.config.mjs)
   to allow the `images.unsplash.com` remote pattern for placeholder photography.
 
@@ -40,6 +40,9 @@ app/
   layout.js        Root layout: fonts, DemoCartProvider, AnnouncementBar, SiteHeader,
                      ConditionalFinancingBanner, SiteFooter
   page.jsx          Homepage section composition
+  grand-opening-sale/page.jsx
+                    The Grand Opening Sale page (the hero's first button goes
+                     here): header, scrolling flyer strip, product grid
   globals.css       Design tokens (colors, fonts) via Tailwind v4 @theme
 
 components/
@@ -57,9 +60,20 @@ components/
                      Shop Big Ed's?" — a hand-picked list of product slugs in
                      lib/doorbusterDeals.js; price, compare-at price, photo and
                      stock are fetched live, and missing/out-of-stock products
-                     are skipped), BenefitsSection,
+                     are skipped), DealCard (the white "DOORBUSTER" product
+                     card shared with the sale page), BenefitsSection,
                      ShowroomSection, TestimonialsSection, FinancingBanner,
                      NewsletterSignup
+  sale/             /grand-opening-sale sections: SaleHeader, PromoMarquee (the
+                     six Grand Opening flyers from public/ as a CSS-only endless
+                     strip; keyframes in globals.css, pauses on hover, static
+                     and swipeable under prefers-reduced-motion), SaleProducts
+                     (blue "Bedroom Specials" bar, product grid, "More
+                     Doorbuster Deals" banner). Its products are chosen live by
+                     lib/grandOpeningSale.js: up to 10 in-stock, well-photographed,
+                     marked-down beds / bedroom sets from the beds and
+                     bedroom-furniture categories (best savings first, one per
+                     collection).
   ui/               Reusable primitives: Button, Container, SectionHeading,
                      StarRating, Price, BearMascot
 

@@ -55,7 +55,62 @@ body {
   }
 }
 
+/* Generic endless image strip (components/sale/PromoMarquee.jsx). Same idea as
+   the ticker: two identical groups, the track slides left by exactly one group.
+   --marquee-duration sets how long one pass takes. */
+@keyframes marquee-scroll {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
 @layer utilities {
+  .marquee-track {
+    animation: marquee-scroll var(--marquee-duration, 60s) linear infinite;
+    will-change: transform;
+  }
+
+  /* Fade the strip out at both edges. */
+  .marquee-mask {
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 3rem, #000 calc(100% - 3rem), transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0, #000 3rem, #000 calc(100% - 3rem), transparent 100%);
+  }
+
+  /* Pause under a real mouse pointer; skipped on touch screens, where a tap
+     would otherwise leave it stuck paused. */
+  @media (hover: hover) and (pointer: fine) {
+    .marquee-viewport:hover .marquee-track {
+      animation-play-state: paused;
+    }
+  }
+
+  /* Reduced-motion: no animation. One copy of the strip, swipe/scroll sideways. */
+  @media (prefers-reduced-motion: reduce) {
+    .marquee-track {
+      animation: none;
+    }
+
+    .marquee-viewport {
+      overflow-x: auto;
+    }
+
+    .marquee-mask {
+      -webkit-mask-image: none;
+      mask-image: none;
+    }
+
+    .marquee-group {
+      min-width: 0;
+    }
+
+    .marquee-dup {
+      display: none;
+    }
+  }
+
   .promo-ticker-track {
     animation: promo-ticker-scroll 36s linear infinite;
     will-change: transform;

@@ -1,19 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { Montserrat } from "next/font/google";
 import Container from "@/components/ui/Container";
-import { formatCurrency } from "@/utils/formatCurrency";
+import DealCard from "@/components/home/DealCard";
+import { montserrat } from "@/lib/doorbusterFont";
 
-// Heavy italic geometric face for the headline / prices. Loaded here (like
-// PromoTicker's Anton) so only the homepage requests it.
-const montserrat = Montserrat({ subsets: ["latin"], style: ["normal", "italic"], display: "swap" });
-
-// Yellow ribbon with swallow-tail ends, and the ragged "marker stroke" behind
-// each price. Plain clip-paths so they scale with whatever text they wrap.
+// Yellow ribbon with swallow-tail ends. A plain clip-path so it scales with
+// the headline it wraps.
 const RIBBON_CLIP = "polygon(0 12%, 100% 0, 96.5% 50%, 100% 100%, 0 88%, 3.5% 50%)";
-const MARKER_CLIP =
-  "polygon(3% 22%, 1% 6%, 12% 0, 30% 7%, 52% 1%, 74% 6%, 92% 0, 99% 13%, 97% 40%, 100% 63%, 98% 92%, 86% 100%, 64% 95%, 40% 100%, 18% 94%, 4% 100%, 0 78%, 2% 50%)";
 
 // Decorative confetti around the headline: [position, size, colour, rotation].
 const CONFETTI = [
@@ -27,66 +21,6 @@ const CONFETTI = [
   ["left-[95%] top-[22%]", "h-1.5 w-3.5", "bg-[#a855f7]", "rotate-[40deg]"],
   ["left-[90%] top-[28%]", "h-4 w-1.5", "bg-[#2f6bff]", "rotate-[-30deg]"],
 ];
-
-function discountPercent(price, compareAtPrice) {
-  return compareAtPrice && compareAtPrice > price ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100) : 0;
-}
-
-function DealCard({ deal }) {
-  const savings = discountPercent(deal.price, deal.compareAtPrice);
-
-  return (
-    <li className="w-[calc((100%-(var(--cols)-1)*var(--gap))/var(--cols))]">
-      <Link
-        href={`/products/${deal.slug}`}
-        className="group relative flex h-full flex-col rounded-2xl bg-white p-2.5 shadow-[0_12px_32px_-14px_rgba(20,30,70,0.38)] ring-1 ring-black/5 transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_22px_40px_-16px_rgba(163,6,16,0.45)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-red sm:p-3"
-      >
-        <span className="absolute -top-2.5 -left-1.5 z-10 -rotate-6 rounded-md bg-linear-to-b from-[#ee1c28] to-[#a30610] px-2.5 py-1 text-[10px] font-black tracking-wide text-white italic shadow-[0_3px_8px_rgba(163,6,16,0.45)] ring-1 ring-white/30 sm:-top-3 sm:-left-2.5 sm:px-3 sm:text-xs">
-          DOORBUSTER
-        </span>
-
-        <div className="relative aspect-5/4 overflow-hidden rounded-xl bg-white ring-1 ring-black/5">
-          {/* The wrapper carries the static zoom so the hover zoom on the image
-              doesn't fight it. */}
-          <div className="absolute inset-0" style={deal.zoom ? { transform: `scale(${deal.zoom})` } : undefined}>
-            <Image
-              src={deal.image}
-              alt={`${deal.title} ${deal.subtitle}`}
-              fill
-              sizes="(max-width: 640px) 46vw, (max-width: 1024px) 31vw, 24vw"
-              className={`transition-transform duration-500 group-hover:scale-105 ${
-                deal.fit === "contain" ? "object-contain" : "object-cover"
-              }`}
-              style={{ objectPosition: deal.position }}
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-1 flex-col items-center pt-3 text-center sm:pt-4">
-          <h3 className="text-base leading-tight font-extrabold text-[#0b1b4d] sm:text-xl">{deal.title}</h3>
-          <p className="mt-0.5 text-xs font-semibold text-[#2b3550]/80 sm:text-sm">{deal.subtitle}</p>
-
-          <div className="mt-auto flex flex-col items-center pt-3 sm:pt-4">
-            {savings > 0 && (
-              <p className="mb-1 text-[11px] font-semibold text-[#2b3550]/70 sm:text-sm">
-                Was <span className="line-through">{formatCurrency(deal.compareAtPrice)}</span>{" "}
-                <span className="font-extrabold text-brand-red">Save {savings}%</span>
-              </p>
-            )}
-            <span className="relative isolate inline-block px-5 py-1.5 text-xl leading-none font-extrabold text-[#b3000f] italic sm:px-7 sm:py-2 sm:text-3xl">
-              <span
-                aria-hidden="true"
-                className="absolute inset-0 -z-10 -rotate-1 bg-linear-to-b from-[#fff27a] via-[#ffdc1f] to-[#ffbf00] drop-shadow-[0_2px_0_rgba(190,120,0,0.35)]"
-                style={{ clipPath: MARKER_CLIP }}
-              />
-              {formatCurrency(deal.price)}
-            </span>
-          </div>
-        </div>
-      </Link>
-    </li>
-  );
-}
 
 // deals: the already-fetched, already-filtered list from getDoorbusterDeals()
 // (lib/doorbusterDeals.js) — products that are missing or out of stock are
