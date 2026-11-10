@@ -1,89 +1,64 @@
 import Image from "next/image";
+import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import Button from "@/components/ui/Button";
+import PromoTicker from "@/components/home/PromoTicker";
+
+// The banner artwork already contains the headline, tagline and mascot, so it
+// is rendered uncropped at its native 1500x501 ratio (cropping would cut off
+// the text) and `unoptimized` so the original file is served byte-for-byte —
+// Next's optimizer would otherwise re-encode it at lower quality.
+//
+// On xl+ the CTA buttons are overlaid on the image, in the empty band under
+// the "Unbeatable Deals" tagline. Measured on the 1500x501 artwork, that band
+// runs from y=408 (bottom of the tagline) to y=501, i.e. ~6.2% of the image
+// width tall, and the mascot's overalls reach x~333 at its left. Everything
+// here is sized in container-query units (`cqw` = 1% of the banner's width) so
+// the buttons scale with the artwork and keep the same clearance at any width:
+//   ~1.2cqw gap above  +  3.3cqw button  +  ~1.7cqw gap below  = 6.2cqw band
+// and the pair is centred on the tagline (x ~ 44% of the width). Below xl the
+// banner is too small for legible, tappable overlaid buttons, so they drop onto
+// a dark bar beneath the image instead.
+const BUTTON_BASE =
+  "inline-flex items-center justify-center gap-2 rounded-full border-2 px-6 py-3 text-base font-bold tracking-tight whitespace-nowrap transition-[filter,transform] hover:brightness-110 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:px-8 sm:py-3.5 sm:text-lg " +
+  "xl:h-[3.3cqw] xl:gap-[0.6cqw] xl:border-[0.12cqw] xl:px-[2cqw] xl:py-0 xl:text-[1.15cqw]";
+
+const ARROW = "size-5 shrink-0 xl:size-[1.35cqw]";
 
 export default function HeroBanner() {
   return (
-    <section className="relative overflow-hidden bg-brand-charcoal">
-      {/* Mobile background banner */}
-      <div className="relative h-60 w-full sm:h-72 lg:hidden">
+    <section className="bg-black">
+      <h1 className="sr-only">
+        Big Ed&apos;s Sofas &amp; Beds Grand Opening Doorbusters. Big Comfort. Bigger Savings.
+      </h1>
+
+      <PromoTicker />
+
+      <div className="@container relative mx-auto w-full max-w-[1920px]">
         <Image
-          src="/images/hero/big-ed-banner.webp"
-          alt="Big Ed mascot giving a thumbs up"
-          fill
+          src="/Big Eds Grand Opening Furniture Celebration.jpeg"
+          alt="Big Ed the bear giving a thumbs up beside a cream sectional sofa. Grand Opening Doorbusters: unbeatable deals on sofas, beds and recliners."
+          width={1500}
+          height={501}
           priority
-          sizes="(max-width: 1440px) 100vw, 1440px"
-          className="object-cover object-[15%_center]"
+          unoptimized
+          className="h-auto w-full"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-brand-charcoal via-brand-charcoal/40 to-transparent" />
-      </div>
 
-      {/* Desktop full-width background image */}
-      <div className="absolute inset-0 hidden lg:block">
-        <Image
-          src="/images/hero/big-ed-banner.webp"
-          alt="Big Ed mascot giving a thumbs up beside an elegant warm living room with a cream sectional sofa"
-          fill
-          priority
-          sizes="(max-width: 1440px) 100vw, 1440px"
-          className="object-cover"
-        />
-        {/* Subtle contrast gradient for center content readability without darkening the room */}
-        <div className="absolute inset-0 bg-gradient-to-r from-brand-charcoal/40 via-transparent to-brand-charcoal/20 pointer-events-none" />
-      </div>
-
-      {/* Content container */}
-      <div className="relative mx-auto flex w-full max-w-[1440px] flex-col gap-8 px-4 pb-12 pt-6 sm:px-6 lg:min-h-145 lg:flex-row lg:items-center lg:pb-16 lg:pt-16 lg:px-10">
-        {/* Spacer to clear the mascot on desktop */}
-        <div className="hidden shrink-0 lg:block lg:w-65 xl:w-80" aria-hidden="true" />
-
-        {/* Hero copy block */}
-        <div className="flex max-w-xl flex-col items-start gap-4 text-left">
-          {/* Eyebrow tag */}
-          <div className="flex items-center gap-2.5">
-            <span className="h-0.5 w-6 rounded-full bg-brand-gold" />
-            <span className="text-xs sm:text-sm font-bold uppercase tracking-widest text-brand-gold drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
-              Direct Showroom Pricing &bull; Quality Furniture
-            </span>
-          </div>
-
-          {/* Main Headline */}
-          <h1 className="font-serif-heading text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-[1.08] drop-shadow-[0_3px_12px_rgba(0,0,0,0.9)]">
-            Big Comfort.
-            <span className="mt-1 block text-brand-gold font-extrabold">Bigger Savings.</span>
-          </h1>
-
-          {/* Subheading content */}
-          <div className="flex flex-col gap-2 max-w-lg">
-            <p className="text-base sm:text-lg font-medium text-white/95 leading-relaxed drop-shadow-[0_1px_4px_rgba(0,0,0,0.85)]">
-              Quality furniture. Affordable style. Comfort for life.
-            </p>
-            <p className="text-xs sm:text-sm font-semibold tracking-wider uppercase text-brand-gold/90 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
-              Sofas &bull; Sectionals &bull; Beds &bull; Mattresses &bull; Recliners &bull; Dining Sets
-            </p>
-          </div>
-
-          {/* Action CTAs with sharp, unblurred text */}
-          <div className="flex flex-wrap items-center gap-3 pt-2 [text-shadow:none]">
-            <Button
-              href="/shop"
-              variant="primary"
-              size="lg"
-              icon={ArrowRight}
-              className="font-bold tracking-wide shadow-xl hover:shadow-2xl hover:brightness-110 [text-shadow:none]"
-            >
-              Shop Now
-            </Button>
-            <Button
-              href="/about"
-              variant="gold"
-              size="lg"
-              icon={ArrowRight}
-              className="font-bold tracking-wide text-brand-charcoal shadow-xl hover:shadow-2xl hover:brightness-105 [text-shadow:none]"
-            >
-              Visit Our Showroom
-            </Button>
-          </div>
+        <div className="flex flex-col items-stretch justify-center gap-3 px-4 py-4 sm:flex-row sm:items-center sm:gap-5 sm:py-5 xl:absolute xl:bottom-[1.7cqw] xl:left-[44cqw] xl:w-max xl:-translate-x-1/2 xl:gap-[1.1cqw] xl:p-0">
+          <Link
+            href="/deals"
+            className={`${BUTTON_BASE} border-neutral-300 bg-gradient-to-b from-[#e3101c] to-[#a30610] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_4px_14px_rgba(0,0,0,0.5)]`}
+          >
+            <span>Shop Grand Opening Deals</span>
+            <ArrowRight className={ARROW} strokeWidth={2.5} aria-hidden="true" />
+          </Link>
+          <Link
+            href="/about"
+            className={`${BUTTON_BASE} border-transparent bg-gradient-to-b from-[#ffd43b] to-[#f7a900] text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_4px_14px_rgba(0,0,0,0.5)]`}
+          >
+            <span>Visit Our Showroom</span>
+            <ArrowRight className={ARROW} strokeWidth={2.5} aria-hidden="true" />
+          </Link>
         </div>
       </div>
     </section>

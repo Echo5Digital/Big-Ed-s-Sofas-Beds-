@@ -24,7 +24,10 @@ Ed's Sofas & Beds homepage and the conventions that later pages followed.
   `tailwind.config.js`).
 - **Icons:** lucide-react.
 - **Fonts:** Google Fonts via `next/font` — Fredoka (display/headlines), Inter
-  (body/UI text), Caveat (the handwritten hero accent).
+  (body/UI text), Caveat (the handwritten hero accent). Anton (the condensed
+  poster face of the homepage promo ticker) is loaded inside
+  `components/home/PromoTicker.jsx` rather than the root layout, so it is only
+  requested on the homepage.
 - **Images:** `next/image`, configured in [next.config.mjs](../../next.config.mjs)
   to allow the `images.unsplash.com` remote pattern for placeholder photography.
 
@@ -42,7 +45,11 @@ components/
                      SearchBox, SiteFooter, DemoCartProvider (client context),
                      ConditionalFinancingBanner (renders FinancingBanner on every
                      route except Home, /financing, /cart, /checkout, /account)
-  home/             Homepage sections: HeroBanner, CategoryGrid/CategoryCard,
+  home/             Homepage sections: HeroBanner (Grand Opening banner image +
+                     CTA buttons), PromoTicker (the endlessly scrolling red
+                     "Grand Opening Sale" bar above the banner; CSS keyframes
+                     live in globals.css, honours prefers-reduced-motion),
+                     CategoryGrid/CategoryCard,
                      FeaturedProducts/ProductCard, DealsBanner, BenefitsSection,
                      ShowroomSection, TestimonialsSection, FinancingBanner,
                      NewsletterSignup
@@ -55,7 +62,7 @@ utils/              formatCurrency.js
 
 Server components are used by default throughout; `"use client"` is applied
 only where interaction requires it (header state, search, cart/wishlist demo
-state, product card add-to-cart, newsletter form, mobile nav).
+state, product card add-to-cart, newsletter form, mobile nav, promo ticker arrows).
 
 ## Mock data
 
