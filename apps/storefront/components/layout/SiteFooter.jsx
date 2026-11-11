@@ -25,10 +25,13 @@ function FooterColumn({ title, links }) {
   return (
     <div>
       <h3 className="mb-3 text-sm font-bold tracking-wide text-white">{title}</h3>
-      <ul className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-2.5 sm:gap-2">
         {links.map((link) => (
           <li key={link.label}>
-            <Link href={link.href} className="text-sm text-white/70 hover:text-brand-gold">
+            <Link
+              href={link.href}
+              className="inline-block min-h-9 py-1 text-sm text-white/70 hover:text-brand-gold"
+            >
               {link.label}
             </Link>
           </li>
@@ -41,14 +44,14 @@ function FooterColumn({ title, links }) {
 export default function SiteFooter() {
   return (
     <footer className="bg-brand-charcoal text-white">
-      <Container className="grid grid-cols-1 gap-10 py-12 sm:grid-cols-2 lg:grid-cols-5">
-        <div className="col-span-1 flex flex-col items-start gap-3 sm:col-span-2 lg:col-span-1">
+      <Container className="grid grid-cols-2 gap-x-6 gap-y-8 py-10 sm:gap-10 sm:py-12 lg:grid-cols-5">
+        <div className="col-span-2 flex flex-col items-center gap-3 text-center sm:items-start sm:text-left lg:col-span-1">
           <Image
             src={siteConfig.logo.src}
             alt={siteConfig.logo.alt}
             width={siteConfig.logo.width}
             height={siteConfig.logo.height}
-            className="h-16 w-auto shrink-0 self-start"
+            className="h-16 w-auto shrink-0 self-center sm:self-start"
           />
           <p className="text-xs tracking-wide text-white/50">
             QUALITY FURNITURE &bull; COMFORT FOR LIFE
@@ -58,7 +61,7 @@ export default function SiteFooter() {
         <FooterColumn title="Quick Links" links={siteConfig.footerQuickLinks} />
         <FooterColumn title="Company" links={siteConfig.footerCompanyLinks} />
 
-        <div>
+        <div className="col-span-2 sm:col-span-1">
           <h3 className="mb-3 text-sm font-bold tracking-wide text-white">Store Information</h3>
           <ul className="flex flex-col gap-2.5 text-sm text-white/70">
             <li className="flex items-start gap-2">
@@ -71,7 +74,9 @@ export default function SiteFooter() {
             </li>
             <li className="flex items-center gap-2">
               <Phone className="size-4 shrink-0 text-brand-gold" aria-hidden="true" />
-              <a href={siteConfig.phoneHref}>{siteConfig.phone}</a>
+              <a href={siteConfig.phoneHref} className="inline-flex min-h-9 items-center">
+                {siteConfig.phone}
+              </a>
             </li>
             <li className="flex items-start gap-2">
               <Clock className="mt-0.5 size-4 shrink-0 text-brand-gold" aria-hidden="true" />
@@ -86,7 +91,7 @@ export default function SiteFooter() {
           </ul>
         </div>
 
-        <div>
+        <div className="col-span-2 sm:col-span-1">
           <h3 className="mb-3 text-sm font-bold tracking-wide text-white">Follow Us</h3>
           <div className="mb-5 flex items-center gap-2">
             {socialLinks.map(({ label, href, Icon }) => (
