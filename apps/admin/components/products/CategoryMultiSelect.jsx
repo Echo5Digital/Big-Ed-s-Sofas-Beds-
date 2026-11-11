@@ -29,7 +29,7 @@ export default function CategoryMultiSelect({ categories, selectedIds, onChange 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {roots.map((root) => (
           <div key={root.id} className="flex flex-col gap-1.5 rounded-lg border border-black/10 p-3">
-            <label className="flex items-center gap-2 text-sm font-semibold text-brand-charcoal">
+            <label className="flex min-h-9 items-center gap-2 py-1.5 text-sm font-semibold text-brand-charcoal">
               <input
                 type="checkbox"
                 checked={selectedIds.includes(root.id)}
@@ -39,7 +39,7 @@ export default function CategoryMultiSelect({ categories, selectedIds, onChange 
               {root.name}
             </label>
             {(childrenByParent[root.id] ?? []).map((child) => (
-              <label key={child.id} className="ml-6 flex items-center gap-2 text-sm text-brand-charcoal/80">
+              <label key={child.id} className="ml-6 flex min-h-9 items-center gap-2 py-1.5 text-sm text-brand-charcoal/80">
                 <input
                   type="checkbox"
                   checked={selectedIds.includes(child.id)}

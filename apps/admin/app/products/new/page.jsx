@@ -12,7 +12,17 @@ import ProductImagePicker from "@/components/products/ProductImagePicker";
 import CategoryMultiSelect from "@/components/products/CategoryMultiSelect";
 import ProductInitialStockInputs from "@/components/products/ProductInitialStockInputs";
 import LinkedProductPicker from "@/components/products/LinkedProductPicker";
+import ProductFormTabs from "@/components/products/ProductFormTabs";
+import FormField, { fieldInputClass } from "@/components/products/FormField";
 import { api, ApiClientError } from "@/lib/api/client";
+
+const TABS = [
+  { key: "general", label: "General" },
+  { key: "inventory", label: "Inventory" },
+  { key: "category", label: "Category" },
+  { key: "attributes", label: "Attributes" },
+  { key: "linked", label: "Linked Products" },
+];
 
 function slugify(value) {
   return value
@@ -43,6 +53,7 @@ function NewProductContent() {
   const router = useRouter();
   const { hasPermission } = useAuth();
   const canViewCost = hasPermission("catalog:cost:view");
+  const [tab, setTab] = useState("general");
   const [categories, setCategories] = useState([]);
   const [locations, setLocations] = useState([]);
   const [stockQuantities, setStockQuantities] = useState({});
@@ -92,6 +103,7 @@ function NewProductContent() {
     if (compareAtCents !== "" && Number(compareAtCents) < Number(priceCents)) {
       setError("Original Price must be greater than or equal to the Sale Price.");
       setSubmitting(false);
+      setTab("general");
       return;
     }
 
@@ -149,211 +161,199 @@ function NewProductContent() {
       <PageHeader title="New Product" subtitle="Add a product to the catalog" />
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-        <Card className="flex flex-col gap-4">
-          <h2 className="font-display text-base font-bold text-brand-charcoal">Basics</h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <ProductNameInput id="name" value={name} onChange={handleNameChange} />
+        <Card className="flex flex-col gap-6 sm:flex-row">
+          <ProductFormTabs tabs={TABS} active={tab} onChange={setTab} />
 
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="slug" className="text-sm font-medium text-brand-charcoal">
-                URL slug
-              </label>
-              <input
-                id="slug"
-                required
-                value={slug}
-                onChange={(e) => {
-                  setSlugEdited(true);
-                  setSlug(slugify(e.target.value));
-                }}
-                className="rounded-lg border border-black/15 px-3 py-2 text-sm font-mono focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-              />
-            </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-4 sm:min-h-125">
+            {tab === "general" && (
+              <div className="flex flex-col gap-4">
+                <h2 className="font-display text-base font-bold text-brand-charcoal">General</h2>
 
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="primarySku" className="text-sm font-medium text-brand-charcoal">
-                SKU
-              </label>
-              <input
-                id="primarySku"
-                required
-                value={sku}
-                onChange={(e) => setSku(e.target.value)}
-                className="rounded-lg border border-black/15 px-3 py-2 text-sm font-mono focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-              />
-            </div>
+                <ProductNameInput id="name" value={name} onChange={handleNameChange} />
 
-            {canViewCost && (
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="purchasePrice" className="text-sm font-medium text-brand-charcoal">
-                  Purchase Price (USD)
-                </label>
-                <input
-                  id="purchasePrice"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="What we pay the manufacturer — not shown to customers"
-                  value={costCents}
-                  onChange={(e) => setCostCents(e.target.value)}
-                  className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+                <FormField id="slug" label="URL slug">
+                  <input
+                    id="slug"
+                    required
+                    value={slug}
+                    onChange={(e) => {
+                      setSlugEdited(true);
+                      setSlug(slugify(e.target.value));
+                    }}
+                    className={`${fieldInputClass} font-mono`}
+                  />
+                </FormField>
+
+                <FormField id="primarySku" label="SKU">
+                  <input
+                    id="primarySku"
+                    required
+                    value={sku}
+                    onChange={(e) => setSku(e.target.value)}
+                    className={`${fieldInputClass} font-mono`}
+                  />
+                </FormField>
+
+                <FormField id="status" label="Status">
+                  <select
+                    id="status"
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
+                    className={fieldInputClass}
+                  >
+                    <option value="DRAFT">Draft</option>
+                    <option value="ACTIVE">Active</option>
+                    <option value="ARCHIVED">Archived</option>
+                  </select>
+                </FormField>
+
+                <FormField id="description" label="Description">
+                  <textarea
+                    id="description"
+                    rows={5}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className={fieldInputClass}
+                  />
+                </FormField>
+
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-sm font-medium text-brand-charcoal">Images</span>
+                  <p className="text-xs text-brand-charcoal/60">
+                    The first image is the hero/thumbnail shown when buying; all images also appear in
+                    the gallery section below the description.
+                  </p>
+                  <ProductImagePicker images={images} onChange={setImages} />
+                </div>
+              </div>
+            )}
+
+            {tab === "inventory" && (
+              <div className="flex flex-col gap-4">
+                <h2 className="font-display text-base font-bold text-brand-charcoal">Inventory</h2>
+
+                {canViewCost && (
+                  <FormField
+                    id="purchasePrice"
+                    label="Purchase Price (USD)"
+                    hint="What we pay the manufacturer — not shown to customers."
+                  >
+                    <input
+                      id="purchasePrice"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={costCents}
+                      onChange={(e) => setCostCents(e.target.value)}
+                      className={fieldInputClass}
+                    />
+                  </FormField>
+                )}
+
+                <FormField id="compareAtPrice" label="Original Price (USD)" hint="Optional — shown struck through.">
+                  <input
+                    id="compareAtPrice"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={compareAtCents}
+                    onChange={(e) => setCompareAtCents(e.target.value)}
+                    className={fieldInputClass}
+                  />
+                </FormField>
+
+                <FormField id="primaryPrice" label="Sale Price (USD)">
+                  <input
+                    id="primaryPrice"
+                    required
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={priceCents}
+                    onChange={(e) => setPriceCents(e.target.value)}
+                    className={fieldInputClass}
+                  />
+                </FormField>
+
+                <p className="text-xs text-brand-charcoal/60">
+                  Optional. Enter an on-hand count for any location to receive stock immediately — this
+                  creates a real stock receipt, the same as using Adjust on the Inventory page. Leave
+                  blank to create the product with no stock and receive it later.
+                </p>
+                <ProductInitialStockInputs
+                  locations={locations}
+                  quantities={stockQuantities}
+                  onChange={setStockQuantities}
                 />
               </div>
             )}
 
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="primaryPrice" className="text-sm font-medium text-brand-charcoal">
-                Sale Price (USD)
-              </label>
-              <input
-                id="primaryPrice"
-                required
-                type="number"
-                min="0"
-                step="0.01"
-                value={priceCents}
-                onChange={(e) => setPriceCents(e.target.value)}
-                className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-              />
-            </div>
+            {tab === "category" && (
+              <div className="flex flex-col gap-4">
+                <h2 className="font-display text-base font-bold text-brand-charcoal">Category</h2>
+                <CategoryMultiSelect categories={categories} selectedIds={categoryIds} onChange={setCategoryIds} />
+              </div>
+            )}
 
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="compareAtPrice" className="text-sm font-medium text-brand-charcoal">
-                Original Price (USD)
-              </label>
-              <input
-                id="compareAtPrice"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="Optional — shown struck through"
-                value={compareAtCents}
-                onChange={(e) => setCompareAtCents(e.target.value)}
-                className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-              />
-            </div>
+            {tab === "attributes" && (
+              <div className="flex flex-col gap-4">
+                <h2 className="font-display text-base font-bold text-brand-charcoal">Attributes</h2>
+                <p className="text-xs text-brand-charcoal/60">
+                  Shown on the storefront product page. Leave any blank to hide it from the live page.
+                </p>
 
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="status" className="text-sm font-medium text-brand-charcoal">
-                Status
-              </label>
-              <select
-                id="status"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-              >
-                <option value="DRAFT">Draft</option>
-                <option value="ACTIVE">Active</option>
-                <option value="ARCHIVED">Archived</option>
-              </select>
-            </div>
+                <FormField id="itemName" label="Item Name">
+                  <input
+                    id="itemName"
+                    value={itemName}
+                    onChange={(e) => setItemName(e.target.value)}
+                    className={fieldInputClass}
+                  />
+                </FormField>
 
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="itemName" className="text-sm font-medium text-brand-charcoal">
-                Item Name
-              </label>
-              <input
-                id="itemName"
-                value={itemName}
-                onChange={(e) => setItemName(e.target.value)}
-                className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="itemColor" className="text-sm font-medium text-brand-charcoal">
-                Color
-              </label>
-              <input
-                id="itemColor"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="material" className="text-sm font-medium text-brand-charcoal">
-                Material
-              </label>
-              <input
-                id="material"
-                value={material}
-                onChange={(e) => setMaterial(e.target.value)}
-                className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="itemDimensions" className="text-sm font-medium text-brand-charcoal">
-                Dimensions
-              </label>
-              <input
-                id="itemDimensions"
-                placeholder={'e.g. 84"W x 38"D x 36"H'}
-                value={dimensions}
-                onChange={(e) => setDimensions(e.target.value)}
-                maxLength={160}
-                className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-              />
-            </div>
+                <FormField id="itemColor" label="Color">
+                  <input
+                    id="itemColor"
+                    value={color}
+                    onChange={(e) => setColor(e.target.value)}
+                    className={fieldInputClass}
+                  />
+                </FormField>
+
+                <FormField id="material" label="Material">
+                  <input
+                    id="material"
+                    value={material}
+                    onChange={(e) => setMaterial(e.target.value)}
+                    className={fieldInputClass}
+                  />
+                </FormField>
+
+                <FormField id="itemDimensions" label="Dimensions">
+                  <input
+                    id="itemDimensions"
+                    placeholder={'e.g. 84"W x 38"D x 36"H'}
+                    value={dimensions}
+                    onChange={(e) => setDimensions(e.target.value)}
+                    maxLength={160}
+                    className={fieldInputClass}
+                  />
+                </FormField>
+              </div>
+            )}
+
+            {tab === "linked" && (
+              <div className="flex flex-col gap-4">
+                <h2 className="font-display text-base font-bold text-brand-charcoal">Linked Products</h2>
+                <p className="text-xs text-brand-charcoal/60">
+                  Other, separately-sold products to show as options on this product&rsquo;s storefront
+                  page (e.g. a matching loveseat for a sectional). Linking is automatic both ways — no
+                  need to also edit the other product.
+                </p>
+                <LinkedProductPicker linkedProducts={linkedProducts} onChange={setLinkedProducts} />
+              </div>
+            )}
           </div>
-
-          <p className="text-xs text-brand-charcoal/60">
-            Item Name, Color, Material, and Dimensions are shown on the storefront product page. Leave
-            any blank to hide it from the live page.
-          </p>
-
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="description" className="text-sm font-medium text-brand-charcoal">
-              Description
-            </label>
-            <textarea
-              id="description"
-              rows={4}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-            />
-          </div>
-        </Card>
-
-        <Card className="flex flex-col gap-4">
-          <div>
-            <h2 className="font-display text-base font-bold text-brand-charcoal">Inventory</h2>
-            <p className="text-xs text-brand-charcoal/60">
-              Optional. Enter an on-hand count for any location to receive stock immediately — this
-              creates a real stock receipt, the same as using Adjust on the Inventory page. Leave blank
-              to create the product with no stock and receive it later.
-            </p>
-          </div>
-          <ProductInitialStockInputs locations={locations} quantities={stockQuantities} onChange={setStockQuantities} />
-        </Card>
-
-        <Card className="flex flex-col gap-4">
-          <h2 className="font-display text-base font-bold text-brand-charcoal">Categories</h2>
-          <CategoryMultiSelect categories={categories} selectedIds={categoryIds} onChange={setCategoryIds} />
-        </Card>
-
-        <Card className="flex flex-col gap-4">
-          <div>
-            <h2 className="font-display text-base font-bold text-brand-charcoal">Images</h2>
-            <p className="text-xs text-brand-charcoal/60">
-              The first image is the hero/thumbnail shown when buying; all images also appear in the
-              gallery section below the description.
-            </p>
-          </div>
-          <ProductImagePicker images={images} onChange={setImages} />
-        </Card>
-
-        <Card className="flex flex-col gap-4">
-          <div>
-            <h2 className="font-display text-base font-bold text-brand-charcoal">Linked Products</h2>
-            <p className="text-xs text-brand-charcoal/60">
-              Other, separately-sold products to show as options on this product&rsquo;s storefront
-              page (e.g. a matching loveseat for a sectional). Linking is automatic both ways — no
-              need to also edit the other product.
-            </p>
-          </div>
-          <LinkedProductPicker linkedProducts={linkedProducts} onChange={setLinkedProducts} />
         </Card>
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}

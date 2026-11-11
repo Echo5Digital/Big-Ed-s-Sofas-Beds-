@@ -125,7 +125,7 @@ export default function AppShell({ children }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b border-black/10 bg-white px-4 py-3">
+        <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-black/10 bg-white px-4 py-3">
           <button
             type="button"
             onClick={() => setMobileOpen(true)}

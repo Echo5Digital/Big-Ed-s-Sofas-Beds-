@@ -263,7 +263,7 @@ function ReportsContent() {
                 <p className="text-sm text-brand-charcoal/50">No sales in this range.</p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full min-w-120 text-sm">
                     <thead>
                       <tr className="border-b border-black/10 text-left text-xs font-semibold uppercase tracking-wide text-brand-charcoal/50">
                         <th className="pb-2 pr-3">Product</th>

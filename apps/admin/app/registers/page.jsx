@@ -281,6 +281,23 @@ function DenyModal({ session, onClose, onDone }) {
   );
 }
 
+function todayDateInputValue() {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().slice(0, 10);
+}
+
+// GET /reports/register-sessions filters on openedAt via from (inclusive) /
+// to (exclusive) — build a [local midnight, next local midnight) window for
+// whichever single day is selected, same half-open convention the endpoint
+// already expects (see reports.routes.js).
+function dayBoundsQuery(dateInputValue) {
+  const from = new Date(`${dateInputValue}T00:00:00`);
+  const to = new Date(from);
+  to.setDate(to.getDate() + 1);
+  return `from=${from.toISOString()}&to=${to.toISOString()}`;
+}
+
 function timeAgo(isoString) {
   const diffMs = Date.now() - new Date(isoString).getTime();
   const minutes = Math.floor(diffMs / 60000);
@@ -299,6 +316,10 @@ function RegistersContent() {
   const [denying, setDenying] = useState(null);
   const [history, setHistory] = useState(null);
   const [historyError, setHistoryError] = useState(null);
+  // "today" | "date" — mirrors the day/month toggle on the Reports page.
+  // "date" filters to whatever single day is picked in customDate.
+  const [dateFilter, setDateFilter] = useState("today");
+  const [customDate, setCustomDate] = useState(todayDateInputValue);
 
   const load = useCallback(() => {
     return api
@@ -308,9 +329,10 @@ function RegistersContent() {
       .finally(() => setLoading(false));
   }, []);
 
-  const loadHistory = useCallback(() => {
+  const loadHistory = useCallback((filter, selectedDate) => {
+    const query = filter === "date" ? dayBoundsQuery(selectedDate) : dayBoundsQuery(todayDateInputValue());
     return api
-      .get("/reports/register-sessions")
+      .get(`/reports/register-sessions?${query}`)
       .then((data) => setHistory(data.sessions))
       .catch((err) =>
         setHistoryError(err instanceof ApiClientError ? err.message : "Failed to load register session history.")
@@ -322,14 +344,14 @@ function RegistersContent() {
   }, [load]);
 
   useEffect(() => {
-    loadHistory();
-  }, [loadHistory]);
+    loadHistory(dateFilter, customDate);
+  }, [dateFilter, customDate, loadHistory]);
 
   function handleDone() {
     setApproving(null);
     setDenying(null);
     load();
-    loadHistory();
+    loadHistory(dateFilter, customDate);
   }
 
   const columns = [
@@ -419,6 +441,37 @@ function RegistersContent() {
         expand.
       </p>
 
+      <div className="mb-4 flex flex-wrap items-center gap-3 text-sm">
+        <div className="flex items-center gap-1 rounded-lg border border-black/15 bg-white p-1">
+          {[
+            ["today", "Today"],
+            ["date", "Date"],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setDateFilter(key)}
+              className={`rounded-md px-3 py-1 transition-colors ${
+                dateFilter === key ? "bg-brand-red text-white" : "text-brand-charcoal hover:bg-black/5"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {dateFilter === "date" && (
+          <label className="flex items-center gap-2 font-medium text-brand-charcoal">
+            Date
+            <input
+              type="date"
+              value={customDate}
+              onChange={(e) => setCustomDate(e.target.value)}
+              className="rounded-lg border border-black/15 px-2.5 py-1.5 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+            />
+          </label>
+        )}
+      </div>
+
       {historyError && (
         <p role="alert" className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
           {historyError}
@@ -429,7 +482,7 @@ function RegistersContent() {
         <p className="text-sm text-brand-charcoal/50">Loading register sessions…</p>
       ) : history.length === 0 ? (
         <div className="rounded-xl border border-dashed border-black/15 bg-white p-8 text-center text-sm text-brand-charcoal/50">
-          No register sessions recorded yet.
+          No register sessions for this date.
         </div>
       ) : (
         <div className="space-y-2">

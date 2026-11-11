@@ -6,6 +6,7 @@ const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
 const { NotFoundError, ConflictError } = require("../lib/errors");
 const inventoryService = require("../services/inventory.service");
+const { saveCheckoutDeliveryAddress } = require("../services/orders.service");
 const { stripe } = require("../lib/stripe");
 const { createWithSequentialNumber } = require("../lib/sequentialNumber");
 
@@ -82,6 +83,8 @@ router.post(
 
     const subtotalCents = lines.reduce((sum, l) => sum + variantById.get(l.variantId).priceCents * l.quantity, 0);
 
+    const deliveryAddressRecord = await saveCheckoutDeliveryAddress(customer.id, deliveryAddress);
+
     const order = await createWithSequentialNumber(async () => {
       const orderNumber = await nextOrderNumber();
       return prisma.order.create({
@@ -95,6 +98,7 @@ router.post(
           fulfillmentMethod,
           subtotalCents,
           totalCents: subtotalCents,
+          ...(deliveryAddressRecord ? { deliveryAddressId: deliveryAddressRecord.id } : {}),
           lines: {
             create: lines.map((l) => {
               const variant = variantById.get(l.variantId);
@@ -108,10 +112,10 @@ router.post(
               };
             }),
           },
-          ...(deliveryAddress
+          ...(deliveryAddressRecord
             ? {
                 deliveries: {
-                  create: { feeCents: 0 },
+                  create: { feeCents: 0, addressId: deliveryAddressRecord.id },
                 },
               }
             : {}),

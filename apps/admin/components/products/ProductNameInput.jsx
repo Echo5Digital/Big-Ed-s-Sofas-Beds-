@@ -42,7 +42,7 @@ export default function ProductNameInput({ id, value, onChange }) {
             onClick={() => applyMarker("**")}
             aria-label="Bold selected text"
             title="Bold selected text"
-            className="rounded p-1 text-brand-charcoal/70 hover:bg-black/5 hover:text-brand-charcoal"
+            className="flex min-h-9 min-w-9 items-center justify-center rounded text-brand-charcoal/70 hover:bg-black/5 hover:text-brand-charcoal"
           >
             <Bold className="size-3.5" aria-hidden="true" />
           </button>
@@ -51,7 +51,7 @@ export default function ProductNameInput({ id, value, onChange }) {
             onClick={() => applyMarker("_")}
             aria-label="Italicize selected text"
             title="Italicize selected text"
-            className="rounded p-1 text-brand-charcoal/70 hover:bg-black/5 hover:text-brand-charcoal"
+            className="flex min-h-9 min-w-9 items-center justify-center rounded text-brand-charcoal/70 hover:bg-black/5 hover:text-brand-charcoal"
           >
             <Italic className="size-3.5" aria-hidden="true" />
           </button>

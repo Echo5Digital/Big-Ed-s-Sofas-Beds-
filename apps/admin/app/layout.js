@@ -1,11 +1,13 @@
-import { Fredoka, Inter } from "next/font/google";
+import { Inter, Lora } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/hooks/useAuth";
 
-const fredoka = Fredoka({
-  variable: "--font-fredoka",
+// Same heading typeface as apps/storefront (see its app/layout.js) so staff
+// and customer-facing headings read as one system.
+const lora = Lora({
+  variable: "--font-lora",
   subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  weight: ["600", "700"],
 });
 
 const inter = Inter({
@@ -26,7 +28,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={`${fredoka.variable} ${inter.variable} h-full`}>
+    <html lang="en" className={`${lora.variable} ${inter.variable} h-full`}>
       <body className="h-full font-sans antialiased" style={{ fontFamily: "var(--font-inter), ui-sans-serif, system-ui" }}>
         <AuthProvider>{children}</AuthProvider>
       </body>

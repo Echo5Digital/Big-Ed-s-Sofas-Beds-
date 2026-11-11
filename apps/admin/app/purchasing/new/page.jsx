@@ -7,17 +7,17 @@ import RequireAuth from "@/components/layout/RequireAuth";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import VariantPicker from "@/components/purchasing/VariantPicker";
 import { api, ApiClientError } from "@/lib/api/client";
 
 function emptyLine() {
-  return { variantId: "", expectedQty: "", unitCostCents: "" };
+  return { variant: null, expectedQty: "", unitCostCents: "" };
 }
 
 function NewPurchaseOrderContent() {
   const router = useRouter();
   const [suppliers, setSuppliers] = useState([]);
   const [locations, setLocations] = useState([]);
-  const [variants, setVariants] = useState([]);
   const [supplierId, setSupplierId] = useState("");
   const [locationId, setLocationId] = useState("");
   const [expectedDate, setExpectedDate] = useState("");
@@ -29,10 +29,6 @@ function NewPurchaseOrderContent() {
   useEffect(() => {
     api.get("/purchasing/suppliers").then((data) => setSuppliers(data.suppliers)).catch(() => setSuppliers([]));
     api.getCached("/inventory/locations").then((data) => setLocations(data.locations)).catch(() => setLocations([]));
-    api
-      .get("/catalog/admin/products")
-      .then((data) => setVariants(data.products.flatMap((p) => p.variants.map((v) => ({ ...v, productName: p.name })))))
-      .catch(() => setVariants([]));
   }, []);
 
   function updateLine(index, field, value) {
@@ -50,6 +46,12 @@ function NewPurchaseOrderContent() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
+
+    if (lines.some((l) => !l.variant)) {
+      setError("Select a variant for every line item.");
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -59,7 +61,7 @@ function NewPurchaseOrderContent() {
         expectedDate: expectedDate ? new Date(expectedDate).toISOString() : undefined,
         notes: notes || undefined,
         lines: lines.map((l) => ({
-          variantId: l.variantId,
+          variantId: l.variant?.id,
           expectedQty: Number(l.expectedQty),
           unitCostCents: Math.round(Number(l.unitCostCents) * 100),
         })),
@@ -144,19 +146,7 @@ function NewPurchaseOrderContent() {
             <div key={index} className="grid grid-cols-2 gap-3 rounded-lg border border-black/10 p-3 sm:grid-cols-5">
               <div className="col-span-2 flex flex-col gap-1">
                 <label className="text-xs font-medium text-brand-charcoal/70">Variant / SKU</label>
-                <select
-                  required
-                  value={line.variantId}
-                  onChange={(e) => updateLine(index, "variantId", e.target.value)}
-                  className="rounded-lg border border-black/15 px-2.5 py-1.5 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-                >
-                  <option value="">Select a variant</option>
-                  {variants.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.sku} — {v.productName} ({v.name})
-                    </option>
-                  ))}
-                </select>
+                <VariantPicker value={line.variant} onChange={(variant) => updateLine(index, "variant", variant)} />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-brand-charcoal/70">Expected qty</label>

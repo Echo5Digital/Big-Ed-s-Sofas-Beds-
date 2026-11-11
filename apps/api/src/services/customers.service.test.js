@@ -45,20 +45,45 @@ describe("customers.service — listRegisteredCustomers", () => {
     expect(pagination.total).toBe(2);
   });
 
-  it("never exposes credentials or a phone number, only the intended public fields", async () => {
+  it("never exposes credentials, only the intended public fields", async () => {
     const { customers } = await listRegisteredCustomers({ q: SURNAME });
 
     for (const customer of customers) {
-      expect(Object.keys(customer).sort()).toEqual(["email", "firstName", "id", "lastName", "orderCount", "registeredAt"].sort());
+      expect(Object.keys(customer).sort()).toEqual(
+        [
+          "address",
+          "averageOrderValueCents",
+          "email",
+          "firstName",
+          "id",
+          "lastName",
+          "orderCount",
+          "phone",
+          "registeredAt",
+          "totalSpendCents",
+        ].sort()
+      );
     }
-    expect(JSON.stringify(customers)).not.toMatch(/passwordHash|"x"|555-0101/);
+    expect(JSON.stringify(customers)).not.toMatch(/passwordHash|"x"/);
   });
 
-  it("shows each customer's registration date and order count", async () => {
+  it("shows each customer's registration date, order count, spend, and address", async () => {
     // Order numbers are count-based, so on a shared database the order exists
     // only for the instant it's needed and is removed in `finally`.
     const order = await prisma.order.create({
-      data: { orderNumber: `CUSTOMER-LIST-TEST-${RUN}`, channel: "ONLINE", customerId: created.alice.id },
+      data: { orderNumber: `CUSTOMER-LIST-TEST-${RUN}`, channel: "ONLINE", customerId: created.alice.id, totalCents: 5000 },
+    });
+    const canceledOrder = await prisma.order.create({
+      data: {
+        orderNumber: `CUSTOMER-LIST-TEST-${RUN}-CANCELED`,
+        channel: "ONLINE",
+        customerId: created.alice.id,
+        totalCents: 9999,
+        status: "CANCELED",
+      },
+    });
+    const address = await prisma.address.create({
+      data: { customerId: created.alice.id, type: "SHIPPING", line1: "1 Test St", city: "Lake Wales", state: "FL", postalCode: "33853" },
     });
 
     try {
@@ -67,10 +92,19 @@ describe("customers.service — listRegisteredCustomers", () => {
       const bob = customers.find((c) => c.firstName === "Bob");
 
       expect(alice.orderCount).toBe(1);
+      expect(alice.totalSpendCents).toBe(5000);
+      expect(alice.averageOrderValueCents).toBe(5000);
+      expect(alice.phone).toBe("555-0101");
+      expect(alice.address).toMatchObject({ line1: "1 Test St", city: "Lake Wales", state: "FL", postalCode: "33853" });
       expect(bob.orderCount).toBe(0);
+      expect(bob.totalSpendCents).toBe(0);
+      expect(bob.averageOrderValueCents).toBe(0);
+      expect(bob.address).toBeNull();
       expect(new Date(alice.registeredAt).getTime()).toBe(created.alice.emailVerifiedAt.getTime());
     } finally {
       await prisma.order.delete({ where: { id: order.id } });
+      await prisma.order.delete({ where: { id: canceledOrder.id } });
+      await prisma.address.delete({ where: { id: address.id } });
     }
   });
 
@@ -86,7 +120,8 @@ describe("customers.service — listRegisteredCustomers", () => {
     const byEmail = await listRegisteredCustomers({ q: `${emailPrefix}-bob` });
     expect(byEmail.customers.map((c) => c.firstName)).toEqual(["Bob"]);
 
-    // The phone is not displayed, so it must not be a hidden way to find someone.
+    // Phone is shown but deliberately not searchable — someone who changes or
+    // removes their number shouldn't stay findable by the old one.
     const byPhone = await listRegisteredCustomers({ q: "555-0101" });
     expect(byPhone.customers.some((c) => c.firstName === "Alice")).toBe(false);
 

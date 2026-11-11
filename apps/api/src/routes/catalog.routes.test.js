@@ -813,3 +813,59 @@ describe("catalog.routes — serializeProduct cost visibility", () => {
     expect(() => products.map((p) => serializeProduct(p))).not.toThrow();
   });
 });
+
+// GET /admin/products/:id (the single-product lookup the Edit Product page
+// now uses instead of filtering the full, unfiltered GET /admin/products list
+// client-side — see apps/admin/app/products/[id]/page.jsx). The route itself
+// is a thin findUnique + serializeProduct wrapper with no branching logic of
+// its own, so this exercises exactly that: the query returns the one matching
+// product in serializeProduct's expected shape, and a nonexistent id resolves
+// to null (which the route turns into a 404), the same as GET /products/:slug
+// already does for its own not-found case.
+describe("catalog.routes — GET /admin/products/:id", () => {
+  let product;
+
+  afterAll(async () => {
+    if (product) {
+      await prisma.stockBalance.deleteMany({ where: { variant: { productId: product.id } } });
+      await prisma.variant.deleteMany({ where: { productId: product.id } });
+      await prisma.product.delete({ where: { id: product.id } });
+    }
+  });
+
+  beforeAll(async () => {
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    product = await prisma.product.create({
+      data: {
+        name: `Get By Id Test ${suffix}`,
+        slug: `get-by-id-test-${suffix}`,
+        status: "ACTIVE",
+        variants: { create: [{ sku: `GET-BY-ID-TEST-${suffix}`, name: `Get By Id Test ${suffix}`, priceCents: 75000 }] },
+      },
+      include: { variants: true },
+    });
+  });
+
+  it("finds the product by id with the full include, ready for serializeProduct", async () => {
+    const found = await prisma.product.findUnique({
+      where: { id: product.id },
+      include: {
+        category: true,
+        categoryTags: { include: { category: true } },
+        images: { orderBy: { sortOrder: "asc" } },
+        variants: { include: { stockBalances: { include: { location: true } } } },
+        linkedTo: { include: { linkedProduct: { select: { id: true, slug: true, name: true, images: true, variants: true } } } },
+      },
+    });
+
+    expect(found).not.toBeNull();
+    const serialized = serializeProduct(found);
+    expect(serialized.id).toBe(product.id);
+    expect(serialized.variants[0].sku).toBe(product.variants[0].sku);
+  });
+
+  it("resolves to null for an id that doesn't exist, which the route turns into a 404", async () => {
+    const found = await prisma.product.findUnique({ where: { id: "00000000-0000-4000-8000-000000000000" } });
+    expect(found).toBeNull();
+  });
+});

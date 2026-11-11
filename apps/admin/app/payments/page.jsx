@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DollarSign,
   CalendarDays,
@@ -26,6 +26,23 @@ const STATUS_TONE = { PENDING: "warning", SUCCEEDED: "success", FAILED: "danger"
 const METHODS = ["CASH", "CARD", "DEPOSIT", "BANK_TRANSFER", "STORE_CREDIT"];
 const STATUSES = ["PENDING", "SUCCEEDED", "FAILED", "VOIDED"];
 const SOURCES = ["ONLINE", "POS"];
+
+function currentMonthInputValue() {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  return now.toISOString().slice(0, 7);
+}
+
+// GET /payments filters on createdAt via from (inclusive) / to (exclusive) —
+// build a [local month start, next local month start) window for whichever
+// "YYYY-MM" value the <input type="month"> holds, same half-open convention
+// the endpoint already expects (see payments.routes.js).
+function monthBoundsQuery(monthInputValue) {
+  const [year, month] = monthInputValue.split("-").map(Number);
+  const from = new Date(year, month - 1, 1);
+  const to = new Date(year, month, 1);
+  return { from: from.toISOString(), to: to.toISOString() };
+}
 
 function SelectFilter({ label, value, onChange, options }) {
   return (
@@ -79,6 +96,17 @@ function PaymentDetailPanel({ paymentId, onClose }) {
       cancelled = true;
     };
   }, [paymentId]);
+
+  // Same Escape-to-close behavior as components/ui/Modal.jsx, which every
+  // other dialog in the app gets for free — this panel is hand-rolled (a
+  // side drawer, not a centered Modal) so it needs its own listener.
+  useEffect(() => {
+    function handleKey(e) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onClose]);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -157,7 +185,17 @@ function PaymentsContent() {
   const [status, setStatus] = useState("");
   const [source, setSource] = useState("");
   const [q, setQ] = useState("");
+  // The debounced value actually drives the fetch; q itself only drives the
+  // input so typing feels instant. Same pattern as CustomersTab.jsx.
+  const [debouncedQ, setDebouncedQ] = useState("");
   const [selectedId, setSelectedId] = useState(null);
+  // "" means no month filter (all payments, same as before this was added).
+  const [month, setMonth] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQ(q.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [q]);
 
   const loadStats = useCallback(() => {
     api
@@ -171,13 +209,18 @@ function PaymentsContent() {
     if (method) params.set("method", method);
     if (status) params.set("status", status);
     if (source) params.set("source", source);
-    if (q) params.set("q", q);
+    if (debouncedQ) params.set("q", debouncedQ);
+    if (month) {
+      const { from, to } = monthBoundsQuery(month);
+      params.set("from", from);
+      params.set("to", to);
+    }
     const query = params.toString();
     api
       .get(`/payments${query ? `?${query}` : ""}`)
       .then((data) => setPayments(data.payments))
       .catch((err) => setError(err instanceof ApiClientError ? err.message : "Failed to load payments."));
-  }, [method, status, source, q]);
+  }, [method, status, source, debouncedQ, month]);
 
   useEffect(() => {
     loadStats();
@@ -187,35 +230,38 @@ function PaymentsContent() {
     loadPayments();
   }, [loadPayments]);
 
-  const columns = [
-    { key: "orderNumber", header: "Order ID" },
-    { key: "customerName", header: "Customer" },
-    { key: "method", header: "Method", render: (p) => p.method.replaceAll("_", " ") },
-    { key: "source", header: "Source", render: (p) => (p.source === "ONLINE" ? "Online" : "POS") },
-    { key: "amountCents", header: "Amount", render: (p) => formatCentsAsCurrency(p.amountCents) },
-    { key: "currency", header: "Currency" },
-    {
-      key: "status",
-      header: "Status",
-      render: (p) => <Badge tone={STATUS_TONE[p.status]}>{p.status}</Badge>,
-    },
-    { key: "providerRef", header: "Stripe Ref", render: (p) => p.providerRef || "—" },
-    { key: "recordedBy", header: "Recorded By" },
-    { key: "createdAt", header: "Date", render: (p) => new Date(p.createdAt).toLocaleString() },
-    {
-      key: "actions",
-      header: "",
-      render: (p) => (
-        <button
-          type="button"
-          onClick={() => setSelectedId(p.id)}
-          className="font-medium text-brand-red hover:underline"
-        >
-          View
-        </button>
-      ),
-    },
-  ];
+  const columns = useMemo(
+    () => [
+      { key: "orderNumber", header: "Order ID" },
+      { key: "customerName", header: "Customer" },
+      { key: "method", header: "Method", render: (p) => p.method.replaceAll("_", " ") },
+      { key: "source", header: "Source", render: (p) => (p.source === "ONLINE" ? "Online" : "POS") },
+      { key: "amountCents", header: "Amount", render: (p) => formatCentsAsCurrency(p.amountCents) },
+      { key: "currency", header: "Currency" },
+      {
+        key: "status",
+        header: "Status",
+        render: (p) => <Badge tone={STATUS_TONE[p.status]}>{p.status}</Badge>,
+      },
+      { key: "providerRef", header: "Stripe Ref", render: (p) => p.providerRef || "—" },
+      { key: "recordedBy", header: "Recorded By" },
+      { key: "createdAt", header: "Date", render: (p) => new Date(p.createdAt).toLocaleString() },
+      {
+        key: "actions",
+        header: "",
+        render: (p) => (
+          <button
+            type="button"
+            onClick={() => setSelectedId(p.id)}
+            className="font-medium text-brand-red hover:underline"
+          >
+            View
+          </button>
+        ),
+      },
+    ],
+    []
+  );
 
   return (
     <div>
@@ -230,6 +276,24 @@ function PaymentsContent() {
         <SelectFilter label="Status" value={status} onChange={setStatus} options={STATUSES} />
         <SelectFilter label="Source" value={source} onChange={setSource} options={SOURCES} />
         <label className="flex items-center gap-2 text-sm font-medium text-brand-charcoal">
+          Month
+          <input
+            type="month"
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            className="rounded-lg border border-black/15 px-2.5 py-1.5 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+          />
+        </label>
+        {month && (
+          <button
+            type="button"
+            onClick={() => setMonth("")}
+            className="min-h-9 rounded-lg px-2 text-sm font-medium text-brand-red hover:bg-brand-red/5"
+          >
+            Clear month
+          </button>
+        )}
+        <label className="flex items-center gap-2 text-sm font-medium text-brand-charcoal">
           Search
           <input
             type="text"
@@ -241,7 +305,15 @@ function PaymentsContent() {
         </label>
       </Card>
 
-      <DataTable columns={columns} rows={payments} emptyMessage="No payments recorded yet." />
+      <DataTable
+        columns={columns}
+        rows={payments}
+        emptyMessage={
+          month || method || status || source || q
+            ? "No payments match these filters."
+            : "No payments recorded yet."
+        }
+      />
 
       {selectedId && <PaymentDetailPanel paymentId={selectedId} onClose={() => setSelectedId(null)} />}
     </div>

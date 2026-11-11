@@ -29,17 +29,44 @@ function buildWhere(q) {
 }
 
 // Explicit `select`, never the whole row: passwordHash must not be able to
-// reach a response through this path even by accident. `phone` is left out on
-// purpose too — sign-up doesn't collect one, so any value on the row came from
-// an earlier guest checkout and would misrepresent what the account provided.
+// reach a response through this path even by accident. `phone` IS shown (and
+// can be real, current data — a signed-in customer can set it later from
+// their storefront account page, see customerAccount.service.js updateProfile)
+// but it is deliberately never made searchable below: a customer who later
+// removes/changes their phone shouldn't still be findable by an old one.
+//
+// Address shows the customer's default address (falls back to their most
+// recent, so someone with one saved address but no explicit default still
+// shows it). Total spend / AOV mirror the rest of the admin's reporting
+// convention (reports.routes.js): Order.totalCents on non-canceled orders,
+// not a strict sum of Payment rows — this is "what they were charged for",
+// consistent with every other sales figure staff see elsewhere in the app.
 function serialize(customer) {
+  const address = customer.addresses[0] ?? null;
+  const orders = customer.orders;
+  const orderCount = orders.length;
+  const totalSpendCents = orders.reduce((sum, o) => sum + o.totalCents, 0);
+
   return {
     id: customer.id,
     email: customer.email,
     firstName: customer.firstName,
     lastName: customer.lastName,
+    phone: customer.phone,
     registeredAt: customer.emailVerifiedAt,
-    orderCount: customer._count.orders,
+    address: address
+      ? {
+          line1: address.line1,
+          line2: address.line2,
+          city: address.city,
+          state: address.state,
+          postalCode: address.postalCode,
+          country: address.country,
+        }
+      : null,
+    orderCount,
+    totalSpendCents,
+    averageOrderValueCents: orderCount > 0 ? Math.round(totalSpendCents / orderCount) : 0,
   };
 }
 
@@ -60,8 +87,17 @@ async function listRegisteredCustomers({ q, page, pageSize } = {}) {
         email: true,
         firstName: true,
         lastName: true,
+        phone: true,
         emailVerifiedAt: true,
-        _count: { select: { orders: true } },
+        addresses: {
+          orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
+          take: 1,
+          select: { line1: true, line2: true, city: true, state: true, postalCode: true, country: true },
+        },
+        orders: {
+          where: { status: { not: "CANCELED" } },
+          select: { totalCents: true },
+        },
       },
     }),
     prisma.customer.count({ where }),

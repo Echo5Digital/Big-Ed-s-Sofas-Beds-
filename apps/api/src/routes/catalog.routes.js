@@ -777,6 +777,27 @@ router.get(
   })
 );
 
+// Purely additive: the Edit Product page (apps/admin/app/products/[id]/page.jsx)
+// used to find "its" product by filtering the full GET /admin/products list
+// client-side, because this endpoint didn't exist (see that file's prior
+// comment). That meant loading every product + every variant + every image
+// in the catalog just to edit one. This fetches exactly one.
+router.get(
+  "/admin/products/:id",
+  requireAuth,
+  requirePermission("catalog:read"),
+  asyncHandler(async (req, res) => {
+    const product = await prisma.product.findUnique({
+      where: { id: req.params.id },
+      include: PRODUCT_INCLUDE,
+    });
+    if (!product) throw new NotFoundError("Product not found");
+
+    const includeCost = req.user.permissions.has("catalog:cost:view");
+    res.json({ product: serializeProduct(product, { includeCost }) });
+  })
+);
+
 module.exports = router;
 module.exports.pickDisplayCategory = pickDisplayCategory;
 module.exports.syncProductLinksAsGroup = syncProductLinksAsGroup;

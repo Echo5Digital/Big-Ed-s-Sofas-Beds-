@@ -115,6 +115,35 @@ function AdjustModal({ open, onClose, balance, onDone }) {
   );
 }
 
+// Adjust/Transfer act on a single location's balance, but a table row is now
+// one product with a balance per location (see groupByVariant below) — this
+// asks which location's balance to act on before handing off to the same
+// AdjustModal/TransferModal those already-built flows use.
+function LocationPickerModal({ open, onClose, title, product, locationBalances, onPick }) {
+  if (!product) return null;
+
+  return (
+    <Modal open={open} onClose={onClose} title={title}>
+      <div className="flex flex-col gap-2">
+        <p className="text-sm text-brand-charcoal/60">
+          {product.productName} ({product.sku}) — choose a location.
+        </p>
+        {locationBalances.map((lb) => (
+          <button
+            key={lb.locationId}
+            type="button"
+            onClick={() => onPick(lb)}
+            className="flex items-center justify-between rounded-lg border border-black/15 px-3 py-2.5 text-left text-sm font-semibold text-brand-charcoal hover:bg-gray-50"
+          >
+            {lb.locationName}
+            <span className="text-brand-charcoal/60">{lb.availableToSell} available</span>
+          </button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
 function TransferModal({ open, onClose, balance, locations, onDone }) {
   const [toLocationId, setToLocationId] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -243,6 +272,11 @@ function InventoryContent() {
   const [error, setError] = useState(null);
   const [adjustTarget, setAdjustTarget] = useState(null);
   const [transferTarget, setTransferTarget] = useState(null);
+  // Set to the grouped product row while its location picker is open; cleared
+  // once a location is chosen (which then opens the real Adjust/Transfer
+  // modal above) or the picker is dismissed.
+  const [pickingLocationFor, setPickingLocationFor] = useState(null);
+  const [pickerAction, setPickerAction] = useState(null);
 
   const load = useCallback(() => {
     const query = lowStockOnly ? "?lowStockOnly=true" : "";
@@ -263,61 +297,118 @@ function InventoryContent() {
       .catch(() => setLocations([]));
   }, []);
 
-  const filteredBalances = useMemo(() => {
+  // One StockBalance row exists per variant+location (see GET /inventory/balances),
+  // which used to mean the same product appeared twice — once per location.
+  // Grouping by variantId here collapses that into a single product row with
+  // a balance per location, shown as its own column below.
+  const groupedBalances = useMemo(() => {
     if (!balances) return balances;
+    const byVariant = new Map();
+    for (const b of balances) {
+      if (!byVariant.has(b.variantId)) {
+        byVariant.set(b.variantId, {
+          id: b.variantId,
+          variantId: b.variantId,
+          sku: b.sku,
+          productName: b.productName,
+          locationBalances: [],
+        });
+      }
+      byVariant.get(b.variantId).locationBalances.push(b);
+    }
+    return Array.from(byVariant.values());
+  }, [balances]);
+
+  const filteredBalances = useMemo(() => {
+    if (!groupedBalances) return groupedBalances;
     const query = search.trim().toLowerCase();
-    if (!query) return balances;
-    return balances.filter(
+    if (!query) return groupedBalances;
+    return groupedBalances.filter(
       (b) => b.sku.toLowerCase().includes(query) || b.productName.toLowerCase().includes(query)
     );
-  }, [balances, search]);
+  }, [groupedBalances, search]);
 
-  const columns = [
-    {
-      key: "actions",
-      header: "",
-      render: (r) => (
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setAdjustTarget(r)}
-            className="inline-flex min-h-9 items-center gap-1 rounded-full border border-black/15 px-3 py-1.5 text-xs font-semibold hover:bg-gray-50"
-          >
-            <SlidersHorizontal className="size-3.5" aria-hidden="true" />
-            Adjust
-          </button>
-          <button
-            type="button"
-            onClick={() => setTransferTarget(r)}
-            className="inline-flex min-h-9 items-center gap-1 rounded-full border border-black/15 px-3 py-1.5 text-xs font-semibold hover:bg-gray-50"
-          >
-            <ArrowLeftRight className="size-3.5" aria-hidden="true" />
-            Transfer
-          </button>
-        </div>
-      ),
-    },
-    { key: "sku", header: "SKU" },
-    { key: "productName", header: "Product", render: (r) => r.productName },
-    { key: "locationName", header: "Location" },
-    { key: "onHand", header: "On Hand" },
-    { key: "reserved", header: "Reserved" },
-    { key: "quarantined", header: "Quarantined" },
-    {
-      key: "availableToSell",
-      header: "Available",
-      render: (r) => (
-        <Badge tone={r.availableToSell === 0 ? "danger" : r.availableToSell <= 2 ? "warning" : "success"}>
-          {r.availableToSell}
-        </Badge>
-      ),
-    },
-    {
-      key: "suggestedReorderQty",
-      header: "Suggested Reorder",
-      render: (r) => (r.suggestedReorderQty > 0 ? r.suggestedReorderQty : "—"),
-    },
-  ];
+  const openAdjust = useCallback((product) => {
+    if (product.locationBalances.length === 1) {
+      setAdjustTarget(product.locationBalances[0]);
+      return;
+    }
+    setPickerAction("adjust");
+    setPickingLocationFor(product);
+  }, []);
+
+  const openTransfer = useCallback((product) => {
+    if (product.locationBalances.length === 1) {
+      setTransferTarget(product.locationBalances[0]);
+      return;
+    }
+    setPickerAction("transfer");
+    setPickingLocationFor(product);
+  }, []);
+
+  function handleLocationPicked(locationBalance) {
+    if (pickerAction === "adjust") setAdjustTarget(locationBalance);
+    if (pickerAction === "transfer") setTransferTarget(locationBalance);
+    setPickingLocationFor(null);
+    setPickerAction(null);
+  }
+
+  // One column per active location (Showroom, Warehouse, ...) instead of a
+  // single "Location" column with duplicate product rows. Available to Sell
+  // is shown rather than On Hand, since that's the number staff act on day to
+  // day — see inventory.service.js: onHand - reserved - quarantined.
+  const columns = useMemo(
+    () => [
+      {
+        key: "actions",
+        header: "",
+        render: (r) => (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => openAdjust(r)}
+              className="inline-flex min-h-9 items-center gap-1 rounded-full border border-black/15 px-3 py-1.5 text-xs font-semibold hover:bg-gray-50"
+            >
+              <SlidersHorizontal className="size-3.5" aria-hidden="true" />
+              Adjust
+            </button>
+            <button
+              type="button"
+              onClick={() => openTransfer(r)}
+              className="inline-flex min-h-9 items-center gap-1 rounded-full border border-black/15 px-3 py-1.5 text-xs font-semibold hover:bg-gray-50"
+            >
+              <ArrowLeftRight className="size-3.5" aria-hidden="true" />
+              Transfer
+            </button>
+          </div>
+        ),
+      },
+      { key: "sku", header: "SKU" },
+      { key: "productName", header: "Product", render: (r) => r.productName },
+      ...locations.map((location) => ({
+        key: `location-${location.id}`,
+        header: location.name,
+        render: (r) => {
+          const lb = r.locationBalances.find((b) => b.locationId === location.id);
+          if (!lb) return "—";
+          return (
+            <Badge tone={lb.availableToSell === 0 ? "danger" : lb.availableToSell <= 2 ? "warning" : "success"}>
+              {lb.availableToSell}
+            </Badge>
+          );
+        },
+      })),
+      {
+        key: "suggestedReorderQty",
+        header: "Suggested Reorder",
+        render: (r) => {
+          const total = r.locationBalances.reduce((sum, lb) => sum + lb.suggestedReorderQty, 0);
+          return total > 0 ? total : "—";
+        },
+      },
+    ],
+    [locations, openAdjust, openTransfer]
+  );
 
   return (
     <div>
@@ -325,7 +416,7 @@ function InventoryContent() {
         title="Inventory"
         subtitle="Stock by location, reservations, and adjustments"
         action={
-          <label className="flex items-center gap-2 text-sm font-medium text-brand-charcoal">
+          <label className="flex min-h-9 items-center gap-2 py-1.5 text-sm font-medium text-brand-charcoal">
             <input
               type="checkbox"
               checked={lowStockOnly}
@@ -363,6 +454,17 @@ function InventoryContent() {
         }
       />
 
+      <LocationPickerModal
+        open={Boolean(pickingLocationFor)}
+        title={pickerAction === "transfer" ? "Transfer Stock — choose location" : "Adjust Stock — choose location"}
+        product={pickingLocationFor}
+        locationBalances={pickingLocationFor?.locationBalances ?? []}
+        onClose={() => {
+          setPickingLocationFor(null);
+          setPickerAction(null);
+        }}
+        onPick={handleLocationPicked}
+      />
       <AdjustModal
         open={Boolean(adjustTarget)}
         balance={adjustTarget}

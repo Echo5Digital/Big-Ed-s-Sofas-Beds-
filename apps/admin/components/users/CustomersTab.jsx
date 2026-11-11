@@ -7,6 +7,7 @@ import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { api, ApiClientError } from "@/lib/api/client";
+import { formatCentsAsCurrency } from "@/lib/formatCurrency";
 
 const PAGE_SIZE = 25;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -110,11 +111,44 @@ export default function CustomersTab() {
       render: (c) => <span className="font-semibold">{`${c.firstName ?? ""} ${c.lastName ?? ""}`.trim() || "—"}</span>,
     },
     { key: "email", header: "Email" },
+    { key: "phone", header: "Phone", render: (c) => c.phone || <span className="text-brand-charcoal/40">—</span> },
     { key: "registeredAt", header: "Registered", render: (c) => formatDate(c.registeredAt) },
     {
       key: "orderCount",
       header: "Orders",
       render: (c) => (c.orderCount > 0 ? <Badge tone="info">{c.orderCount}</Badge> : <span className="text-brand-charcoal/40">0</span>),
+    },
+    {
+      key: "totalSpend",
+      header: "Total Spend",
+      render: (c) => formatCentsAsCurrency(c.totalSpendCents),
+    },
+    {
+      key: "aov",
+      header: "AOV",
+      render: (c) => formatCentsAsCurrency(c.averageOrderValueCents),
+    },
+    {
+      key: "addressLine1",
+      header: "Address Line 1",
+      render: (c) => c.address?.line1 || <span className="text-brand-charcoal/40">—</span>,
+    },
+    {
+      key: "addressLine2",
+      header: "Address Line 2",
+      render: (c) => c.address?.line2 || <span className="text-brand-charcoal/40">—</span>,
+    },
+    { key: "city", header: "City", render: (c) => c.address?.city || <span className="text-brand-charcoal/40">—</span> },
+    { key: "state", header: "State", render: (c) => c.address?.state || <span className="text-brand-charcoal/40">—</span> },
+    {
+      key: "postalCode",
+      header: "Postal Code",
+      render: (c) => c.address?.postalCode || <span className="text-brand-charcoal/40">—</span>,
+    },
+    {
+      key: "country",
+      header: "Country",
+      render: (c) => c.address?.country || <span className="text-brand-charcoal/40">—</span>,
     },
     {
       key: "actions",
@@ -164,7 +198,7 @@ export default function CustomersTab() {
       {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
       <div aria-busy={loading} className={loading && customers ? "opacity-60 transition-opacity" : undefined}>
-        <DataTable columns={columns} rows={customers} emptyMessage={emptyMessage} />
+        <DataTable columns={columns} rows={customers} emptyMessage={emptyMessage} stickyScrollbar />
       </div>
 
       {total > 0 && (
