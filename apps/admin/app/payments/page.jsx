@@ -23,7 +23,7 @@ import { api, ApiClientError } from "@/lib/api/client";
 import { formatCentsAsCurrency } from "@/lib/formatCurrency";
 
 const STATUS_TONE = { PENDING: "warning", SUCCEEDED: "success", FAILED: "danger", VOIDED: "default" };
-const METHODS = ["CASH", "CARD", "DEPOSIT", "BANK_TRANSFER"];
+const METHODS = ["CASH", "CARD", "DEPOSIT", "BANK_TRANSFER", "STORE_CREDIT"];
 const STATUSES = ["PENDING", "SUCCEEDED", "FAILED", "VOIDED"];
 const SOURCES = ["ONLINE", "POS"];
 

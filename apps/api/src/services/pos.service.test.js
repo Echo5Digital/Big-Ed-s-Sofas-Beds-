@@ -95,14 +95,17 @@ describe("pos.service", () => {
     const result = await posService.ringSale({
       registerSessionId: session.id,
       lines: [{ variantId: variant.id, quantity: 2 }],
-      tenderMethod: "CASH",
-      tenderedCents: 110000, // 2 x 50000 = 100000 due, tendered 110000
+      payments: [{ method: "CASH", amountCents: 110000 }], // 2 x 50000 = 100000 due, tendered 110000
       performedById: null,
     });
 
     expect(result.order.channel).toBe("POS");
     expect(result.order.paymentStatus).toBe("PAID");
-    expect(result.payment.amountCents).toBe(100000);
+    expect(result.payments).toHaveLength(1);
+    // Payment/CashMovement record what's actually kept (100000), not the
+    // raw 110000 handed over — the 10000 difference is change, tracked only
+    // in changeDueCents, never as money the register actually retained.
+    expect(result.payments[0].amountCents).toBe(100000);
     expect(result.changeDueCents).toBe(10000);
 
     const balance = await prisma.stockBalance.findUnique({
@@ -121,8 +124,7 @@ describe("pos.service", () => {
     const result = await posService.ringSale({
       registerSessionId: session.id,
       lines: [{ variantId: variant.id, quantity: 1 }],
-      tenderMethod: "CASH",
-      tenderedCents: 45000,
+      payments: [{ method: "CASH", amountCents: 45000 }],
       discountCents: 5000,
       discountReasonCode: "manager_price_match",
       performedById: null,
@@ -130,7 +132,7 @@ describe("pos.service", () => {
 
     expect(result.order.subtotalCents).toBe(50000);
     expect(result.order.totalCents).toBe(45000);
-    expect(result.payment.amountCents).toBe(45000);
+    expect(result.payments[0].amountCents).toBe(45000);
 
     const auditEntry = await prisma.auditLog.findFirst({
       where: { entityId: result.order.id, action: "pos.sale.discount" },
@@ -146,8 +148,7 @@ describe("pos.service", () => {
     const result = posSaleSchema.safeParse({
       registerSessionId: register.id,
       lines: [{ variantId: variant.id, quantity: 1 }],
-      tenderMethod: "CASH",
-      tenderedCents: 45000,
+      payments: [{ method: "CASH", amountCents: 45000 }],
       discountCents: 5000,
     });
     expect(result.success).toBe(false);
@@ -161,8 +162,7 @@ describe("pos.service", () => {
       posService.ringSale({
         registerSessionId: session.id,
         lines: [{ variantId: variant.id, quantity: 1 }],
-        tenderMethod: "CARD",
-        tenderedCents: 50000,
+        payments: [{ method: "CARD", amountCents: 50000 }],
         performedById: null,
       })
     ).rejects.toThrow(/Card-present tender is not available/);
@@ -182,14 +182,12 @@ describe("pos.service", () => {
     const result = await posService.ringSale({
       registerSessionId: session.id,
       lines: [{ variantId: variant.id, quantity: 1 }],
-      tenderMethod: "DEPOSIT",
-      tenderedCents: 20000,
-      depositAmountCents: 20000,
+      payments: [{ method: "DEPOSIT", amountCents: 20000 }],
       performedById: null,
     });
 
     expect(result.order.paymentStatus).toBe("PARTIALLY_PAID");
-    expect(result.payment.amountCents).toBe(20000);
+    expect(result.payments[0].amountCents).toBe(20000);
 
     await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
   });
@@ -202,8 +200,7 @@ describe("pos.service", () => {
       posService.ringSale({
         registerSessionId: session.id,
         lines: [{ variantId: variant.id, quantity: 2 }],
-        tenderMethod: "CASH",
-        tenderedCents: 100000,
+        payments: [{ method: "CASH", amountCents: 100000 }],
         performedById: null,
       })
     ).rejects.toThrow();
@@ -226,8 +223,7 @@ describe("pos.service", () => {
     const attempt1 = posService.ringSale({
       registerSessionId: session.id,
       lines: [{ variantId: variant.id, quantity: 1 }],
-      tenderMethod: "CASH",
-      tenderedCents: 50000,
+      payments: [{ method: "CASH", amountCents: 50000 }],
       performedById: null,
     });
     const attempt2 = inventoryService.reserveStock({
@@ -263,8 +259,7 @@ describe("pos.service", () => {
     await posService.ringSale({
       registerSessionId: session.id,
       lines: [{ variantId: variant.id, quantity: 1 }],
-      tenderMethod: "CASH",
-      tenderedCents: 50000,
+      payments: [{ method: "CASH", amountCents: 50000 }],
       performedById: null,
     });
 
@@ -283,8 +278,7 @@ describe("pos.service", () => {
     const sale = await posService.ringSale({
       registerSessionId: session.id,
       lines: [{ variantId: variant.id, quantity: 1 }],
-      tenderMethod: "CASH",
-      tenderedCents: 50000,
+      payments: [{ method: "CASH", amountCents: 50000 }],
       performedById: null,
     });
 
@@ -320,8 +314,7 @@ describe("pos.service", () => {
     const sale = await posService.ringSale({
       registerSessionId: session.id,
       lines: [{ variantId: variant.id, quantity: 1 }],
-      tenderMethod: "CASH",
-      tenderedCents: 50000,
+      payments: [{ method: "CASH", amountCents: 50000 }],
       performedById: null,
     });
 
@@ -361,6 +354,141 @@ describe("pos.service", () => {
     await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
   });
 
+  describe("split payments", () => {
+    it("completes a sale tendered across cash and deposit entries", async () => {
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      // 50000 total: 30000 cash + 20000 deposit.
+      const result = await posService.ringSale({
+        registerSessionId: session.id,
+        lines: [{ variantId: variant.id, quantity: 1 }],
+        payments: [
+          { method: "CASH", amountCents: 30000 },
+          { method: "DEPOSIT", amountCents: 20000 },
+        ],
+        performedById: null,
+      });
+
+      expect(result.order.paymentStatus).toBe("PAID");
+      expect(result.payments).toHaveLength(2);
+      expect(result.payments.reduce((sum, p) => sum + p.amountCents, 0)).toBe(50000);
+      expect(result.changeDueCents).toBe(0);
+
+      const movements = await prisma.cashMovement.findMany({ where: { registerSessionId: session.id } });
+      expect(movements.filter((m) => m.type === "SALE")).toHaveLength(1); // only the cash entry
+      expect(movements.filter((m) => m.type === "DEPOSIT")).toHaveLength(1);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 30000 });
+    });
+
+    it("records only the applied (not raw tendered) amount for an overtendered cash entry", async () => {
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      // 50000 total, tendered 20000 cash + 40000 cash (overtender by 10000).
+      const result = await posService.ringSale({
+        registerSessionId: session.id,
+        lines: [{ variantId: variant.id, quantity: 1 }],
+        payments: [
+          { method: "CASH", amountCents: 20000 },
+          { method: "CASH", amountCents: 40000 },
+        ],
+        performedById: null,
+      });
+
+      expect(result.changeDueCents).toBe(10000);
+      const totalRecorded = result.payments.reduce((sum, p) => sum + p.amountCents, 0);
+      expect(totalRecorded).toBe(50000); // never 60000 — change is never recorded as kept money
+
+      const movements = await prisma.cashMovement.findMany({ where: { registerSessionId: session.id, type: "SALE" } });
+      const movementTotal = movements.reduce((sum, m) => sum + m.amountCents, 0);
+      expect(movementTotal).toBe(50000);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 50000 });
+    });
+
+    it("rejects a non-cash entry (e.g. bank transfer) that exceeds the remaining balance", async () => {
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      await expect(
+        posService.ringSale({
+          registerSessionId: session.id,
+          lines: [{ variantId: variant.id, quantity: 1 }],
+          payments: [{ method: "BANK_TRANSFER", amountCents: 60000 }], // 50000 due
+          performedById: null,
+        })
+      ).rejects.toThrow(/cannot exceed the order total/);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
+    });
+
+    it("rejects a STORE_CREDIT entry with no customer attached to the sale", async () => {
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      await expect(
+        posService.ringSale({
+          registerSessionId: session.id,
+          lines: [{ variantId: variant.id, quantity: 1 }],
+          payments: [{ method: "STORE_CREDIT", amountCents: 50000 }],
+          performedById: null,
+        })
+      ).rejects.toThrow(/identified customer/);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
+    });
+
+    it("redeems store credit as a sale tender and debits the customer's balance", async () => {
+      const storeCreditService = require("./storeCredit.service");
+      const customer = await prisma.customer.create({
+        data: { firstName: "Split", lastName: "Payment Test", phone: `555-${Date.now().toString().slice(-7)}` },
+      });
+      await prisma.$transaction((tx) =>
+        storeCreditService.issueStoreCredit(tx, { customerId: customer.id, amountCents: 20000, performedById: null })
+      );
+
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      const result = await posService.ringSale({
+        registerSessionId: session.id,
+        lines: [{ variantId: variant.id, quantity: 1 }],
+        payments: [
+          { method: "STORE_CREDIT", amountCents: 20000 },
+          { method: "CASH", amountCents: 30000 },
+        ],
+        customerId: customer.id,
+        performedById: null,
+      });
+
+      expect(result.order.paymentStatus).toBe("PAID");
+      const remainingBalance = await storeCreditService.getStoreCreditBalance(customer.id);
+      expect(remainingBalance).toBe(0);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 30000 });
+      await prisma.storeCredit.deleteMany({ where: { customerId: customer.id } });
+      await prisma.customer.delete({ where: { id: customer.id } });
+    });
+
+    it("rejects an under-tendered sale with no deposit entry present", async () => {
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      await expect(
+        posService.ringSale({
+          registerSessionId: session.id,
+          lines: [{ variantId: variant.id, quantity: 1 }],
+          payments: [{ method: "CASH", amountCents: 10000 }], // 50000 due
+          performedById: null,
+        })
+      ).rejects.toThrow(/less than the amount due/);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
+    });
+  });
+
   describe("reopen approval", () => {
     it("moves a stuck OPEN session to PENDING_REOPEN_APPROVAL and blocks opening the register", async () => {
       const session = await posService.openRegister({ registerId: register.id, openingCashCents: 10000 });
@@ -396,8 +524,7 @@ describe("pos.service", () => {
       await posService.ringSale({
         registerSessionId: session.id,
         lines: [{ variantId: variant.id, quantity: 1 }],
-        tenderMethod: "CASH",
-        tenderedCents: 50000,
+        payments: [{ method: "CASH", amountCents: 50000 }],
         performedById: null,
       });
 

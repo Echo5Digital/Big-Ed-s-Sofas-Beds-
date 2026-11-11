@@ -7,12 +7,17 @@ const {
   registerReopenDenySchema,
   posSaleSchema,
   posRefundSchema,
+  posCustomerCreateSchema,
+  posReturnCreateSchema,
 } = require("@big-eds/validation");
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
 const { NotFoundError } = require("../lib/errors");
 const posService = require("../services/pos.service");
+const posCustomersService = require("../services/posCustomers.service");
+const posReturnsService = require("../services/posReturns.service");
+const storeCreditService = require("../services/storeCredit.service");
 
 const router = express.Router();
 
@@ -41,6 +46,17 @@ function serializeOrder(order) {
       lineTotalCents: l.lineTotalCents,
     })),
     createdAt: order.createdAt,
+  };
+}
+
+function serializePayment(payment) {
+  return {
+    id: payment.id,
+    method: payment.method,
+    amountCents: payment.amountCents,
+    reference: payment.reference,
+    status: payment.status,
+    createdAt: payment.createdAt,
   };
 }
 
@@ -194,27 +210,19 @@ router.post(
   })
 );
 
-// Rings up a walk-in cash or deposit sale and returns the receipt. CARD is
-// intentionally rejected here (501) — see docs/requirements/open-questions.md;
-// no payment processor/terminal model has been selected yet, and this route
-// must never fabricate a successful card charge.
+// Rings up a walk-in sale across one or more payment entries (CASH, DEPOSIT,
+// BANK_TRANSFER, STORE_CREDIT) and returns the receipt. CARD is intentionally
+// rejected here (501) — see docs/requirements/open-questions.md; no payment
+// processor/terminal model has been selected yet, and this route must never
+// fabricate a successful card charge.
 router.post(
   "/sales",
   requirePermission("pos:sell"),
   validateBody(posSaleSchema),
   asyncHandler(async (req, res) => {
-    const {
-      registerSessionId,
-      lines,
-      tenderMethod,
-      tenderedCents,
-      depositAmountCents,
-      discountCents,
-      discountReasonCode,
-      customer,
-    } = req.body;
+    const { registerSessionId, lines, payments, discountCents, discountReasonCode, customerId, customer } = req.body;
 
-    if (tenderMethod === "CARD") {
+    if (payments.some((p) => p.method === "CARD")) {
       return res.status(501).json({
         error: {
           message:
@@ -226,18 +234,17 @@ router.post(
     const result = await posService.ringSale({
       registerSessionId,
       lines,
-      tenderMethod,
-      tenderedCents,
-      depositAmountCents,
+      payments,
       discountCents,
       discountReasonCode,
+      customerId,
       customerInput: customer,
       performedById: req.user.id,
     });
 
     res.status(201).json({
       order: serializeOrder(result.order),
-      payment: result.payment,
+      payments: result.payments.map(serializePayment),
       receipt: result.receipt,
       changeDueCents: result.changeDueCents,
     });
@@ -251,6 +258,64 @@ router.post(
   asyncHandler(async (req, res) => {
     const refundRecord = await posService.refund({ ...req.body, performedById: req.user.id });
     res.status(201).json({ refund: refundRecord });
+  })
+);
+
+// --- Customer search / creation (checkout customer identification) --------
+
+router.get(
+  "/customers/search",
+  requirePermission("pos:sell"),
+  asyncHandler(async (req, res) => {
+    const customers = await posCustomersService.searchCustomersForPos({ q: req.query.q });
+    res.json({ customers });
+  })
+);
+
+router.post(
+  "/customers",
+  requirePermission("pos:sell"),
+  validateBody(posCustomerCreateSchema),
+  asyncHandler(async (req, res) => {
+    const customer = await posCustomersService.createPosCustomer(req.body);
+    res.status(201).json({ customer });
+  })
+);
+
+router.get(
+  "/customers/:id/store-credit",
+  requirePermission("pos:sell"),
+  asyncHandler(async (req, res) => {
+    const balanceCents = await storeCreditService.getStoreCreditBalance(req.params.id);
+    res.json({ balanceCents });
+  })
+);
+
+// --- Returns / exchanges ---------------------------------------------------
+
+router.get(
+  "/returns/find-order",
+  requirePermission("pos:refund"),
+  asyncHandler(async (req, res) => {
+    const result = await posReturnsService.findOrderForReturn({ q: req.query.q });
+    res.json(result);
+  })
+);
+
+router.post(
+  "/returns",
+  requirePermission("pos:refund"),
+  validateBody(posReturnCreateSchema),
+  asyncHandler(async (req, res) => {
+    const result = await posReturnsService.createReturn({ ...req.body, performedById: req.user.id });
+    res.status(201).json({
+      returnTransaction: result.returnTransaction,
+      exchangeOrder: result.exchangeOrder,
+      refund: result.refundRecord,
+      storeCredit: result.storeCreditRecord,
+      exchangePayments: result.exchangePayments.map(serializePayment),
+      balanceDueCents: result.balanceDueCents,
+    });
   })
 );
 

@@ -181,14 +181,17 @@ const PRODUCT_INCLUDE = {
 };
 
 // POS's product search (apps/pos/components/checkout/ProductSearch.jsx) only
-// ever reads variant sku/name/price/availability — it never shows images,
-// category, or description. Those extra relations are real Prisma-level
-// round trips (category, categoryTags+category, images) and real
-// over-the-wire payload (full Cloudinary URLs/alt text for every image on
-// every product) that POS fetches and immediately discards on every
-// debounced keystroke. ?fields=minimal skips them; every other caller
-// (storefront) is unaffected and keeps the full default shape.
+// ever reads variant sku/name/price/availability/thumbnail — it never shows
+// full-size images, category, or description. Those extra relations are real
+// Prisma-level round trips (category, categoryTags+category, every image)
+// and real over-the-wire payload (full Cloudinary URLs/alt text for every
+// image on every product) that POS fetches and immediately discards on every
+// debounced keystroke. ?fields=minimal skips them, but still takes the
+// single primary (lowest sortOrder) image per product so cart/search
+// thumbnails have something to render — every other caller (storefront)
+// is unaffected and keeps the full default shape.
 const PRODUCT_INCLUDE_MINIMAL = {
+  images: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } },
   variants: {
     include: {
       stockBalances: { include: { location: true } },
@@ -200,6 +203,7 @@ function serializeProductMinimal(product) {
   return {
     id: product.id,
     name: product.name,
+    imageUrl: product.images[0]?.url ?? null,
     variants: product.variants.map((v) => ({
       id: v.id,
       sku: v.sku,

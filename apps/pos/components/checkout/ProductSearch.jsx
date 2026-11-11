@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Search } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { formatCents } from "@/lib/format";
+import ProductThumbnail from "../ui/ProductThumbnail";
 
 const PAGE_SIZE = 40;
 
@@ -23,6 +24,7 @@ function flattenVariants(products) {
         variantName: variant.name,
         priceCents: variant.priceCents,
         compareAtCents: variant.compareAtCents,
+        imageUrl: product.imageUrl,
         locations: variant.availability.byLocation.filter((l) => l.availableToSell > 0),
         totalAvailable: variant.availability.totalAvailable,
       });
@@ -172,16 +174,19 @@ export default function ProductSearch({ onAdd }) {
                     : "border-black/10 hover:border-black/20 hover:bg-brand-cream/40"
                 }`}
               >
-                <div className="min-w-0">
-                  <p className="truncate font-semibold text-brand-charcoal">
-                    {row.productName === row.variantName ? row.productName : `${row.productName} — ${row.variantName}`}
-                  </p>
-                  <p className="truncate text-xs text-brand-charcoal/50">
-                    SKU {row.sku} ·{" "}
-                    {row.locations.length > 0
-                      ? row.locations.map((l) => `${l.locationName}: ${l.availableToSell}`).join(" · ")
-                      : "Out of stock"}
-                  </p>
+                <div className="flex min-w-0 items-center gap-3">
+                  <ProductThumbnail src={row.imageUrl} alt={row.productName} />
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-brand-charcoal">
+                      {row.productName === row.variantName ? row.productName : `${row.productName} — ${row.variantName}`}
+                    </p>
+                    <p className="truncate text-xs text-brand-charcoal/50">
+                      SKU {row.sku} ·{" "}
+                      {row.locations.length > 0
+                        ? row.locations.map((l) => `${l.locationName}: ${l.availableToSell}`).join(" · ")
+                        : "Out of stock"}
+                    </p>
+                  </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   <span className="flex items-baseline gap-1.5">

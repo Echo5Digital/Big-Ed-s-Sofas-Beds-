@@ -2,6 +2,8 @@ const { prisma } = require("@big-eds/database");
 const { ConflictError, NotFoundError } = require("../lib/errors");
 const { createWithSequentialNumber } = require("../lib/sequentialNumber");
 const inventoryService = require("./inventory.service");
+const storeCreditService = require("./storeCredit.service");
+const posCustomersService = require("./posCustomers.service");
 
 async function nextOrderNumber(tx) {
   const count = await tx.order.count();
@@ -73,29 +75,80 @@ async function getOpenSession(registerSessionId) {
   return session;
 }
 
+// Creates one Payment row per split-tender entry (plus a CashMovement for
+// each CASH entry and a StoreCredit redemption for each STORE_CREDIT entry)
+// inside the caller's existing transaction. Shared by ringSale() and the
+// exchange-balance-due path in posReturns.service.js so the two don't
+// diverge on how a multi-tender payment is recorded.
+async function createPaymentEntries(tx, { orderId, registerSessionId, payments, customerId, performedById }) {
+  const createdPayments = [];
+  for (const entry of payments) {
+    const payment = await tx.payment.create({
+      data: {
+        orderId,
+        method: entry.method,
+        status: "SUCCEEDED",
+        amountCents: entry.amountCents,
+        reference: entry.reference || null,
+        performedById,
+      },
+    });
+    createdPayments.push(payment);
+
+    if (entry.method === "CASH") {
+      await tx.cashMovement.create({
+        data: {
+          registerSessionId,
+          type: "SALE",
+          amountCents: entry.amountCents,
+          notes: `Payment ${payment.id}`,
+        },
+      });
+    } else if (entry.method === "DEPOSIT") {
+      await tx.cashMovement.create({
+        data: {
+          registerSessionId,
+          type: "DEPOSIT",
+          amountCents: entry.amountCents,
+          notes: `Payment ${payment.id}`,
+        },
+      });
+    } else if (entry.method === "STORE_CREDIT") {
+      await storeCreditService.redeemStoreCredit(tx, {
+        customerId,
+        amountCents: entry.amountCents,
+        orderId,
+        performedById,
+      });
+    }
+    // CARD is rejected before this function is ever reached; BANK_TRANSFER
+    // doesn't move the physical cash drawer, so no CashMovement for it.
+  }
+  return createdPayments;
+}
+
 // Rings up a walk-in sale: prices the lines server-side from live variant
 // data (never trusts client-sent prices), reserves stock, immediately
 // converts the reservation to a sale (a POS cashier completes checkout in
-// one motion, unlike the online cart), and creates the Payment + Receipt
-// records. CASH and DEPOSIT are real, working tenders backed by a
-// CashMovement on the register session; CARD is rejected — no payment
-// processor/terminal has been selected yet (see
-// docs/requirements/open-questions.md) and this function must never fabricate
-// a successful card charge.
+// one motion, unlike the online cart), and creates the Payment(s) + Receipt
+// records. A sale can be tendered across multiple payment entries (CASH,
+// DEPOSIT, BANK_TRANSFER, STORE_CREDIT) in one transaction; CARD is
+// rejected — no payment processor/terminal has been selected yet (see
+// docs/requirements/open-questions.md) and this function must never
+// fabricate a successful card charge.
 async function ringSale({
   registerSessionId,
   lines,
-  tenderMethod,
-  tenderedCents,
-  depositAmountCents,
+  payments,
   discountCents,
   discountReasonCode,
+  customerId: inputCustomerId,
   customerInput,
   performedById,
 }) {
-  if (tenderMethod === "CARD") {
+  if (payments.some((p) => p.method === "CARD")) {
     throw new ConflictError(
-      "Card-present tender is not available yet — no payment processor or terminal model has been selected. Use cash or deposit."
+      "Card-present tender is not available yet — no payment processor or terminal model has been selected. Use cash, deposit, bank transfer, or store credit."
     );
   }
 
@@ -140,26 +193,58 @@ async function ringSale({
       totalCostCents,
     });
   }
-  const saleAmountCents = tenderMethod === "DEPOSIT" ? depositAmountCents : totalCents;
 
-  if (tenderMethod === "DEPOSIT" && (!depositAmountCents || depositAmountCents > totalCents)) {
-    throw new ConflictError("Deposit amount must be greater than zero and not exceed the order total");
-  }
-  if (tenderedCents < saleAmountCents) {
-    throw new ConflictError("Tendered amount is less than the amount due", {
-      amountDueCents: saleAmountCents,
-      tenderedCents,
+  // Never trust frontend-computed totals: recompute every figure below from
+  // the payments array itself.
+  const totalTenderedCents = payments.reduce((sum, p) => sum + p.amountCents, 0);
+  const cashEntries = payments.filter((p) => p.method === "CASH");
+  const nonCashTenderedCents = totalTenderedCents - cashEntries.reduce((sum, p) => sum + p.amountCents, 0);
+
+  // Only cash can overtender (to produce change); every other method must
+  // not individually or collectively exceed what's actually owed.
+  if (nonCashTenderedCents > totalCents) {
+    throw new ConflictError("Non-cash payment amounts cannot exceed the order total", {
+      totalCents,
+      nonCashTenderedCents,
     });
   }
 
-  let customerId = null;
-  if (customerInput?.email) {
-    const customer = await prisma.customer.upsert({
-      where: { email: customerInput.email },
-      update: { firstName: customerInput.firstName, lastName: customerInput.lastName, phone: customerInput.phone },
-      create: customerInput,
+  const storeCreditEntries = payments.filter((p) => p.method === "STORE_CREDIT");
+  if (storeCreditEntries.length > 0 && !inputCustomerId) {
+    throw new ConflictError("Store credit can only be redeemed for an identified customer");
+  }
+
+  let customerId = inputCustomerId || null;
+  if (!customerId && customerInput?.email) {
+    const customer = await posCustomersService.createPosCustomer({
+      firstName: customerInput.firstName,
+      lastName: customerInput.lastName,
+      phone: customerInput.phone,
+      email: customerInput.email,
     });
     customerId = customer.id;
+  }
+
+  if (storeCreditEntries.length > 0) {
+    const requestedStoreCreditCents = storeCreditEntries.reduce((sum, p) => sum + p.amountCents, 0);
+    const balanceCents = await storeCreditService.getStoreCreditBalance(customerId);
+    if (requestedStoreCreditCents > balanceCents) {
+      throw new ConflictError("Store credit requested exceeds the customer's balance", {
+        balanceCents,
+        requestedCents: requestedStoreCreditCents,
+      });
+    }
+  }
+
+  // A sale tendered below the total is only ever legitimate as a deliberate
+  // deposit/layaway (at least one DEPOSIT entry present) — any other
+  // under-tender (e.g. cash alone falling short) is rejected outright,
+  // exactly as the single-tender flow always did for CASH.
+  if (totalTenderedCents < totalCents && !payments.some((p) => p.method === "DEPOSIT")) {
+    throw new ConflictError("Tendered amount is less than the amount due", {
+      amountDueCents: totalCents,
+      totalTenderedCents,
+    });
   }
 
   const order = await createWithSequentialNumber(() =>
@@ -250,20 +335,52 @@ async function ringSale({
     });
   }
 
-  const changeDueCents = tenderMethod === "CASH" ? tenderedCents - saleAmountCents : 0;
+  // Any overtender can only come from cash (every other method is capped at
+  // the remaining balance above), so change due is simply how much the
+  // total was overtendered by.
+  const changeDueCents = Math.max(0, totalTenderedCents - totalCents);
+
+  // The Payment/CashMovement rows must reflect money actually APPLIED to the
+  // sale, never the raw amount handed over — a $110 cash tender against a
+  // $100 sale keeps $100 in the drawer and returns $10 as change, so only
+  // $100 may ever be recorded as a Payment or move the register's cash
+  // total. Change is tracked purely in the API response for the receipt,
+  // never fed into a ledger row. Only the LAST cash entry absorbs the
+  // trim, so splitting one tender across multiple cash entries still
+  // records each earlier entry's full amount.
+  const appliedPayments =
+    changeDueCents > 0
+      ? (() => {
+          let remainingTrim = changeDueCents;
+          const trimmed = [];
+          for (let i = payments.length - 1; i >= 0; i--) {
+            const entry = payments[i];
+            if (entry.method === "CASH" && remainingTrim > 0) {
+              const cut = Math.min(remainingTrim, entry.amountCents);
+              remainingTrim -= cut;
+              if (entry.amountCents - cut > 0) {
+                trimmed.unshift({ ...entry, amountCents: entry.amountCents - cut });
+              }
+            } else {
+              trimmed.unshift(entry);
+            }
+          }
+          return trimmed;
+        })()
+      : payments;
 
   const result = await createWithSequentialNumber(() =>
     prisma.$transaction(async (tx) => {
-      const payment = await tx.payment.create({
-        data: {
-          orderId: order.id,
-          method: tenderMethod,
-          status: "SUCCEEDED",
-          amountCents: saleAmountCents,
-        },
+      const createdPayments = await createPaymentEntries(tx, {
+        orderId: order.id,
+        registerSessionId,
+        payments: appliedPayments,
+        customerId,
+        performedById,
       });
 
-      const paymentStatus = tenderMethod === "DEPOSIT" && saleAmountCents < totalCents ? "PARTIALLY_PAID" : "PAID";
+      const paymentStatus =
+        totalTenderedCents >= totalCents ? "PAID" : totalTenderedCents > 0 ? "PARTIALLY_PAID" : "UNPAID";
 
       const confirmedOrder = await tx.order.update({
         where: { id: order.id },
@@ -273,15 +390,6 @@ async function ringSale({
           paymentStatus,
         },
         include: { lines: true, customer: true, payments: true },
-      });
-
-      await tx.cashMovement.create({
-        data: {
-          registerSessionId,
-          type: tenderMethod === "DEPOSIT" ? "DEPOSIT" : "SALE",
-          amountCents: saleAmountCents,
-          notes: `Order ${confirmedOrder.orderNumber}`,
-        },
       });
 
       const receiptNumber = await nextReceiptNumber(tx);
@@ -306,13 +414,13 @@ async function ringSale({
         });
       }
 
-      return { order: confirmedOrder, payment, receipt };
+      return { order: confirmedOrder, payments: createdPayments, receipt };
     })
   );
 
   return {
     order: result.order,
-    payment: result.payment,
+    payments: result.payments,
     receipt: result.receipt,
     changeDueCents,
   };
@@ -498,7 +606,10 @@ async function denyReopen({ registerSessionId, reason, performedById }) {
   return serializeSession(updated);
 }
 
-async function refund({ registerSessionId, orderId, amountCents, reasonCode, notes, restock, performedById }) {
+// `paymentId` optionally attributes this refund to a specific original
+// tender (populating the previously-unused Refund.paymentId) — falls back to
+// orderId-only exactly as before when not specified.
+async function refund({ registerSessionId, orderId, amountCents, reasonCode, notes, restock, paymentId, performedById }) {
   const session = await getOpenSession(registerSessionId);
 
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { lines: true } });
@@ -530,6 +641,7 @@ async function refund({ registerSessionId, orderId, amountCents, reasonCode, not
     const refundRecord = await tx.refund.create({
       data: {
         orderId,
+        paymentId: paymentId || null,
         amountCents,
         reasonCode,
         notes,
@@ -581,5 +693,6 @@ module.exports = {
   denyReopen,
   ringSale,
   refund,
+  createPaymentEntries,
   serializeSession,
 };

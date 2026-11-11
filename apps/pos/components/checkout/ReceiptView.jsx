@@ -11,9 +11,19 @@ import Button from "../ui/Button";
 // inside the "Sale complete" modal) so the print.css rule in globals.css can
 // hide literally everything else in the document and print only this —
 // otherwise window.print() captures the whole page behind the modal too.
+const TENDER_LABELS = {
+  CASH: "Cash",
+  CARD: "Card",
+  DEPOSIT: "Deposit",
+  BANK_TRANSFER: "Bank transfer",
+  STORE_CREDIT: "Store credit",
+};
+
 function ReceiptPrintable({ sale }) {
   if (typeof document === "undefined") return null;
-  const { order, payment, receipt, changeDueCents } = sale;
+  const { order, payments, receipt, changeDueCents } = sale;
+  const totalPaidCents = payments.reduce((sum, p) => sum + p.amountCents, 0);
+  const isDepositOnly = payments.length === 1 && payments[0].method === "DEPOSIT";
   const printedAt = new Date();
 
   return createPortal(
@@ -73,11 +83,20 @@ function ReceiptPrintable({ sale }) {
 
         <div className="border-t-2 border-black" />
 
+        <div className="flex flex-col gap-1 py-2.5 font-mono text-[11px]">
+          {payments.map((p) => (
+            <div key={p.id} className="flex justify-between text-black/70">
+              <span>{TENDER_LABELS[p.method] ?? p.method}</span>
+              <span className="tabular-nums">{formatCents(p.amountCents)}</span>
+            </div>
+          ))}
+        </div>
+
         <div className="flex items-center justify-between py-2.5">
           <span className="font-display text-sm font-bold uppercase tracking-wide">
-            {payment.method === "DEPOSIT" ? "Deposit Paid" : "Total Paid"}
+            {isDepositOnly ? "Deposit Paid" : "Total Paid"}
           </span>
-          <span className="font-mono text-base font-bold tabular-nums">{formatCents(payment.amountCents)}</span>
+          <span className="font-mono text-base font-bold tabular-nums">{formatCents(totalPaidCents)}</span>
         </div>
 
         <div className="border-t-2 border-black" />
@@ -94,7 +113,9 @@ function ReceiptPrintable({ sale }) {
 
 export default function ReceiptView({ open, onClose, sale }) {
   if (!sale) return null;
-  const { order, payment, receipt, changeDueCents } = sale;
+  const { order, payments, receipt, changeDueCents } = sale;
+  const totalPaidCents = payments.reduce((sum, p) => sum + p.amountCents, 0);
+  const isDepositOnly = payments.length === 1 && payments[0].method === "DEPOSIT";
 
   return (
     <>
@@ -105,7 +126,7 @@ export default function ReceiptView({ open, onClose, sale }) {
               <CheckCircle2 className="size-8 text-green-600" aria-hidden="true" />
             </span>
             <p className="font-display text-xl font-bold tabular-nums text-brand-charcoal">
-              {formatCents(payment.amountCents)} {payment.method === "DEPOSIT" ? "deposit" : "paid"}
+              {formatCents(totalPaidCents)} {isDepositOnly ? "deposit" : "paid"}
             </p>
             <p className="text-sm text-brand-charcoal/50">
               Receipt {receipt.receiptNumber} · Order {order.orderNumber}
@@ -134,9 +155,15 @@ export default function ReceiptView({ open, onClose, sale }) {
                   <span>-{formatCents(order.discountCents)}</span>
                 </div>
               )}
+              {payments.map((p) => (
+                <div key={p.id} className="flex justify-between">
+                  <span>{TENDER_LABELS[p.method] ?? p.method}</span>
+                  <span>{formatCents(p.amountCents)}</span>
+                </div>
+              ))}
               <div className="flex justify-between font-semibold">
-                <span>{payment.method === "DEPOSIT" ? "Deposit paid" : "Total paid"}</span>
-                <span>{formatCents(payment.amountCents)}</span>
+                <span>{isDepositOnly ? "Deposit paid" : "Total paid"}</span>
+                <span>{formatCents(totalPaidCents)}</span>
               </div>
               {changeDueCents > 0 && (
                 <div className="flex justify-between">
@@ -147,9 +174,9 @@ export default function ReceiptView({ open, onClose, sale }) {
             </div>
           </div>
 
-          {payment.method === "DEPOSIT" && order.totalCents > payment.amountCents && (
+          {order.totalCents > totalPaidCents && (
             <p className="rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-              Remaining balance: {formatCents(order.totalCents - payment.amountCents)}. This order is{" "}
+              Remaining balance: {formatCents(order.totalCents - totalPaidCents)}. This order is{" "}
               {order.paymentStatus === "PARTIALLY_PAID" ? "partially paid" : order.paymentStatus.toLowerCase()} until
               the balance is collected.
             </p>

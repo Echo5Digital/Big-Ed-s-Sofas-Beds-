@@ -79,6 +79,70 @@ async function adjustStock({ variantId, locationId, type, quantity, reasonCode, 
   });
 }
 
+// Adds a returned quantity back to sellable on-hand stock — used by POS
+// returns when the condition is SELLABLE. Distinct from adjustStock (which
+// is for manual inventory corrections, tagged ManualAdjustment/
+// inventory.adjust) since a sellable return is neither: it writes
+// RETURN_RESTOCK, already defined on StockMovementType for exactly this,
+// referencing the ReturnLine that caused it rather than a manual adjustment.
+async function restockFromReturn({ variantId, locationId, quantity, reasonCode, referenceId, performedById }) {
+  return prisma.$transaction(async (tx) => {
+    const balance = await getOrCreateBalance(tx, variantId, locationId);
+
+    await tx.stockBalance.update({
+      where: { id: balance.id },
+      data: { onHand: { increment: quantity } },
+    });
+
+    const movement = await tx.stockMovement.create({
+      data: {
+        variantId,
+        locationId,
+        type: "RETURN_RESTOCK",
+        quantity,
+        reasonCode,
+        referenceType: "ReturnLine",
+        referenceId,
+        performedById,
+      },
+    });
+
+    return movement;
+  });
+}
+
+// Returns a quantity to quarantine rather than available on-hand stock —
+// used by POS returns when the condition is DAMAGED/QUARANTINED/
+// REQUIRES_INSPECTION, so a damaged return never silently becomes sellable.
+// Mirrors restockFromReturn's transaction pattern exactly, just incrementing
+// quarantined instead of onHand and writing RETURN_QUARANTINE instead of
+// RETURN_RESTOCK.
+async function quarantineStock({ variantId, locationId, quantity, reasonCode, referenceId, performedById }) {
+  return prisma.$transaction(async (tx) => {
+    const balance = await getOrCreateBalance(tx, variantId, locationId);
+
+    await tx.stockBalance.update({
+      where: { id: balance.id },
+      data: { quarantined: { increment: quantity } },
+    });
+
+    const movement = await tx.stockMovement.create({
+      data: {
+        variantId,
+        locationId,
+        type: "RETURN_QUARANTINE",
+        quantity,
+        reasonCode,
+        referenceType: "ReturnLine",
+        referenceId,
+        performedById,
+      },
+    });
+
+    return movement;
+  });
+}
+
 async function transferStock({ variantId, fromLocationId, toLocationId, quantity, notes, performedById }) {
   if (fromLocationId === toLocationId) {
     throw new ConflictError("Source and destination locations must differ");
@@ -351,6 +415,8 @@ async function expireStaleReservations() {
 module.exports = {
   getOrCreateBalance,
   adjustStock,
+  restockFromReturn,
+  quarantineStock,
   transferStock,
   reserveStock,
   releaseReservation,

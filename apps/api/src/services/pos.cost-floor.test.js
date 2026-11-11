@@ -78,8 +78,7 @@ describe("pos.service — cost floor (Purchase Price feature)", () => {
     const result = await posService.ringSale({
       registerSessionId: session.id,
       lines: [{ variantId: costedVariant.id, quantity: 1 }],
-      tenderMethod: "CASH",
-      tenderedCents: 35000,
+      payments: [{ method: "CASH", amountCents: 35000 }],
       discountCents: 15000,
       discountReasonCode: "at_cost_test",
       performedById: null,
@@ -104,8 +103,7 @@ describe("pos.service — cost floor (Purchase Price feature)", () => {
       posService.ringSale({
         registerSessionId: session.id,
         lines: [{ variantId: costedVariant.id, quantity: 1 }],
-        tenderMethod: "CASH",
-        tenderedCents: 25000,
+        payments: [{ method: "CASH", amountCents: 25000 }],
         discountCents: 25000,
         discountReasonCode: "below_cost_test",
         performedById: null,
@@ -131,8 +129,7 @@ describe("pos.service — cost floor (Purchase Price feature)", () => {
     const result = await posService.ringSale({
       registerSessionId: session.id,
       lines: [{ variantId: variant.id, quantity: 1 }],
-      tenderMethod: "CASH",
-      tenderedCents: 1,
+      payments: [{ method: "CASH", amountCents: 1 }],
       discountCents: 49999,
       discountReasonCode: "unknown_cost_test",
       performedById: null,

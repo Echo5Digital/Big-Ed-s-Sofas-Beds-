@@ -7,6 +7,7 @@ import { useRegisterSession } from "@/lib/hooks/useRegisterSession";
 import { formatCents } from "@/lib/format";
 import ProductSearch from "./ProductSearch";
 import CartPanel from "./CartPanel";
+import CustomerPanel from "./CustomerPanel";
 import TenderModal from "./TenderModal";
 import ReceiptView from "./ReceiptView";
 import CloseRegister from "../register/CloseRegister";
@@ -21,6 +22,7 @@ export default function CheckoutScreen() {
   const [error, setError] = useState(null);
   const [completedSale, setCompletedSale] = useState(null);
   const [costsByVariantId, setCostsByVariantId] = useState({});
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
 
   // Cost is fetched separately from the (unauthenticated, storefront-shared)
   // product search results — see GET /pos/cart-costs in pos.routes.js for
@@ -66,6 +68,7 @@ export default function CheckoutScreen() {
           variantName: row.variantName,
           priceCents: row.priceCents,
           compareAtCents: row.compareAtCents,
+          imageUrl: row.imageUrl,
           quantity: 1,
           maxAvailable: row.totalAvailable,
         },
@@ -96,23 +99,23 @@ export default function CheckoutScreen() {
   // warning and the authoritative block never disagree about what counts.
   const totalCostCents = cart.reduce((sum, l) => sum + (costsByVariantId[l.variantId] ?? 0) * l.quantity, 0);
 
-  async function handleConfirmPayment({ tenderMethod, tenderedCents, depositAmountCents, discountCents, discountReasonCode }) {
+  async function handleConfirmPayment({ payments, discountCents, discountReasonCode }) {
     setError(null);
     setSubmitting(true);
     try {
       const data = await api.post("/pos/sales", {
         registerSessionId: session.id,
         lines: cart.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
-        tenderMethod,
-        tenderedCents,
-        depositAmountCents,
+        payments,
         discountCents,
         discountReasonCode,
+        customerId: selectedCustomer?.id,
       });
       setCompletedSale(data);
       setTenderOpen(false);
       setCartOpen(false);
       setCart([]);
+      setSelectedCustomer(null);
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "Unable to complete sale");
     } finally {
@@ -159,6 +162,12 @@ export default function CheckoutScreen() {
           <span className="h-1.5 w-12 rounded-full bg-black/15" />
         </button>
 
+        <CustomerPanel
+          customer={selectedCustomer}
+          onSelect={setSelectedCustomer}
+          onRemove={() => setSelectedCustomer(null)}
+        />
+
         <CartPanel
           cart={cart}
           onUpdateQuantity={handleUpdateQuantity}
@@ -194,6 +203,7 @@ export default function CheckoutScreen() {
         }}
         subtotalCents={subtotalCents}
         totalCostCents={totalCostCents}
+        customer={selectedCustomer}
         onConfirm={handleConfirmPayment}
         submitting={submitting}
         error={error}

@@ -24,23 +24,26 @@ enum RoleName {
 }
 
 model User {
-  id                     String            @id @default(uuid())
-  email                  String            @unique
+  id                     String              @id @default(uuid())
+  email                  String              @unique
   passwordHash           String
   firstName              String
   lastName               String
-  isActive               Boolean           @default(true)
+  isActive               Boolean             @default(true)
   roles                  UserRole[]
   auditLogs              AuditLog[]
-  purchaseOrdersCreated  PurchaseOrder[]   @relation("POCreatedBy")
-  purchaseOrdersApproved PurchaseOrder[]   @relation("POApprovedBy")
+  purchaseOrdersCreated  PurchaseOrder[]     @relation("POCreatedBy")
+  purchaseOrdersApproved PurchaseOrder[]     @relation("POApprovedBy")
   goodsReceipts          GoodsReceipt[]
   stockMovements         StockMovement[]
-  registerSessionsOpened RegisterSession[] @relation("RegisterSessionOpenedBy")
-  reopensRequested       RegisterSession[] @relation("RegisterSessionReopenRequestedBy")
-  reopensApproved        RegisterSession[] @relation("RegisterSessionReopenApprovedBy")
-  createdAt              DateTime          @default(now())
-  updatedAt              DateTime          @updatedAt
+  registerSessionsOpened RegisterSession[]   @relation("RegisterSessionOpenedBy")
+  reopensRequested       RegisterSession[]   @relation("RegisterSessionReopenRequestedBy")
+  reopensApproved        RegisterSession[]   @relation("RegisterSessionReopenApprovedBy")
+  paymentsRung           Payment[]
+  storeCreditEntries     StoreCredit[]
+  returnsProcessed       ReturnTransaction[]
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
 
   @@index([email])
 }
@@ -189,30 +192,32 @@ model ProductLink {
 }
 
 model Variant {
-  id             String          @id @default(uuid())
-  productId      String
-  product        Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
-  sku            String          @unique
-  name           String // e.g. "Charcoal / Queen"
-  color          String?
-  size           String?
-  widthInches    Decimal?        @db.Decimal(8, 2)
-  heightInches   Decimal?        @db.Decimal(8, 2)
-  depthInches    Decimal?        @db.Decimal(8, 2)
-  weightLbs      Decimal?        @db.Decimal(8, 2)
-  priceCents     Int // current selling price, in cents (USD)
-  compareAtCents Int?
-  costCents      Int? // last known supplier cost, in cents
-  isActive       Boolean         @default(true)
-  priceHistory   PriceHistory[]
-  stockBalances  StockBalance[]
-  stockMovements StockMovement[]
-  reservations   Reservation[]
-  transfers      Transfer[]
-  orderLines     OrderLine[]
-  poLines        POLine[]
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  id                        String          @id @default(uuid())
+  productId                 String
+  product                   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku                       String          @unique
+  name                      String // e.g. "Charcoal / Queen"
+  color                     String?
+  size                      String?
+  widthInches               Decimal?        @db.Decimal(8, 2)
+  heightInches              Decimal?        @db.Decimal(8, 2)
+  depthInches               Decimal?        @db.Decimal(8, 2)
+  weightLbs                 Decimal?        @db.Decimal(8, 2)
+  priceCents                Int // current selling price, in cents (USD)
+  compareAtCents            Int?
+  costCents                 Int? // last known supplier cost, in cents
+  isActive                  Boolean         @default(true)
+  priceHistory              PriceHistory[]
+  stockBalances             StockBalance[]
+  stockMovements            StockMovement[]
+  reservations              Reservation[]
+  transfers                 Transfer[]
+  orderLines                OrderLine[]
+  poLines                   POLine[]
+  returnLines               ReturnLine[]
+  replacementForReturnLines ReturnLine[]    @relation("ReturnLineReplacement")
+  createdAt                 DateTime        @default(now())
+  updatedAt                 DateTime        @updatedAt
 
   @@index([productId])
   @@index([sku])
@@ -419,8 +424,8 @@ model CountLine {
 // ---------------------------------------------------------------------------
 
 model Customer {
-  id              String    @id @default(uuid())
-  email           String?   @unique
+  id              String              @id @default(uuid())
+  email           String?             @unique
   phone           String?
   firstName       String?
   lastName        String?
@@ -432,8 +437,10 @@ model Customer {
   emailVerifiedAt DateTime?
   addresses       Address[]
   orders          Order[]
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  storeCredits    StoreCredit[]
+  returns         ReturnTransaction[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
   @@index([email])
 }
@@ -520,34 +527,37 @@ enum FulfillmentMethod {
 }
 
 model Order {
-  id                String             @id @default(uuid())
-  orderNumber       String             @unique // human-friendly sequential display number
-  channel           OrderChannel
-  customerId        String?
-  customer          Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  status            OrderStatus        @default(DRAFT)
-  paymentStatus     PaymentStatus      @default(UNPAID)
-  fulfillmentStatus FulfillmentStatus  @default(UNALLOCATED)
-  fulfillmentMethod FulfillmentMethod?
-  subtotalCents     Int                @default(0)
-  taxCents          Int                @default(0)
-  deliveryFeeCents  Int                @default(0)
-  discountCents     Int                @default(0)
-  totalCents        Int                @default(0)
-  deliveryAddressId String?
-  deliveryNotes     String?
-  assemblyNotes     String?
-  scheduledDate     DateTime?
-  lines             OrderLine[]
-  payments          Payment[]
-  refunds           Refund[]
-  reservations      Reservation[]
-  deliveries        Delivery[]
-  pickups           Pickup[]
-  statusHistory     StatusHistory[]
-  receipts          Receipt[]
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  id                 String              @id @default(uuid())
+  orderNumber        String              @unique // human-friendly sequential display number
+  channel            OrderChannel
+  customerId         String?
+  customer           Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  status             OrderStatus         @default(DRAFT)
+  paymentStatus      PaymentStatus       @default(UNPAID)
+  fulfillmentStatus  FulfillmentStatus   @default(UNALLOCATED)
+  fulfillmentMethod  FulfillmentMethod?
+  subtotalCents      Int                 @default(0)
+  taxCents           Int                 @default(0)
+  deliveryFeeCents   Int                 @default(0)
+  discountCents      Int                 @default(0)
+  totalCents         Int                 @default(0)
+  deliveryAddressId  String?
+  deliveryNotes      String?
+  assemblyNotes      String?
+  scheduledDate      DateTime?
+  lines              OrderLine[]
+  payments           Payment[]
+  refunds            Refund[]
+  reservations       Reservation[]
+  deliveries         Delivery[]
+  pickups            Pickup[]
+  statusHistory      StatusHistory[]
+  receipts           Receipt[]
+  returnTransactions ReturnTransaction[] @relation("ReturnTransactionOrder")
+  exchangeOfReturns  ReturnTransaction[] @relation("ReturnTransactionExchangeOrder")
+  storeCreditEntries StoreCredit[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   @@index([customerId])
   @@index([status])
@@ -560,19 +570,20 @@ model Order {
 // Historical snapshot of price/tax/discount at time of sale — never recompute
 // from current catalog prices once an order line exists.
 model OrderLine {
-  id             String   @id @default(uuid())
+  id             String       @id @default(uuid())
   orderId        String
-  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order          Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
   variantId      String
-  variant        Variant  @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  variant        Variant      @relation(fields: [variantId], references: [id], onDelete: Restrict)
   skuSnapshot    String
   nameSnapshot   String
   quantity       Int
   unitPriceCents Int
-  taxCents       Int      @default(0)
-  discountCents  Int      @default(0)
+  taxCents       Int          @default(0)
+  discountCents  Int          @default(0)
   lineTotalCents Int
-  createdAt      DateTime @default(now())
+  returnLines    ReturnLine[]
+  createdAt      DateTime     @default(now())
 
   @@index([orderId])
   @@index([variantId])
@@ -583,6 +594,7 @@ enum PaymentMethod {
   CARD
   DEPOSIT
   BANK_TRANSFER
+  STORE_CREDIT
 }
 
 enum PaymentStatusDetail {
@@ -602,6 +614,16 @@ model Payment {
   method          PaymentMethod
   status          PaymentStatusDetail @default(PENDING)
   amountCents     Int
+  // Free-text tender reference (last-4 of a card, a check number, a gift
+  // reference) — distinct from providerRef, which is a payment *provider's*
+  // own transaction id (Stripe etc.), not applicable to in-person POS tenders.
+  reference       String?
+  // Attributes a specific tender entry to the cashier who rang it. Distinct
+  // from the indirect Payment -> Order -> Receipt -> RegisterSession ->
+  // openedBy join (docs/database/schema.md), which only identifies who opened
+  // the register, not who rang this particular tender within a split sale.
+  performedById   String?
+  performedBy     User?               @relation(fields: [performedById], references: [id], onDelete: SetNull)
   providerName    String?
   providerRef     String?
   providerEventId String?             @unique
@@ -613,6 +635,7 @@ model Payment {
 
   @@index([orderId])
   @@index([status])
+  @@index([performedById])
 }
 
 model Refund {
@@ -645,6 +668,117 @@ model ProviderEvent {
 
   @@index([paymentId])
   @@index([eventId])
+}
+
+// ---------------------------------------------------------------------------
+// Store credit — minimal append-only ledger, same shape as CashMovement/
+// StockMovement: balance is always computed as sum(amountCents) for a
+// customer, never stored directly. Issued only by a return/exchange
+// (reason ISSUED_FROM_RETURN); redeemed only as a POS split-payment tender
+// (reason REDEEMED, amountCents negative). Always tied to a Customer — store
+// credit can never be anonymous/guest, since there would be no way to redeem
+// it later.
+// ---------------------------------------------------------------------------
+
+enum StoreCreditReason {
+  ISSUED_FROM_RETURN
+  REDEEMED
+}
+
+model StoreCredit {
+  id                  String             @id @default(uuid())
+  customerId          String
+  customer            Customer           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  amountCents         Int // positive = issued, negative = redeemed
+  reason              StoreCreditReason
+  returnTransactionId String?
+  returnTransaction   ReturnTransaction? @relation(fields: [returnTransactionId], references: [id], onDelete: SetNull)
+  orderId             String?
+  order               Order?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  performedById       String?
+  performedBy         User?              @relation(fields: [performedById], references: [id], onDelete: SetNull)
+  createdAt           DateTime           @default(now())
+
+  @@index([customerId])
+  @@index([returnTransactionId])
+  @@index([orderId])
+}
+
+// ---------------------------------------------------------------------------
+// POS returns / exchanges. A ReturnTransaction is the header for one return
+// or exchange event against one original POS order; ReturnLine records each
+// returned OrderLine's quantity/condition/reason, and (for an exchange) the
+// replacement variant it was swapped for. "Previously returned quantity" per
+// OrderLine is deliberately NOT a stored column — it's computed by summing
+// ReturnLine.quantity grouped by orderLineId, same "never store what can be
+// computed" rule availableToSell already follows.
+// ---------------------------------------------------------------------------
+
+enum ReturnCondition {
+  SELLABLE
+  DAMAGED
+  QUARANTINED
+  REQUIRES_INSPECTION
+}
+
+enum ReturnReasonCode {
+  CUSTOMER_CHANGED_MIND
+  DAMAGED_PRODUCT
+  WRONG_PRODUCT
+  DEFECTIVE_PRODUCT
+  OTHER
+}
+
+model ReturnTransaction {
+  id                 String          @id @default(uuid())
+  orderId            String
+  order              Order           @relation("ReturnTransactionOrder", fields: [orderId], references: [id], onDelete: Restrict)
+  receiptNumber      String          @unique
+  registerSessionId  String
+  registerSession    RegisterSession @relation(fields: [registerSessionId], references: [id], onDelete: Restrict)
+  customerId         String?
+  customer           Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  // Set only when this return is one leg of an exchange — the new Order
+  // created for the replacement item(s), kept as its own real Order so
+  // existing order/receipt/payments machinery needs no special-casing.
+  exchangeOrderId    String?
+  exchangeOrder      Order?          @relation("ReturnTransactionExchangeOrder", fields: [exchangeOrderId], references: [id], onDelete: SetNull)
+  totalRefundCents   Int
+  reasonSummary      String?
+  lines              ReturnLine[]
+  storeCreditEntries StoreCredit[]
+  performedById      String?
+  performedBy        User?           @relation(fields: [performedById], references: [id], onDelete: SetNull)
+  createdAt          DateTime        @default(now())
+
+  @@index([orderId])
+  @@index([registerSessionId])
+  @@index([customerId])
+  @@index([exchangeOrderId])
+}
+
+model ReturnLine {
+  id                   String            @id @default(uuid())
+  returnTransactionId  String
+  returnTransaction    ReturnTransaction @relation(fields: [returnTransactionId], references: [id], onDelete: Cascade)
+  orderLineId          String
+  orderLine            OrderLine         @relation(fields: [orderLineId], references: [id], onDelete: Restrict)
+  variantId            String
+  variant              Variant           @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  quantity             Int
+  unitRefundCents      Int
+  condition            ReturnCondition
+  reasonCode           ReturnReasonCode
+  // Set only when this line is the "returned" half of an exchange — the
+  // variant it was swapped for (the replacement's own sale is a normal
+  // OrderLine on exchangeOrder, not modeled here).
+  replacementVariantId String?
+  replacementVariant   Variant?          @relation("ReturnLineReplacement", fields: [replacementVariantId], references: [id], onDelete: SetNull)
+  createdAt            DateTime          @default(now())
+
+  @@index([returnTransactionId])
+  @@index([orderLineId])
+  @@index([variantId])
 }
 
 // ---------------------------------------------------------------------------
@@ -689,6 +823,7 @@ model RegisterSession {
   discrepancyCents    Int?
   cashMovements       CashMovement[]
   receipts            Receipt[]
+  returnTransactions  ReturnTransaction[]
   openedAt            DateTime              @default(now())
   closedAt            DateTime?
   reopenRequestedById String?

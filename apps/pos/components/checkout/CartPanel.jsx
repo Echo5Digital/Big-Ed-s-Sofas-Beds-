@@ -3,6 +3,7 @@
 import { Minus, Plus, Trash2 } from "lucide-react";
 import { formatCents } from "@/lib/format";
 import Button from "../ui/Button";
+import ProductThumbnail from "../ui/ProductThumbnail";
 
 export default function CartPanel({ cart, onUpdateQuantity, onRemove, onTakePayment, subtotalCents }) {
   return (
@@ -20,16 +21,19 @@ export default function CartPanel({ cart, onUpdateQuantity, onRemove, onTakePaym
         <ul className="flex-1 overflow-y-auto">
           {cart.map((line) => (
             <li key={line.variantId} className="flex items-center justify-between gap-2 border-b border-black/6 py-3 first:pt-0">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-brand-charcoal">
-                  {line.productName} — {line.variantName}
-                </p>
-                <p className="text-xs text-brand-charcoal/50">
-                  {formatCents(line.priceCents)} each
-                  {line.compareAtCents && (
-                    <span className="ml-1.5 text-brand-charcoal/35 line-through">{formatCents(line.compareAtCents)}</span>
-                  )}
-                </p>
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <ProductThumbnail src={line.imageUrl} alt={line.productName} />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-brand-charcoal">
+                    {line.productName} — {line.variantName}
+                  </p>
+                  <p className="text-xs text-brand-charcoal/50">
+                    {formatCents(line.priceCents)} each
+                    {line.compareAtCents && (
+                      <span className="ml-1.5 text-brand-charcoal/35 line-through">{formatCents(line.compareAtCents)}</span>
+                    )}
+                  </p>
+                </div>
               </div>
 
               <div className="flex items-center gap-1.5">

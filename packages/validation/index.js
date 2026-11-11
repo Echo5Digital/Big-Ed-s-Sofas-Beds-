@@ -369,18 +369,26 @@ const registerReopenDenySchema = z.object({
 
 // Card tender is intentionally not a distinct success path yet — no payment
 // processor/terminal model has been selected (see
-// docs/requirements/open-questions.md). CASH and DEPOSIT are real, working
-// tenders; a request with method "CARD" is rejected at the route level with
-// a 501 rather than silently faked.
+// docs/requirements/open-questions.md). CASH, DEPOSIT, BANK_TRANSFER, and
+// STORE_CREDIT are real, working tenders that can be split across multiple
+// entries in one sale; a request containing a "CARD" entry is rejected at
+// the route level with a 501 rather than silently faked.
+const posPaymentEntrySchema = z.object({
+  method: z.enum(["CASH", "CARD", "DEPOSIT", "BANK_TRANSFER", "STORE_CREDIT"]),
+  amountCents: z.number().int().positive(),
+  reference: z.string().max(120).optional().nullable(),
+});
+
 const posSaleSchema = z
   .object({
     registerSessionId: z.string().uuid(),
     lines: z.array(cartLineSchema).min(1),
-    tenderMethod: z.enum(["CASH", "CARD", "DEPOSIT"]),
-    tenderedCents: z.number().int().nonnegative(),
-    depositAmountCents: z.number().int().positive().optional(),
+    payments: z.array(posPaymentEntrySchema).min(1),
     discountCents: z.number().int().nonnegative().optional(),
     discountReasonCode: z.string().min(1).max(120).optional(),
+    // Attach an existing customer found via search — mutually exclusive with
+    // `customer` below (service prefers customerId when both are present).
+    customerId: z.string().uuid().optional(),
     customer: z
       .object({
         email: z.string().email(),
@@ -403,6 +411,63 @@ const posRefundSchema = z.object({
   reasonCode: z.string().min(1).max(120),
   notes: z.string().max(1000).optional().nullable(),
   restock: z.boolean().optional(),
+  paymentId: z.string().uuid().optional().nullable(),
+});
+
+// ---------------------------------------------------------------------------
+// POS customer search / creation (checkout customer identification)
+// ---------------------------------------------------------------------------
+
+const posCustomerCreateSchema = z.object({
+  firstName: z.string().trim().min(1).max(100),
+  lastName: z.string().trim().min(1).max(100),
+  phone: z.string().trim().min(1, "Phone number is required").max(40),
+  email: z.string().trim().toLowerCase().email().max(254).optional().nullable(),
+  address: z
+    .object({
+      line1: z.string().trim().min(1).max(200),
+      line2: z.string().trim().max(200).optional().nullable(),
+      city: z.string().trim().min(1).max(120),
+      state: z.string().trim().min(1).max(60),
+      postalCode: z.string().trim().min(1).max(20),
+    })
+    .optional()
+    .nullable(),
+});
+
+// ---------------------------------------------------------------------------
+// POS returns / exchanges
+// ---------------------------------------------------------------------------
+
+const returnLineInputSchema = z.object({
+  orderLineId: z.string().uuid(),
+  quantity: z.number().int().positive(),
+  condition: z.enum(["SELLABLE", "DAMAGED", "QUARANTINED", "REQUIRES_INSPECTION"]),
+  reasonCode: z.enum([
+    "CUSTOMER_CHANGED_MIND",
+    "DAMAGED_PRODUCT",
+    "WRONG_PRODUCT",
+    "DEFECTIVE_PRODUCT",
+    "OTHER",
+  ]),
+  replacementVariantId: z.string().uuid().optional().nullable(),
+});
+
+const posReturnCreateSchema = z.object({
+  orderId: z.string().uuid(),
+  registerSessionId: z.string().uuid(),
+  lines: z.array(returnLineInputSchema).min(1),
+  refundMethod: z.enum(["CASH", "CARD", "DEPOSIT", "BANK_TRANSFER", "STORE_CREDIT"]).optional(),
+  paymentId: z.string().uuid().optional().nullable(),
+  exchangeReplacements: z
+    .array(
+      z.object({
+        variantId: z.string().uuid(),
+        quantity: z.number().int().positive(),
+      })
+    )
+    .optional(),
+  balancePayments: z.array(posPaymentEntrySchema).optional(),
 });
 
 module.exports = {
@@ -437,6 +502,9 @@ module.exports = {
   registerCloseSchema,
   registerReopenApproveSchema,
   registerReopenDenySchema,
+  posPaymentEntrySchema,
   posSaleSchema,
   posRefundSchema,
+  posCustomerCreateSchema,
+  posReturnCreateSchema,
 };
