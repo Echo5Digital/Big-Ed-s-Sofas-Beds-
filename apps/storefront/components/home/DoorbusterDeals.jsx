@@ -101,7 +101,7 @@ export default function DoorbusterDeals({ deals }) {
             className="hidden h-px max-w-64 flex-1 bg-linear-to-r from-transparent to-brand-red/60 sm:block"
           />
           <Link
-            href="/deals"
+            href="/grand-opening-sale"
             className="inline-flex items-center gap-2 rounded-full border-2 border-white/70 bg-linear-to-b from-[#e3101c] to-[#8f050f] px-6 py-3.5 text-base font-extrabold text-white shadow-[0_12px_26px_-8px_rgba(163,6,16,0.75),inset_0_1px_0_rgba(255,255,255,0.35)] transition duration-300 hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-red sm:px-9 sm:text-xl"
           >
             Shop All Grand Opening Deals

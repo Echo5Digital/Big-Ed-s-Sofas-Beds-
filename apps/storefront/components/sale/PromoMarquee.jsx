@@ -3,42 +3,79 @@ import Image from "next/image";
 // The Grand Opening "Door Buster" flyers, shown as an endlessly scrolling strip.
 // The flyers carry their own prices/SKUs in the artwork, so they are plain
 // images (not linked to a live product). Order is the order they are shown in.
+// Files are the ~100 KB JPEG exports in /public.
 const FLYERS = [
   {
-    src: "/1000008227.png",
-    width: 1199,
-    height: 1312,
-    alt: "Grand Opening Door Buster: Lus Collection queen platform bed with footboard storage and nightstand",
-  },
-  {
-    src: "/1000008247.png",
-    width: 1536,
-    height: 1024,
-    alt: "Grand Opening Door Buster: Lus Collection 4-piece bedroom set",
-  },
-  {
-    src: "/1000008225.png",
-    width: 1199,
-    height: 1312,
-    alt: "Grand Opening Door Buster: Ted Collection upholstered queen bed",
-  },
-  {
-    src: "/1000008222.png",
+    src: "/1000008222-100kb.jpeg",
     width: 1199,
     height: 1312,
     alt: "Grand Opening Door Buster: Cotter Collection queen bed",
   },
   {
-    src: "/1000008221.png",
+    src: "/1000008225-100kb.jpeg",
+    width: 1199,
+    height: 1312,
+    alt: "Grand Opening Door Buster: Ted Collection upholstered queen bed",
+  },
+  {
+    src: "/1000008247-100kb.jpeg",
+    width: 1500,
+    height: 1000,
+    alt: "Grand Opening Door Buster: Lus Collection 4-piece bedroom set",
+  },
+  {
+    src: "/1000008237-100kb.jpeg",
+    width: 1199,
+    height: 1312,
+    alt: "Grand Opening Door Buster: Phyll Collection reclining chair and two-piece sofa and loveseat with cup holders",
+  },
+  {
+    src: "/1000008221-100kb.jpeg",
     width: 1199,
     height: 1312,
     alt: "Grand Opening Door Buster: Heir Collection queen platform bed, available in two colors",
   },
   {
-    src: "/1000008229.png",
+    src: "/1000008231-100kb.jpeg",
+    width: 1199,
+    height: 1312,
+    alt: "Grand Opening Door Buster: Accent Collection power lift chair in brown",
+  },
+  {
+    src: "/1000008276-100kb.jpeg",
+    width: 1500,
+    height: 1000,
+    alt: "Grand Opening Door Buster: Radiance Collection power recliner and sofa and loveseat set",
+  },
+  {
+    src: "/1000008229-100kb.jpeg",
     width: 1199,
     height: 1312,
     alt: "Grand Opening Door Buster: Beech Collection queen bed",
+  },
+  {
+    src: "/1000008280-100kb.jpeg",
+    width: 1500,
+    height: 1000,
+    alt: "Grand Opening Door Buster: Glisslyn Collection five-piece table set",
+  },
+  {
+    src: "/1000008235-100kb.jpeg",
+    width: 1199,
+    height: 1312,
+    alt: "Grand Opening Door Buster: Blush Collection two-piece reversible sectional in pink velvet with matching ottoman",
+  },
+  {
+    src: "/1000008233-100kb.jpeg",
+    width: 1199,
+    height: 1312,
+    alt: "Grand Opening Door Buster: Ela Collection two-piece reversible sectional with pullout bed",
+  },
+  {
+    src: "/1000008278-100kb.jpeg",
+    width: 1500,
+    height: 1000,
+    alt: "Grand Opening Door Buster: Ramoan Collection three-piece power reclining sectional",
   },
 ];
 
@@ -48,7 +85,11 @@ const FLYERS = [
 // holds the flyers twice, so even on a wide screen it is wider than the
 // viewport and no gap ever shows. Copies other than the first set are
 // aria-hidden so each flyer is announced once.
-function FlyerSet({ decorative = false, repeat = false, eagerCount = 0 }) {
+//
+// Every flyer loads eagerly: browser lazy-loading doesn't reliably kick in for
+// images inside a clipped, animating strip, which left empty frames sliding
+// past. The files are small (~100 KB) and the repeated copies share one request.
+function FlyerSet({ decorative = false, repeat = false }) {
   return (
     <ul
       aria-hidden={decorative || undefined}
@@ -61,9 +102,9 @@ function FlyerSet({ decorative = false, repeat = false, eagerCount = 0 }) {
             alt={decorative ? "" : flyer.alt}
             width={flyer.width}
             height={flyer.height}
-            sizes={flyer.width > flyer.height ? "(max-width: 640px) 360px, 480px" : "(max-width: 640px) 220px, 300px"}
-            loading={index < eagerCount ? "eager" : "lazy"}
-            className={`h-60 w-auto rounded-2xl shadow-[0_14px_30px_-10px_rgba(0,0,0,0.6)] ring-2 ring-white/25 sm:h-72 lg:h-80 ${
+            sizes={flyer.width > flyer.height ? "(max-width: 640px) 432px, 624px" : "(max-width: 640px) 264px, 380px"}
+            loading="eager"
+            className={`h-72 w-auto rounded-2xl shadow-[0_14px_30px_-10px_rgba(0,0,0,0.6)] ring-2 ring-white/25 sm:h-80 lg:h-104 ${
               index % 2 ? "rotate-[1.2deg]" : "rotate-[-1.2deg]"
             }`}
           />
@@ -79,11 +120,15 @@ function Group({ decorative = false }) {
       aria-hidden={decorative || undefined}
       className={`marquee-group flex min-w-screen shrink-0 items-center justify-around py-4 ${decorative ? "marquee-dup" : ""}`}
     >
-      <FlyerSet decorative={decorative} eagerCount={decorative ? 0 : 4} />
+      <FlyerSet decorative={decorative} />
       <FlyerSet decorative repeat />
     </div>
   );
 }
+
+// One full pass takes longer the more flyers there are, so the strip keeps the
+// same scroll speed as it grows (~13.5s per flyer).
+const MARQUEE_DURATION = `${FLYERS.length * 13.5}s`;
 
 export default function PromoMarquee() {
   return (
@@ -106,7 +151,7 @@ export default function PromoMarquee() {
       </p>
 
       <div className="marquee-viewport marquee-mask overflow-hidden">
-        <div className="marquee-track flex w-max" style={{ "--marquee-duration": "60s" }}>
+        <div className="marquee-track flex w-max" style={{ "--marquee-duration": MARQUEE_DURATION }}>
           <Group />
           <Group decorative />
         </div>

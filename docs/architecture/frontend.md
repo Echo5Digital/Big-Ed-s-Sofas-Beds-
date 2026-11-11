@@ -65,15 +65,22 @@ components/
                      ShowroomSection, TestimonialsSection, FinancingBanner,
                      NewsletterSignup
   sale/             /grand-opening-sale sections: SaleHeader, PromoMarquee (the
-                     six Grand Opening flyers from public/ as a CSS-only endless
-                     strip; keyframes in globals.css, pauses on hover, static
-                     and swipeable under prefers-reduced-motion), SaleProducts
-                     (blue "Bedroom Specials" bar, product grid, "More
-                     Doorbuster Deals" banner). Its products are chosen live by
-                     lib/grandOpeningSale.js: up to 10 in-stock, well-photographed,
-                     marked-down beds / bedroom sets from the beds and
-                     bedroom-furniture categories (best savings first, one per
-                     collection).
+                     twelve Grand Opening flyers — ~100 KB JPEGs in public/ — as
+                     a CSS-only endless strip; all load eagerly because lazy
+                     loading is unreliable in an animating strip; keyframes in
+                     globals.css, pauses on hover, static and swipeable under
+                     prefers-reduced-motion), SaleProducts (blue "Bedroom
+                     Specials" bar and product grid, then LivingRoomSpecials,
+                     then the "More Doorbuster Deals" banner), SpecialsHeader
+                     (the shared blue title bar). Bedroom products are chosen
+                     live by lib/grandOpeningSale.js: up to 10 in-stock,
+                     well-photographed, marked-down beds / bedroom sets from the
+                     beds and bedroom-furniture categories (best savings first,
+                     one per collection). Living room products are a hand-picked
+                     slug list in lib/livingRoomSale.js (same approach as
+                     lib/doorbusterDeals.js: price, compare-at price, photo and
+                     stock are fetched live, missing/out-of-stock products are
+                     skipped).
   ui/               Reusable primitives: Button, Container, SectionHeading,
                      StarRating, Price, BearMascot
 
