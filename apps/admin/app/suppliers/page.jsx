@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { PlusCircle } from "lucide-react";
+import { PlusCircle, Power, PowerOff } from "lucide-react";
 import RequireAuth from "@/components/layout/RequireAuth";
 import PageHeader from "@/components/ui/PageHeader";
 import DataTable from "@/components/ui/DataTable";
@@ -15,7 +15,6 @@ function NewSupplierModal({ open, onClose, onDone }) {
   const [contactName, setContactName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [leadTimeDays, setLeadTimeDays] = useState("");
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -29,7 +28,6 @@ function NewSupplierModal({ open, onClose, onDone }) {
         contactName: contactName || undefined,
         email: email || undefined,
         phone: phone || undefined,
-        leadTimeDays: leadTimeDays ? Number(leadTimeDays) : undefined,
       });
       onDone();
     } catch (err) {
@@ -78,18 +76,8 @@ function NewSupplierModal({ open, onClose, onDone }) {
             />
           </div>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-brand-charcoal">Lead time (days)</label>
-          <input
-            type="number"
-            min="0"
-            value={leadTimeDays}
-            onChange={(e) => setLeadTimeDays(e.target.value)}
-            className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-          />
-        </div>
 
-        {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        {error &&<p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
         <div className="flex gap-3">
           <Button type="submit" disabled={submitting}>
@@ -109,6 +97,8 @@ function SuppliersContent() {
   const [suppliers, setSuppliers] = useState(null);
   const [error, setError] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [togglingId, setTogglingId] = useState(null);
+  const canWrite = hasPermission("purchasing:write");
 
   const load = useCallback(() => {
     api
@@ -121,21 +111,57 @@ function SuppliersContent() {
     load();
   }, [load]);
 
+  async function toggleActive(supplier) {
+    setError(null);
+    setTogglingId(supplier.id);
+    try {
+      const data = await api.patch(`/purchasing/suppliers/${supplier.id}`, { isActive: !supplier.isActive });
+      setSuppliers((prev) => prev.map((s) => (s.id === data.supplier.id ? data.supplier : s)));
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "Failed to update supplier.");
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
   const columns = [
     { key: "name", header: "Supplier" },
     { key: "contactName", header: "Contact", render: (s) => s.contactName ?? "—" },
     { key: "email", header: "Email", render: (s) => s.email ?? "—" },
     { key: "phone", header: "Phone", render: (s) => s.phone ?? "—" },
-    { key: "leadTimeDays", header: "Lead time", render: (s) => (s.leadTimeDays ? `${s.leadTimeDays} days` : "—") },
+    {
+      key: "isActive",
+      header: "Status",
+      // The button shows the supplier's current state ("Activated" /
+      // "Deactivated") and a click flips it. Read-only staff see the same
+      // wording as plain text.
+      render: (s) =>
+        canWrite ? (
+          <Button
+            variant="outline"
+            size="sm"
+            icon={s.isActive ? Power : PowerOff}
+            title={s.isActive ? "Click to deactivate" : "Click to activate"}
+            disabled={togglingId === s.id}
+            onClick={() => toggleActive(s)}
+          >
+            {s.isActive ? "Activated" : "Deactivated"}
+          </Button>
+        ) : s.isActive ? (
+          "Activated"
+        ) : (
+          "Deactivated"
+        ),
+    },
   ];
 
   return (
     <div>
       <PageHeader
         title="Suppliers"
-        subtitle="Vendor profiles and lead times"
+        subtitle="Vendor profiles and contacts"
         action={
-          hasPermission("purchasing:write") && (
+          canWrite && (
             <Button icon={PlusCircle} onClick={() => setModalOpen(true)}>
               New Supplier
             </Button>
@@ -145,7 +171,13 @@ function SuppliersContent() {
 
       {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-      <DataTable columns={columns} rows={suppliers} emptyMessage="No suppliers yet." />
+      <DataTable
+        columns={columns}
+        rows={suppliers}
+        emptyMessage="No suppliers yet."
+        // Deactivated suppliers get a very light red row.
+        rowClassName={(s) => (s.isActive ? undefined : "bg-red-50/70 hover:bg-red-100/60")}
+      />
 
       <NewSupplierModal
         open={modalOpen}

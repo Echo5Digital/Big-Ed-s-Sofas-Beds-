@@ -2,6 +2,7 @@ const express = require("express");
 const { prisma } = require("@big-eds/database");
 const {
   supplierCreateSchema,
+  supplierUpdateSchema,
   purchaseOrderCreateSchema,
   purchaseOrderApproveSchema,
   goodsReceiptCreateSchema,
@@ -41,6 +42,7 @@ router.post(
 router.patch(
   "/suppliers/:id",
   requirePermission("purchasing:write"),
+  validateBody(supplierUpdateSchema),
   asyncHandler(async (req, res) => {
     const supplier = await prisma.supplier.update({ where: { id: req.params.id }, data: req.body });
     res.json({ supplier });

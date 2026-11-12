@@ -286,6 +286,14 @@ const supplierCreateSchema = z.object({
   notes: z.string().max(1000).optional().nullable(),
 });
 
+// PATCH /purchasing/suppliers/:id — any subset of the create fields, plus
+// isActive (the Activate / Deactivate button on the admin Suppliers page).
+// Keep in sync with the Supplier model in schema.prisma.
+const supplierUpdateSchema = supplierCreateSchema
+  .partial()
+  .extend({ isActive: z.boolean().optional() })
+  .refine((value) => Object.keys(value).length > 0, { message: "At least one field is required" });
+
 const purchaseOrderCreateSchema = z.object({
   supplierId: z.string().uuid(),
   locationId: z.string().uuid(),
@@ -504,6 +512,7 @@ module.exports = {
   countCreateSchema,
   countSubmitSchema,
   supplierCreateSchema,
+  supplierUpdateSchema,
   purchaseOrderCreateSchema,
   purchaseOrderApproveSchema,
   goodsReceiptCreateSchema,

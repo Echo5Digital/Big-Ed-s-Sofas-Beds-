@@ -19,10 +19,12 @@ export default function Button({
   disabled = false,
   onClick,
   icon: Icon,
+  title,
 }) {
   return (
     <button
       type={type}
+      title={title}
       disabled={disabled}
       onClick={onClick}
       className={`inline-flex items-center justify-center gap-2 rounded-full font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${VARIANTS[variant]} ${SIZES[size]} ${className}`}
