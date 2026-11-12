@@ -159,6 +159,9 @@ const variantFields = {
   priceCents: z.number().int().nonnegative(),
   compareAtCents: z.number().int().nonnegative().optional().nullable(),
   costCents: z.number().int().nonnegative().optional().nullable(),
+  // Percentage, e.g. 8.25 for 8.25% — defaults to 8.25 (DB column default)
+  // when omitted, editable per product from the admin form's Inventory tab.
+  taxRatePercent: z.number().nonnegative().max(100).optional(),
 };
 
 const variantCreateSchema = z.object(variantFields).refine(comparePriceAboveSale, comparePriceRefinement);
