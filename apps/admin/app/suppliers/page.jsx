@@ -15,7 +15,6 @@ function NewSupplierModal({ open, onClose, onDone }) {
   const [contactName, setContactName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [leadTimeDays, setLeadTimeDays] = useState("");
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -29,7 +28,6 @@ function NewSupplierModal({ open, onClose, onDone }) {
         contactName: contactName || undefined,
         email: email || undefined,
         phone: phone || undefined,
-        leadTimeDays: leadTimeDays ? Number(leadTimeDays) : undefined,
       });
       onDone();
     } catch (err) {
@@ -78,18 +76,8 @@ function NewSupplierModal({ open, onClose, onDone }) {
             />
           </div>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-brand-charcoal">Lead time (days)</label>
-          <input
-            type="number"
-            min="0"
-            value={leadTimeDays}
-            onChange={(e) => setLeadTimeDays(e.target.value)}
-            className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-          />
-        </div>
 
-        {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        {error &&<p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
         <div className="flex gap-3">
           <Button type="submit" disabled={submitting}>
@@ -141,27 +129,28 @@ function SuppliersContent() {
     { key: "contactName", header: "Contact", render: (s) => s.contactName ?? "—" },
     { key: "email", header: "Email", render: (s) => s.email ?? "—" },
     { key: "phone", header: "Phone", render: (s) => s.phone ?? "—" },
-    { key: "leadTimeDays", header: "Lead time", render: (s) => (s.leadTimeDays ? `${s.leadTimeDays} days` : "—") },
     {
       key: "isActive",
       header: "Status",
-      // Staff who can edit suppliers get the Activate / Deactivate button;
-      // read-only staff just see the current state.
+      // The button shows the supplier's current state ("Activated" /
+      // "Deactivated") and a click flips it. Read-only staff see the same
+      // wording as plain text.
       render: (s) =>
         canWrite ? (
           <Button
             variant="outline"
             size="sm"
-            icon={s.isActive ? PowerOff : Power}
+            icon={s.isActive ? Power : PowerOff}
+            title={s.isActive ? "Click to deactivate" : "Click to activate"}
             disabled={togglingId === s.id}
             onClick={() => toggleActive(s)}
           >
-            {s.isActive ? "Deactivate" : "Activate"}
+            {s.isActive ? "Activated" : "Deactivated"}
           </Button>
         ) : s.isActive ? (
-          "Active"
+          "Activated"
         ) : (
-          "Inactive"
+          "Deactivated"
         ),
     },
   ];
@@ -170,7 +159,7 @@ function SuppliersContent() {
     <div>
       <PageHeader
         title="Suppliers"
-        subtitle="Vendor profiles and lead times"
+        subtitle="Vendor profiles and contacts"
         action={
           canWrite && (
             <Button icon={PlusCircle} onClick={() => setModalOpen(true)}>
