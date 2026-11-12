@@ -27,7 +27,11 @@ function NewPurchaseOrderContent() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    api.get("/purchasing/suppliers").then((data) => setSuppliers(data.suppliers)).catch(() => setSuppliers([]));
+    // Deactivated suppliers can't be chosen for a new PO.
+    api
+      .get("/purchasing/suppliers")
+      .then((data) => setSuppliers(data.suppliers.filter((s) => s.isActive)))
+      .catch(() => setSuppliers([]));
     api.getCached("/inventory/locations").then((data) => setLocations(data.locations)).catch(() => setLocations([]));
   }, []);
 

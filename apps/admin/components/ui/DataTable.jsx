@@ -15,6 +15,11 @@ const INTERACTIVE_SELECTOR = "a, button, input, select, textarea, label, [role='
 // inside one cell). Keep a real <Link> in one of the cells as well — it gives
 // keyboard users a focusable target and supports "open in new tab".
 //
+// Optional `rowClassName(row)` returns Tailwind classes that tint a row (e.g.
+// a deactivated supplier). When it returns a string, that string replaces the
+// default hover background, so include its own hover: class. Return undefined
+// for the normal look.
+//
 // Optional `stickyScrollbar` is for long tables: the table's own horizontal
 // scrollbar sits at the very bottom of the table, so on a long list it is
 // off-screen until the page is scrolled to the end. With this on, a synced
@@ -25,6 +30,7 @@ export default function DataTable({
   rows,
   emptyMessage = "No records found.",
   rowHref,
+  rowClassName,
   stickyScrollbar = false,
 }) {
   const router = useRouter();
@@ -110,11 +116,12 @@ export default function DataTable({
           <tbody>
             {rows.map((row, i) => {
               const href = rowHref ? rowHref(row) : null;
+              const tint = rowClassName ? rowClassName(row) : undefined;
               return (
                 <tr
                   key={row.id ?? i}
                   onClick={href ? (event) => handleRowClick(event, href) : undefined}
-                  className={`border-b border-black/5 last:border-0 hover:bg-gray-50${href ? " cursor-pointer" : ""}`}
+                  className={`border-b border-black/5 last:border-0 ${tint ?? "hover:bg-gray-50"}${href ? " cursor-pointer" : ""}`}
                 >
                   {columns.map((col) => (
                     <td key={col.key} className="whitespace-nowrap px-4 py-3 text-brand-charcoal">
