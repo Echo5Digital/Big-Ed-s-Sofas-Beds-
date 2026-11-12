@@ -9,6 +9,7 @@
     "migrate:deploy": "prisma migrate deploy",
     "seed": "node prisma/seed.js",
     "backfill:compare-at-prices": "node prisma/backfill-compare-at-prices.js",
+    "backfill:employee-ids": "node prisma/backfill-employee-ids.js",
     "studio": "prisma studio"
   },
   "prisma": {

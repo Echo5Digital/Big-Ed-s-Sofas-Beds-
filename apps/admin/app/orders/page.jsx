@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import RequireAuth from "@/components/layout/RequireAuth";
 import PageHeader from "@/components/ui/PageHeader";
 import DataTable from "@/components/ui/DataTable";
@@ -62,7 +63,15 @@ function OrdersContent() {
   }, [load]);
 
   const columns = [
-    { key: "orderNumber", header: "Order #" },
+    {
+      key: "orderNumber",
+      header: "Order #",
+      render: (o) => (
+        <Link href={`/orders/${o.id}`} className="font-semibold text-brand-red hover:text-brand-red-dark">
+          {o.orderNumber}
+        </Link>
+      ),
+    },
     { key: "channel", header: "Channel" },
     { key: "customer", header: "Customer", render: (o) => (o.customer ? `${o.customer.firstName} ${o.customer.lastName}` : "—") },
     { key: "total", header: "Total", render: (o) => formatCentsAsCurrency(o.totalCents) },
@@ -95,7 +104,7 @@ function OrdersContent() {
 
       {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-      <DataTable columns={columns} rows={orders} emptyMessage="No orders yet." />
+      <DataTable columns={columns} rows={orders} rowHref={(o) => `/orders/${o.id}`} emptyMessage="No orders yet." />
     </div>
   );
 }

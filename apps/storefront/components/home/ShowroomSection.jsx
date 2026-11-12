@@ -2,6 +2,7 @@ import Image from "next/image";
 import { ArrowRight } from "lucide-react";
 import Container from "@/components/ui/Container";
 import Button from "@/components/ui/Button";
+import { siteConfig } from "@/lib/mock-data/site-config";
 
 // Natural aspect ratios (width/height) from each source file — the badges
 // are wide ovals, not squares, so width/height must track the real images
@@ -55,7 +56,9 @@ export default function ShowroomSection() {
           </ul>
 
           <Button
-            href="/contact"
+            href={siteConfig.mapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
             variant="gold"
             size="lg"
             icon={ArrowRight}

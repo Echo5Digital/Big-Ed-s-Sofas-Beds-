@@ -224,4 +224,143 @@ router.get(
   })
 );
 
+// Richest order shape in the admin app — every relation a staff member would
+// need to answer "what happened on this order" without jumping between
+// screens: priced lines (with product image), the full payment/refund
+// ledger, fulfillment records, and the append-only status timeline.
+// deliveryAddressId and Delivery.addressId are both loose string columns,
+// not Prisma relations (see schema.prisma), so the Address rows they point
+// at are fetched separately and matched up in serialization.
+const ADMIN_ORDER_DETAIL_INCLUDE = {
+  lines: {
+    include: {
+      variant: {
+        include: {
+          product: { include: { images: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } } } },
+        },
+      },
+    },
+  },
+  payments: {
+    include: { performedBy: { select: { id: true, firstName: true, lastName: true } } },
+    orderBy: { createdAt: "asc" },
+  },
+  refunds: { orderBy: { createdAt: "asc" } },
+  customer: { include: { addresses: true } },
+  receipts: { orderBy: { createdAt: "asc" } },
+  deliveries: { orderBy: { createdAt: "asc" } },
+  pickups: { orderBy: { createdAt: "asc" } },
+  statusHistory: { orderBy: { createdAt: "asc" } },
+};
+
+function serializeAdminOrderDetail(order, addressById) {
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    channel: order.channel,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    fulfillmentStatus: order.fulfillmentStatus,
+    fulfillmentMethod: order.fulfillmentMethod,
+    subtotalCents: order.subtotalCents,
+    taxCents: order.taxCents,
+    deliveryFeeCents: order.deliveryFeeCents,
+    discountCents: order.discountCents,
+    totalCents: order.totalCents,
+    deliveryNotes: order.deliveryNotes,
+    assemblyNotes: order.assemblyNotes,
+    scheduledDate: order.scheduledDate,
+    deliveryAddress: addressById.get(order.deliveryAddressId) ?? null,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+    customer: order.customer
+      ? {
+          id: order.customer.id,
+          email: order.customer.email,
+          phone: order.customer.phone,
+          firstName: order.customer.firstName,
+          lastName: order.customer.lastName,
+          addresses: order.customer.addresses,
+        }
+      : null,
+    lines: order.lines.map((l) => ({
+      id: l.id,
+      sku: l.skuSnapshot,
+      name: l.nameSnapshot,
+      imageUrl: l.variant?.product?.images?.[0]?.url ?? null,
+      quantity: l.quantity,
+      unitPriceCents: l.unitPriceCents,
+      taxCents: l.taxCents,
+      discountCents: l.discountCents,
+      lineTotalCents: l.lineTotalCents,
+    })),
+    payments: order.payments.map((p) => ({
+      id: p.id,
+      method: p.method,
+      status: p.status,
+      amountCents: p.amountCents,
+      reference: p.reference,
+      providerName: p.providerName,
+      providerRef: p.providerRef,
+      failureReason: p.failureReason,
+      performedBy: p.performedBy ? { id: p.performedBy.id, firstName: p.performedBy.firstName, lastName: p.performedBy.lastName } : null,
+      createdAt: p.createdAt,
+    })),
+    refunds: order.refunds.map((r) => ({
+      id: r.id,
+      amountCents: r.amountCents,
+      reasonCode: r.reasonCode,
+      notes: r.notes,
+      paymentId: r.paymentId,
+      createdAt: r.createdAt,
+    })),
+    receipts: order.receipts.map((r) => ({ id: r.id, receiptNumber: r.receiptNumber, createdAt: r.createdAt })),
+    deliveries: order.deliveries.map((d) => ({
+      id: d.id,
+      feeCents: d.feeCents,
+      scheduledDate: d.scheduledDate,
+      deliveredAt: d.deliveredAt,
+      notes: d.notes,
+      address: addressById.get(d.addressId) ?? null,
+      createdAt: d.createdAt,
+    })),
+    pickups: order.pickups.map((p) => ({
+      id: p.id,
+      scheduledDate: p.scheduledDate,
+      pickedUpAt: p.pickedUpAt,
+      notes: p.notes,
+      createdAt: p.createdAt,
+    })),
+    statusHistory: order.statusHistory.map((h) => ({
+      id: h.id,
+      field: h.field,
+      fromValue: h.fromValue,
+      toValue: h.toValue,
+      note: h.note,
+      createdAt: h.createdAt,
+    })),
+  };
+}
+
+router.get(
+  "/admin/orders/:id",
+  requireAuth,
+  requirePermission("orders:read"),
+  asyncHandler(async (req, res) => {
+    const order = await prisma.order.findUnique({
+      where: { id: req.params.id },
+      include: ADMIN_ORDER_DETAIL_INCLUDE,
+    });
+    if (!order) throw new NotFoundError("Order not found");
+
+    const addressIds = [order.deliveryAddressId, ...order.deliveries.map((d) => d.addressId)].filter(Boolean);
+    const addresses = addressIds.length
+      ? await prisma.address.findMany({ where: { id: { in: addressIds } } })
+      : [];
+    const addressById = new Map(addresses.map((a) => [a.id, a]));
+
+    res.json({ order: serializeAdminOrderDetail(order, addressById) });
+  })
+);
+
 module.exports = router;

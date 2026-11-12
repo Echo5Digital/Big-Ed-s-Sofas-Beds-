@@ -41,6 +41,7 @@ function toPublicUser(user) {
     email: user.email,
     firstName: user.firstName,
     lastName: user.lastName,
+    employeeId: user.employeeId,
     roles: user.roles.map((ur) => ur.role.name),
     permissions: Array.from(permissions),
   };
@@ -142,6 +143,7 @@ router.get(
         email: req.user.email,
         firstName: req.user.firstName,
         lastName: req.user.lastName,
+        employeeId: req.user.employeeId,
         roles: req.user.roles,
         permissions: Array.from(req.user.permissions),
       },

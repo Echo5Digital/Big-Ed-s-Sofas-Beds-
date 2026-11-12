@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { CheckCircle2, Printer } from "lucide-react";
 import { formatCents } from "@/lib/format";
 import { storeInfo } from "@/lib/storeInfo";
+import { useAuth } from "@/lib/hooks/useAuth";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
 
@@ -19,7 +20,7 @@ const TENDER_LABELS = {
   STORE_CREDIT: "Store credit",
 };
 
-function ReceiptPrintable({ sale }) {
+function ReceiptPrintable({ sale, cashierName, cashierEmployeeId }) {
   if (typeof document === "undefined") return null;
   const { order, payments, receipt, changeDueCents } = sale;
   const totalPaidCents = payments.reduce((sum, p) => sum + p.amountCents, 0);
@@ -43,8 +44,12 @@ function ReceiptPrintable({ sale }) {
           </span>
           <span>{printedAt.toLocaleString()}</span>
         </div>
-        <div className="pb-2 font-mono text-[10px] text-black/70">
+        <div className="pb-1 font-mono text-[10px] text-black/70">
           Order <span className="font-semibold text-black">{order.orderNumber}</span>
+        </div>
+        <div className="pb-2 font-mono text-[10px] text-black/70">
+          Cashier: {cashierName}
+          {cashierEmployeeId ? ` (${cashierEmployeeId})` : ""}
         </div>
 
         <div className="border-t border-dashed border-black/50" />
@@ -112,6 +117,10 @@ function ReceiptPrintable({ sale }) {
 }
 
 export default function ReceiptView({ open, onClose, sale }) {
+  const { user } = useAuth();
+  const cashierName = user ? `${user.firstName} ${user.lastName}` : "—";
+  const cashierEmployeeId = user?.employeeId ?? null;
+
   if (!sale) return null;
   const { order, payments, receipt, changeDueCents } = sale;
   const totalPaidCents = payments.reduce((sum, p) => sum + p.amountCents, 0);
@@ -193,7 +202,7 @@ export default function ReceiptView({ open, onClose, sale }) {
         </div>
       </Modal>
 
-      <ReceiptPrintable sale={sale} />
+      <ReceiptPrintable sale={sale} cashierName={cashierName} cashierEmployeeId={cashierEmployeeId} />
     </>
   );
 }

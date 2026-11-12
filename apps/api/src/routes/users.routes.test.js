@@ -3,7 +3,7 @@ const { prisma } = require("@big-eds/database");
 
 // Runs against the real dev database (same convention as auth.routes.test.js
 // and pos.service.test.js — no Prisma mock layer, no HTTP test harness in
-// this codebase). Role.name is a fixed Prisma enum (ADMIN | MANAGER | STAFF |
+// this codebase). Role.name is a fixed Prisma enum (ADMIN | MANAGER | SALESMAN |
 // CASHIER), not free-text, so tests attach to the real seeded roles rather
 // than creating new ones.
 //

@@ -7,5 +7,5 @@
 export const storeInfo = {
   name: "Big Ed's Sofas & Beds",
   phone: "(863) 555-0123",
-  address: "17535 US Highway 27, Lake Wales, FL 33853",
+  address: "17535 Tomball Pkwy, Houston, TX 77064",
 };

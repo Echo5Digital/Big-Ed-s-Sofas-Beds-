@@ -14,6 +14,7 @@ import { useDemoCart } from "@/components/layout/DemoCartProvider";
 import { formatCurrency } from "@/utils/formatCurrency";
 import { api, ApiClientError } from "@/lib/api/client";
 import { getCurrentCustomer } from "@/lib/api/customerAuth";
+import { siteConfig } from "@/lib/mock-data/site-config";
 
 const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
   ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
@@ -333,8 +334,8 @@ export default function CheckoutPage() {
 
               {fulfillment === "pickup" && (
                 <p className="mt-4 rounded-lg bg-brand-cream px-4 py-3 text-sm text-brand-charcoal/70">
-                  Pickup at 17535 US Highway 27, Lake Wales, FL 33853. We&rsquo;ll call or email to
-                  schedule a pickup window once your order is ready.
+                  Pickup at {siteConfig.address.line1}, {siteConfig.address.line2}. We&rsquo;ll call or email
+                  to schedule a pickup window once your order is ready.
                 </p>
               )}
             </fieldset>

@@ -11,7 +11,7 @@ const { prisma } = require("@big-eds/database");
 //
 // Attaches the test user to the real, seeded CASHIER role rather than
 // creating a new role — Role.name is a fixed Prisma enum (ADMIN | MANAGER |
-// STAFF | CASHIER), not a free-text field.
+// SALESMAN | CASHIER), not a free-text field.
 describe("auth.routes — login/refresh user shape", () => {
   const testEmail = `auth-shape-test-${Date.now()}@example.com`;
   const testPassword = "TestPassword123!";

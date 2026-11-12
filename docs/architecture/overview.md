@@ -93,7 +93,7 @@ In-Store POS (apps/pos, :3002)         ─┘
   immediately rather than waiting for token expiry.
 - Four seeded roles: `ADMIN` (all permissions), `MANAGER` (catalog, inventory,
   purchasing including approval, orders, reports, plus
-  `pos:register:approve-reopen`), `STAFF` (read-only plus PO receiving),
+  `pos:register:approve-reopen`), `SALESMAN` (read-only plus PO receiving),
   `CASHIER` (catalog/inventory/orders read plus `pos:*` — register open/close,
   sell, refund). See `packages/database/prisma/seed.js` for the exact
   permission grants and `docs/database/schema.md` for the full permission

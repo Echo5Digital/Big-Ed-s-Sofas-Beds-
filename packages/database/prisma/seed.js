@@ -41,7 +41,7 @@ const ROLE_PERMISSIONS = {
     "reports:read",
     "pos:register:approve-reopen",
   ],
-  STAFF: [
+  SALESMAN: [
     "catalog:read",
     "inventory:read",
     "purchasing:read",
@@ -71,7 +71,7 @@ async function main() {
   }
 
   const roles = {};
-  for (const roleName of ["ADMIN", "MANAGER", "STAFF", "CASHIER"]) {
+  for (const roleName of ["ADMIN", "MANAGER", "SALESMAN", "CASHIER"]) {
     roles[roleName] = await prisma.role.upsert({
       where: { name: roleName },
       update: {},
@@ -118,15 +118,30 @@ async function main() {
   const cashierPassword = process.env.SEED_CASHIER_PASSWORD || "ChangeMe123!";
   const cashierPasswordHash = await bcrypt.hash(cashierPassword, 12);
 
+  // Mirrors apps/api/src/lib/employeeId.js's CSH### numbering (not imported
+  // directly — this script has no dependency on apps/api, same reasoning as
+  // ROLE_PERMISSIONS above duplicating rather than importing). Only runs once
+  // per fresh database via upsert, so there's no real concurrency to race
+  // against here the way the API route needs createWithSequentialNumber for.
+  const existingCashierId = (await prisma.user.findUnique({ where: { email: cashierEmail } }))?.employeeId;
+  const cashierEmployeeId =
+    existingCashierId ?? `CSH${String((await prisma.user.count({ where: { employeeId: { startsWith: "CSH" } } })) + 1).padStart(3, "0")}`;
+
   const cashierUser = await prisma.user.upsert({
     where: { email: cashierEmail },
-    update: {},
+    // update also sets employeeId (unlike every other upsert in this file,
+    // which uses update: {}) specifically to backfill it onto a cashier row
+    // that already existed before this field did — cashierEmployeeId above
+    // is a no-op when one's already set, so this never renumbers on a normal
+    // repeat run.
+    update: { employeeId: cashierEmployeeId },
     create: {
       email: cashierEmail,
       passwordHash: cashierPasswordHash,
       firstName: "Showroom",
       lastName: "Cashier",
       isActive: true,
+      employeeId: cashierEmployeeId,
     },
   });
 

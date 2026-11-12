@@ -117,11 +117,11 @@ export default function ContactPage() {
               <ul className="mt-4 flex flex-col gap-3 text-sm text-brand-charcoal/75">
                 <li className="flex items-start gap-2.5">
                   <MapPin className="mt-0.5 size-4 shrink-0 text-brand-red" aria-hidden="true" />
-                  <span>
+                  <a href={siteConfig.mapsUrl} target="_blank" rel="noopener noreferrer" className="hover:text-brand-red-dark">
                     {siteConfig.address.line1}
                     <br />
                     {siteConfig.address.line2}
-                  </span>
+                  </a>
                 </li>
                 <li className="flex items-center gap-2.5">
                   <Phone className="size-4 shrink-0 text-brand-red" aria-hidden="true" />
@@ -146,14 +146,14 @@ export default function ContactPage() {
               </ul>
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-brand-charcoal/10 bg-white">
-              <div className="flex aspect-4/3 w-full flex-col items-center justify-center gap-2 bg-brand-cream text-brand-charcoal/50">
-                <MapPin className="size-8" aria-hidden="true" />
-                <span className="text-sm font-medium">Map placeholder</span>
-                <span className="px-6 text-center text-xs">
-                  An embedded map will go here once a Google Maps API key is configured.
-                </span>
-              </div>
+            <div className="aspect-4/3 w-full overflow-hidden rounded-xl border border-brand-charcoal/10 bg-white">
+              <iframe
+                title="Map to Big Ed's Sofas & Beds showroom"
+                src={siteConfig.mapsEmbedUrl}
+                className="size-full border-0"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
             </div>
           </div>
         </div>

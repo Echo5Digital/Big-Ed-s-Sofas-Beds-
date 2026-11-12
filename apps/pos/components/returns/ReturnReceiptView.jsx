@@ -18,7 +18,7 @@ const REASON_LABELS = {
 // Mirrors ReceiptView.jsx's print mechanism exactly: renders into its own
 // top-level portal node so print.css's "hide everything except this" rule
 // only ever targets one receipt root at a time.
-function ReturnReceiptPrintable({ result, cashierName }) {
+function ReturnReceiptPrintable({ result, cashierName, cashierEmployeeId }) {
   if (typeof document === "undefined") return null;
   const { returnTransaction, orderData, returnLines, exchangeItems, refund, storeCredit, balanceDueCents } = result;
   const printedAt = new Date();
@@ -45,7 +45,10 @@ function ReturnReceiptPrintable({ result, cashierName }) {
         <div className="pb-1 font-mono text-[10px] text-black/70">
           Original order <span className="font-semibold text-black">{orderData.order.orderNumber}</span>
         </div>
-        <div className="pb-2 font-mono text-[10px] text-black/70">Cashier: {cashierName}</div>
+        <div className="pb-2 font-mono text-[10px] text-black/70">
+          Cashier: {cashierName}
+          {cashierEmployeeId ? ` (${cashierEmployeeId})` : ""}
+        </div>
         {orderData.order.customer && (
           <div className="pb-2 font-mono text-[10px] text-black/70">
             {orderData.order.customer.firstName} {orderData.order.customer.lastName}
@@ -125,6 +128,7 @@ function ReturnReceiptPrintable({ result, cashierName }) {
 export default function ReturnReceiptView({ result, onDone }) {
   const { user } = useAuth();
   const cashierName = user ? `${user.firstName} ${user.lastName}` : "—";
+  const cashierEmployeeId = user?.employeeId ?? null;
   const { returnTransaction, refund, storeCredit, balanceDueCents } = result;
   const refundAmountCents = refund?.amountCents ?? storeCredit?.amountCents ?? 0;
 
@@ -157,7 +161,7 @@ export default function ReturnReceiptView({ result, onDone }) {
         </div>
       </div>
 
-      <ReturnReceiptPrintable result={result} cashierName={cashierName} />
+      <ReturnReceiptPrintable result={result} cashierName={cashierName} cashierEmployeeId={cashierEmployeeId} />
     </>
   );
 }

@@ -8,7 +8,7 @@ const LOW_STOCK_THRESHOLD = 2;
 const ROLE_PERMISSIONS_BY_DEFAULT = {
   ADMIN: "all",
   MANAGER: "operational",
-  STAFF: "readonly-plus-receiving",
+  SALESMAN: "readonly-plus-receiving",
 };
 
 const STOCK_MOVEMENT_TYPES = [

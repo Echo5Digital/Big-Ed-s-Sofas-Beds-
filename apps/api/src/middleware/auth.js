@@ -39,6 +39,7 @@ const requireAuth = asyncHandler(async function requireAuth(req, res, next) {
     email: user.email,
     firstName: user.firstName,
     lastName: user.lastName,
+    employeeId: user.employeeId,
     roles: roleNames,
     permissions,
   };

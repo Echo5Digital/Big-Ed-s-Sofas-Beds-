@@ -12,12 +12,12 @@ import CustomersTab from "@/components/users/CustomersTab";
 import { api, ApiClientError } from "@/lib/api/client";
 import { useAuth } from "@/lib/hooks/useAuth";
 
-const ROLE_OPTIONS = ["ADMIN", "MANAGER", "STAFF", "CASHIER"];
+const ROLE_OPTIONS = ["ADMIN", "MANAGER", "SALESMAN", "CASHIER"];
 
 const ROLE_TONE = {
   ADMIN: "danger",
   MANAGER: "info",
-  STAFF: "default",
+  SALESMAN: "default",
   CASHIER: "success",
 };
 
@@ -296,6 +296,11 @@ function UsersContent() {
       ),
     },
     { key: "email", header: "Email" },
+    {
+      key: "employeeId",
+      header: "Employee ID",
+      render: (u) => (u.employeeId ? <span className="font-mono text-xs font-semibold text-brand-charcoal/70">{u.employeeId}</span> : "—"),
+    },
     {
       key: "roles",
       header: "Roles",

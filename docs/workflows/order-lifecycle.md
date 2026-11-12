@@ -99,7 +99,7 @@ register") cannot be force-closed by a cashier directly. Instead:
 2. Every register in this state surfaces in the admin dashboard's
    notification bell (polled, `GET /api/pos/registers/pending-reopens`) and
    on the `/registers` page, gated behind the `pos:register:approve-reopen`
-   permission (seeded onto `ADMIN` and `MANAGER`, not `CASHIER`/`STAFF`).
+   permission (seeded onto `ADMIN` and `MANAGER`, not `CASHIER`/`SALESMAN`).
 3. **Approve** (`POST /api/pos/sessions/:id/approve-reopen`) actually closes
    the stuck session — same cash reconciliation as a normal close (counted
    cash vs. `openingCashCents` + `CashMovement` total, discrepancy recorded)

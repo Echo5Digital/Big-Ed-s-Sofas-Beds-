@@ -23,9 +23,14 @@ export const siteConfig = {
     { days: "Sunday", time: "11AM – 5PM" },
   ],
   address: {
-    line1: "17535 US Highway 27",
-    line2: "Lake Wales, FL 33853",
+    line1: "17535 Tomball Pkwy",
+    line2: "Houston, TX 77064",
   },
+  mapsUrl: "https://www.google.com/maps/search/?api=1&query=17535+Tomball+Pkwy+Houston+TX+77064",
+  // No Google Maps API key required: this is the public "search, output as
+  // embed" URL format (maps.google.com/maps?q=...&output=embed), distinct
+  // from the API-keyed /maps/embed/v1/ endpoint.
+  mapsEmbedUrl: "https://maps.google.com/maps?q=17535+Tomball+Pkwy+Houston+TX+77064&output=embed",
   social: {
     facebook: "#",
     instagram: "#",

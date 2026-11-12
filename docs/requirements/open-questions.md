@@ -133,7 +133,7 @@ here so they aren't lost, not because they're due now:
   required reason code), and closeout reconciliation don't depend on that
   decision and don't need to wait for it. Added a `CASHIER` role and `pos:*`
   permission keys (`packages/database/prisma/seed.js`) rather than
-  overloading `STAFF` or `MANAGER` with register access.
+  overloading `SALESMAN` or `MANAGER` with register access.
 - Storefront: now calls the real catalog/checkout API
   (`apps/storefront/lib/api/`) instead of local mock data — product
   browsing, search, cart, and checkout all hit `apps/api`. Mock data files

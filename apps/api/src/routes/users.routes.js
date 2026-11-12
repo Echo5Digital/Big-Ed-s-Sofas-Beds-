@@ -7,6 +7,8 @@ const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
 const { NotFoundError, ConflictError } = require("../lib/errors");
 const { listRegisteredCustomers, deleteRegisteredCustomer } = require("../services/customers.service");
+const { createWithSequentialNumber } = require("../lib/sequentialNumber");
+const { nextEmployeeId, prefixForRoles } = require("../lib/employeeId");
 
 const router = express.Router();
 
@@ -25,6 +27,7 @@ function serializeUser(user) {
     firstName: user.firstName,
     lastName: user.lastName,
     isActive: user.isActive,
+    employeeId: user.employeeId,
     roles: user.roles.map((ur) => ur.role.name),
     createdAt: user.createdAt,
   };
@@ -105,13 +108,16 @@ router.post(
 
     const passwordHash = await bcrypt.hash(password, 12);
 
-    const user = await prisma.$transaction(async (tx) => {
-      const created = await tx.user.create({
-        data: { email, passwordHash, firstName, lastName },
-      });
-      await setUserRoles(tx, created.id, roleNames);
-      return tx.user.findUnique({ where: { id: created.id }, include: ROLE_INCLUDE });
-    });
+    const user = await createWithSequentialNumber(() =>
+      prisma.$transaction(async (tx) => {
+        const employeeId = await nextEmployeeId(roleNames, tx);
+        const created = await tx.user.create({
+          data: { email, passwordHash, firstName, lastName, employeeId },
+        });
+        await setUserRoles(tx, created.id, roleNames);
+        return tx.user.findUnique({ where: { id: created.id }, include: ROLE_INCLUDE });
+      })
+    );
 
     await prisma.auditLog.create({
       data: {
@@ -181,10 +187,21 @@ router.patch(
       }
     }
 
-    const user = await prisma.$transaction(async (tx) => {
-      await setUserRoles(tx, req.params.id, roleNames);
-      return tx.user.findUnique({ where: { id: req.params.id }, include: ROLE_INCLUDE });
-    });
+    // Only regenerate the employee id when the role change actually moves it
+    // to a different prefix (e.g. Cashier -> Manager, or Manager -> Admin-only
+    // which clears it) — re-saving the same role set, or changing roles in a
+    // way that doesn't change which prefix wins, must not burn a new sequence
+    // number on every save.
+    const currentPrefix = target.employeeId ? target.employeeId.slice(0, 3) : null;
+    const nextPrefix = prefixForRoles(roleNames);
+
+    const user = await createWithSequentialNumber(() =>
+      prisma.$transaction(async (tx) => {
+        const employeeId = nextPrefix === currentPrefix ? target.employeeId : await nextEmployeeId(roleNames, tx);
+        await setUserRoles(tx, req.params.id, roleNames);
+        return tx.user.update({ where: { id: req.params.id }, data: { employeeId }, include: ROLE_INCLUDE });
+      })
+    );
 
     await prisma.auditLog.create({
       data: {

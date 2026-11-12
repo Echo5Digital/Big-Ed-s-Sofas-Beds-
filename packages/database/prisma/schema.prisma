@@ -19,7 +19,7 @@ datasource db {
 enum RoleName {
   ADMIN
   MANAGER
-  STAFF
+  SALESMAN
   CASHIER
 }
 
@@ -30,6 +30,13 @@ model User {
   firstName              String
   lastName               String
   isActive               Boolean             @default(true)
+  // Human-readable badge number for attributing activities on receipts/audit
+  // trails (MGR001, SLS001, CSH001 — see apps/api/src/lib/employeeId.js).
+  // Null for Admin-only users: Admin was never part of this numbering. Picked
+  // from the user's highest-priority role (Manager > Salesman > Cashier) and
+  // regenerated whenever that set of roles changes, so it always matches the
+  // role currently driving it rather than freezing at creation time.
+  employeeId             String?             @unique
   roles                  UserRole[]
   auditLogs              AuditLog[]
   purchaseOrdersCreated  PurchaseOrder[]     @relation("POCreatedBy")

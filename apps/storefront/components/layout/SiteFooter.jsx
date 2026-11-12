@@ -66,11 +66,11 @@ export default function SiteFooter() {
           <ul className="flex flex-col gap-2.5 text-sm text-white/70">
             <li className="flex items-start gap-2">
               <MapPin className="mt-0.5 size-4 shrink-0 text-brand-gold" aria-hidden="true" />
-              <span>
+              <a href={siteConfig.mapsUrl} target="_blank" rel="noopener noreferrer" className="hover:text-white">
                 {siteConfig.address.line1}
                 <br />
                 {siteConfig.address.line2}
-              </span>
+              </a>
             </li>
             <li className="flex items-center gap-2">
               <Phone className="size-4 shrink-0 text-brand-gold" aria-hidden="true" />

@@ -128,7 +128,7 @@ export default function ProductPurchasePanel({ product }) {
         <p className="mt-1.5 text-xs text-brand-charcoal/50">
           {fulfillment === "delivery"
             ? "Delivery fees and scheduling are confirmed at checkout — final rates depend on your address."
-            : "Pick up at our Lake Wales showroom once your order is ready. We'll contact you to schedule a time."}
+            : "Pick up at our Houston showroom once your order is ready. We'll contact you to schedule a time."}
         </p>
       </div>
 

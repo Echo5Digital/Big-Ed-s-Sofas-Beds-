@@ -13,8 +13,8 @@ const loginSchema = z.object({
 // exactly. Kept as a plain literal list rather than importing the generated
 // Prisma client here, since packages/validation has no dependency on
 // packages/database today — these four values change rarely and are already
-// duplicated as plain strings elsewhere (seed.js, admin AppShell nav).
-const roleNameSchema = z.enum(["ADMIN", "MANAGER", "STAFF", "CASHIER"]);
+// duplicated as plain strings elsewhere (seed.js, admin app/users/page.jsx).
+const roleNameSchema = z.enum(["ADMIN", "MANAGER", "SALESMAN", "CASHIER"]);
 
 const userCreateSchema = z.object({
   email: z.string().email(),
