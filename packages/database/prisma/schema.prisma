@@ -214,6 +214,11 @@ model Variant {
   priceCents                Int // current selling price, in cents (USD)
   compareAtCents            Int?
   costCents                 Int? // last known supplier cost, in cents
+  // Sales tax rate, as a percentage (8.25 = 8.25%) — editable per product.
+  // Not yet applied anywhere: Order.taxCents/OrderLine.taxCents exist but
+  // nothing computes a non-zero value from them today (see
+  // docs/requirements/open-questions.md, "Blocks: Tax calculation").
+  taxRatePercent            Decimal         @default(8.25) @db.Decimal(5, 2)
   isActive                  Boolean         @default(true)
   priceHistory              PriceHistory[]
   stockBalances             StockBalance[]

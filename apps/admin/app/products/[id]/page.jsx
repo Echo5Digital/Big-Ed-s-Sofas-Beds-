@@ -66,6 +66,7 @@ function EditProductContent() {
   const [costCents, setCostCents] = useState("");
   const [priceCents, setPriceCents] = useState("");
   const [compareAtCents, setCompareAtCents] = useState("");
+  const [taxRatePercent, setTaxRatePercent] = useState("8.25");
   const [itemName, setItemName] = useState("");
   const [color, setColor] = useState("");
   const [material, setMaterial] = useState("");
@@ -98,6 +99,7 @@ function EditProductContent() {
         setCostCents(variant?.costCents ? (variant.costCents / 100).toString() : "");
         setPriceCents(variant ? (variant.priceCents / 100).toString() : "");
         setCompareAtCents(variant?.compareAtCents ? (variant.compareAtCents / 100).toString() : "");
+        setTaxRatePercent(variant?.taxRatePercent != null ? variant.taxRatePercent.toString() : "8.25");
         setItemName(product.itemName ?? "");
         setColor(product.color ?? "");
         setMaterial(product.material ?? "");
@@ -182,6 +184,7 @@ function EditProductContent() {
             // side rather than risking this form silently wiping it for a role
             // that never saw the field to begin with.
             costCents: canViewCost ? (costCents !== "" ? Math.round(Number(costCents) * 100) : null) : undefined,
+            taxRatePercent: taxRatePercent !== "" ? Number(taxRatePercent) : undefined,
           },
         ],
         // Full replace, same convention as categoryIds above — always sends
@@ -336,6 +339,20 @@ function EditProductContent() {
                     step="0.01"
                     value={priceCents}
                     onChange={(e) => setPriceCents(e.target.value)}
+                    className={fieldInputClass}
+                  />
+                </FormField>
+
+                <FormField id="taxRate" label="Tax (%)" hint="Sales tax rate applied to this product.">
+                  <input
+                    id="taxRate"
+                    required
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={taxRatePercent}
+                    onChange={(e) => setTaxRatePercent(e.target.value)}
                     className={fieldInputClass}
                   />
                 </FormField>

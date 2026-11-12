@@ -68,6 +68,7 @@ function NewProductContent() {
   const [costCents, setCostCents] = useState("");
   const [priceCents, setPriceCents] = useState("");
   const [compareAtCents, setCompareAtCents] = useState("");
+  const [taxRatePercent, setTaxRatePercent] = useState("8.25");
   const [itemName, setItemName] = useState("");
   const [color, setColor] = useState("");
   const [material, setMaterial] = useState("");
@@ -146,6 +147,7 @@ function NewProductContent() {
             priceCents: Math.round(Number(priceCents) * 100),
             compareAtCents: compareAtCents !== "" ? Math.round(Number(compareAtCents) * 100) : undefined,
             costCents: canViewCost && costCents !== "" ? Math.round(Number(costCents) * 100) : undefined,
+            taxRatePercent: taxRatePercent !== "" ? Number(taxRatePercent) : undefined,
           },
         ],
         linkedProductIds: linkedProducts.length ? linkedProducts.map((p) => p.id) : undefined,
@@ -283,6 +285,20 @@ function NewProductContent() {
                     step="0.01"
                     value={priceCents}
                     onChange={(e) => setPriceCents(e.target.value)}
+                    className={fieldInputClass}
+                  />
+                </FormField>
+
+                <FormField id="taxRate" label="Tax (%)" hint="Sales tax rate applied to this product.">
+                  <input
+                    id="taxRate"
+                    required
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={taxRatePercent}
+                    onChange={(e) => setTaxRatePercent(e.target.value)}
                     className={fieldInputClass}
                   />
                 </FormField>

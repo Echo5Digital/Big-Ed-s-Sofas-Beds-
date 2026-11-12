@@ -322,6 +322,9 @@ function serializeProduct(product, { includeCost = false } = {}) {
       priceCents: v.priceCents,
       compareAtCents: v.compareAtCents,
       ...(includeCost ? { costCents: v.costCents } : null),
+      // Prisma Decimal, not a plain number — convert explicitly so the
+      // client always gets a JSON number, not a Decimal.js-shaped object.
+      taxRatePercent: Number(v.taxRatePercent),
       isActive: v.isActive,
       availability: computeAvailability(v),
     })),
