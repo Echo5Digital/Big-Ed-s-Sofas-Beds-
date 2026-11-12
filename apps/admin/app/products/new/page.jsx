@@ -9,6 +9,7 @@ import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import ProductNameInput from "@/components/products/ProductNameInput";
 import ProductImagePicker from "@/components/products/ProductImagePicker";
+import ProductVideoPicker from "@/components/products/ProductVideoPicker";
 import CategoryMultiSelect from "@/components/products/CategoryMultiSelect";
 import ProductInitialStockInputs from "@/components/products/ProductInitialStockInputs";
 import LinkedProductPicker from "@/components/products/LinkedProductPicker";
@@ -72,6 +73,7 @@ function NewProductContent() {
   const [material, setMaterial] = useState("");
   const [dimensions, setDimensions] = useState("");
   const [images, setImages] = useState([]);
+  const [videos, setVideos] = useState([]);
   const [linkedProducts, setLinkedProducts] = useState([]);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -133,6 +135,7 @@ function NewProductContent() {
         material: material || undefined,
         dimensions: dimensions || undefined,
         images: images.length ? images.map(({ url, publicId, altText }) => ({ url, publicId, altText })) : undefined,
+        videos: videos.length ? videos.map(({ url, publicId }) => ({ url, publicId })) : undefined,
         // One sellable variant per product today — no separate "variant"
         // concept is exposed in this form, so its name mirrors the product
         // name (the API still requires every product to have a variant).
@@ -224,6 +227,15 @@ function NewProductContent() {
                     the gallery section below the description.
                   </p>
                   <ProductImagePicker images={images} onChange={setImages} />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-sm font-medium text-brand-charcoal">Videos</span>
+                  <p className="text-xs text-brand-charcoal/60">
+                    Add by URL or upload from your device, same as images — drag to reorder, or use the
+                    arrow buttons on touch devices.
+                  </p>
+                  <ProductVideoPicker videos={videos} onChange={setVideos} />
                 </div>
               </div>
             )}

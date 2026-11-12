@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import Image from "next/image";
-import { Link2, Upload, X, GripVertical } from "lucide-react";
+import { Link2, Upload, X, GripVertical, ChevronLeft, ChevronRight } from "lucide-react";
 import { api, ApiClientError } from "@/lib/api/client";
 
 let nextImageKeyId = 0;
@@ -166,9 +166,34 @@ export default function ProductImagePicker({ images, onChange }) {
               <span className="absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-bold text-white">
                 {index === 0 ? "Hero" : `#${index + 1}`}
               </span>
-              <span className="absolute bottom-1.5 left-1.5 flex size-7 items-center justify-center rounded-full bg-black/60 text-white">
+              <span className="pointer-events-none absolute bottom-1.5 left-1.5 flex size-7 items-center justify-center rounded-full bg-black/60 text-white sm:hidden">
                 <GripVertical className="size-4" aria-hidden="true" />
               </span>
+              {/* Drag-and-drop (above) has no touch equivalent, so these move
+                  buttons are the only way to reorder on a phone/tablet —
+                  shown at every width rather than only below sm: so desktop
+                  users without a mouse (or who just prefer clicking) have the
+                  same option. */}
+              <div className="absolute bottom-1.5 right-1.5 flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => moveTo(index, index - 1)}
+                  disabled={index === 0}
+                  aria-label="Move left"
+                  className="flex size-7 items-center justify-center rounded-full bg-black/60 text-white disabled:opacity-30"
+                >
+                  <ChevronLeft className="size-4" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveTo(index, index + 1)}
+                  disabled={index === images.length - 1}
+                  aria-label="Move right"
+                  className="flex size-7 items-center justify-center rounded-full bg-black/60 text-white disabled:opacity-30"
+                >
+                  <ChevronRight className="size-4" aria-hidden="true" />
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={() => removeAt(index)}

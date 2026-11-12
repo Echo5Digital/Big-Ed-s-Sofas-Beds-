@@ -171,6 +171,15 @@ const productImageInputSchema = z.object({
   altText: z.string().max(200).optional().nullable(),
 });
 
+// Mirrors productImageInputSchema exactly (same url/publicId shape, same
+// reasoning for publicId being optional/nullable) — see ProductVideo in
+// schema.prisma for why this is a separate schema rather than reusing the
+// image one.
+const productVideoInputSchema = z.object({
+  url: z.string().url(),
+  publicId: z.string().max(300).optional().nullable(),
+});
+
 const productCreateSchema = z.object({
   // Supports a lightweight inline markdown subset (**bold**, _italic_) —
   // rendered safely by packages/ui's parseInlineMarkdown, never as raw HTML.
@@ -194,6 +203,7 @@ const productCreateSchema = z.object({
   isDeal: z.boolean().optional(),
   variants: z.array(variantCreateSchema).min(1),
   images: z.array(productImageInputSchema).optional(),
+  videos: z.array(productVideoInputSchema).optional(),
   // Other, independently-sellable Products to cross-link (see ProductLink in
   // schema.prisma) — distinct from `variants` above, which are color/size
   // options of THIS product sharing one page. Full-replace semantics on
@@ -486,6 +496,7 @@ module.exports = {
   categoryCreateSchema,
   variantCreateSchema,
   productImageInputSchema,
+  productVideoInputSchema,
   productCreateSchema,
   productUpdateSchema,
   stockAdjustSchema,

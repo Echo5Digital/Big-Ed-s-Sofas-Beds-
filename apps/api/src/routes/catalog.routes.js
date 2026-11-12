@@ -38,6 +38,37 @@ function uploadBufferToCloudinary(buffer) {
   });
 }
 
+// Same memory-buffer-then-stream-to-Cloudinary approach as images, but a
+// separate multer instance: a much larger size limit (product demo clips
+// run tens of MB, nowhere near an 8MB image cap) and a video mimetype
+// allowlist, so an oversized/wrong-type video can't slip through the image
+// uploader's limits or vice versa.
+const ALLOWED_VIDEO_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime"]);
+
+const uploadVideo = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024, files: 5 },
+  fileFilter: (req, file, cb) => {
+    if (!ALLOWED_VIDEO_TYPES.has(file.mimetype)) {
+      return cb(new ValidationError({ file: "Only MP4, WebM, or MOV videos are allowed" }));
+    }
+    cb(null, true);
+  },
+});
+
+// resource_type: "video" is required here — Cloudinary doesn't auto-detect
+// video vs image from the buffer, and uploading a video through the image
+// uploader's upload_stream (resource_type: "image") fails outright.
+function uploadVideoBufferToCloudinary(buffer) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: "products/videos", resource_type: "video" },
+      (err, result) => (err ? reject(err) : resolve(result))
+    );
+    stream.end(buffer);
+  });
+}
+
 // Links are maintained as a fully-connected group (clique), not just pairwise
 // edges back to whichever product was being edited: if E submits
 // linkedProductIds [A, B, C, D], then A, B, C, and D must all end up linked
@@ -139,6 +170,7 @@ const PRODUCT_INCLUDE = {
   category: true,
   categoryTags: { include: { category: true } },
   images: { orderBy: { sortOrder: "asc" } },
+  videos: { orderBy: { sortOrder: "asc" } },
   variants: {
     include: {
       stockBalances: { include: { location: true } },
@@ -274,6 +306,7 @@ function serializeProduct(product, { includeCost = false } = {}) {
       slug: tag.category.slug,
     })),
     images: product.images.map((img) => ({ id: img.id, url: img.url, publicId: img.publicId, altText: img.altText })),
+    videos: product.videos.map((v) => ({ id: v.id, url: v.url, publicId: v.publicId })),
     variants: product.variants.map((v) => ({
       id: v.id,
       sku: v.sku,
@@ -454,12 +487,31 @@ router.post(
 );
 
 router.post(
+  "/admin/videos",
+  requireAuth,
+  requirePermission("catalog:write"),
+  uploadVideo.array("videos", 5),
+  asyncHandler(async (req, res) => {
+    const files = req.files || [];
+    if (files.length === 0) {
+      throw new ValidationError({ videos: "At least one video file is required" });
+    }
+    const uploaded = await Promise.all(files.map((file) => uploadVideoBufferToCloudinary(file.buffer)));
+    const videos = uploaded.map((result) => ({
+      url: result.secure_url,
+      publicId: result.public_id,
+    }));
+    res.status(201).json({ videos });
+  })
+);
+
+router.post(
   "/products",
   requireAuth,
   requirePermission("catalog:write"),
   validateBody(productCreateSchema),
   asyncHandler(async (req, res) => {
-    const { variants, images, categoryIds, linkedProductIds, initialStock, ...productData } = req.body;
+    const { variants, images, videos, categoryIds, linkedProductIds, initialStock, ...productData } = req.body;
     // Secondary categories are purely additive to the primary categoryId —
     // dedupe so the same category never appears as both, which would violate
     // the ProductCategory composite primary key.
@@ -483,6 +535,7 @@ router.post(
           ...productData,
           variants: { create: variants },
           images: images ? { create: images.map((img, i) => ({ ...img, sortOrder: i })) } : undefined,
+          videos: videos ? { create: videos.map((v, i) => ({ ...v, sortOrder: i })) } : undefined,
           categoryTags: secondaryCategoryIds.length
             ? { create: secondaryCategoryIds.map((categoryId) => ({ categoryId })) }
             : undefined,
@@ -555,7 +608,7 @@ router.patch(
   requirePermission("catalog:write"),
   validateBody(productUpdateSchema),
   asyncHandler(async (req, res) => {
-    const { variants, images, categoryIds, linkedProductIds, ...productData } = req.body;
+    const { variants, images, videos, categoryIds, linkedProductIds, ...productData } = req.body;
 
     if (variants) {
       // Partial updates only: adjust price/sku/details on existing variants,
@@ -585,6 +638,11 @@ router.patch(
       await prisma.productImage.deleteMany({ where: { productId: req.params.id } });
     }
 
+    if (videos) {
+      // Same full-replace semantics as images above.
+      await prisma.productVideo.deleteMany({ where: { productId: req.params.id } });
+    }
+
     if (categoryIds) {
       const secondaryCategoryIds = categoryIds.filter((id) => id !== (productData.categoryId ?? null));
       await prisma.productCategory.deleteMany({ where: { productId: req.params.id } });
@@ -608,6 +666,7 @@ router.patch(
       data: {
         ...productData,
         images: images ? { create: images.map((img, i) => ({ ...img, sortOrder: i })) } : undefined,
+        videos: videos ? { create: videos.map((v, i) => ({ ...v, sortOrder: i })) } : undefined,
       },
       include: PRODUCT_INCLUDE,
     });

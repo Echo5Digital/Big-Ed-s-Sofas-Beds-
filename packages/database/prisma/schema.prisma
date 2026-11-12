@@ -169,6 +169,7 @@ model Product {
   isDeal       Boolean           @default(false)
   variants     Variant[]
   images       ProductImage[]
+  videos       ProductVideo[]
   // Cross-links to OTHER, independently-sellable Products (e.g. a sectional
   // and a loveseat in the same collection) — distinct from Variant, which is
   // color/size options of this SAME product on one page. Always written and
@@ -240,6 +241,27 @@ model ProductImage {
   // by pasting an external URL directly, which Cloudinary doesn't manage.
   publicId  String?
   altText   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+}
+
+// Mirrors ProductImage exactly (same url/publicId/sortOrder shape, same
+// full-replace-on-update semantics in catalog.routes.js) — kept as its own
+// model rather than a `type` discriminator column on ProductImage because
+// Cloudinary itself requires a distinct resource_type ("image" vs "video")
+// at upload time, and the admin/storefront UIs render the two with
+// completely different markup (<img>/<Image> vs <video>), so there's no
+// shared query path that benefits from them living in one table.
+model ProductVideo {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  // Cloudinary public id — null for videos added by pasting an external URL
+  // directly, same convention as ProductImage.publicId.
+  publicId  String?
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
 
