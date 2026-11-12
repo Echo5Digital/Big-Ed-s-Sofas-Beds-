@@ -33,17 +33,18 @@ export default function HeroBanner() {
         />
         {/* Desktop keeps the photo full-bleed with a side scrim (the source
             image is already darkened on its left third) plus a soft top/bottom
-            vignette for depth. Mobile instead wraps the copy in its own
-            frosted glass card over the photo, rather than darkening the whole
-            frame — reads as a deliberate panel instead of text just floating
-            over a busy background. */}
+            vignette for depth. Mobile instead anchors the copy to the bottom
+            over a bottom-weighted gradient, like a film poster — the photo
+            stays visible up top and the copy sits in its own legible zone
+            instead of being boxed into a separate card. */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/60 to-black sm:hidden" />
         <div className="absolute inset-0 hidden bg-gradient-to-r from-black/80 via-black/45 to-transparent sm:block" />
         <div className="absolute inset-0 hidden bg-gradient-to-b from-black/35 via-transparent to-black/40 sm:block" />
 
-        <Container className="relative flex min-h-[32rem] flex-col justify-center py-8 sm:min-h-[36rem] sm:py-14 lg:min-h-[40rem]">
-          <div className="flex flex-col gap-5 rounded-2xl border border-white/10 bg-black/55 p-5 shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur-md sm:gap-6 sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-none">
+        <Container className="relative flex min-h-[32rem] flex-col justify-end py-10 sm:min-h-[36rem] sm:justify-center sm:py-14 lg:min-h-[40rem]">
+          <div className="flex flex-col gap-5 sm:gap-6 sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-none">
             <div className="max-w-xl lg:border-l-2 lg:border-brand-gold/70 lg:pl-8">
-              <div className="mb-3 flex items-center gap-3 sm:mb-4">
+              <div className="mb-4 flex items-center gap-3 sm:mb-4">
                 <span className="h-px w-8 bg-brand-gold sm:w-10" />
                 <span className="font-sans text-xs font-semibold tracking-[0.2em] text-white uppercase sm:text-sm">
                   Big Ed&rsquo;s Sofas &amp; Beds
@@ -51,7 +52,7 @@ export default function HeroBanner() {
                 <span className="h-px w-8 bg-brand-gold sm:w-10" />
               </div>
 
-              <h1 className="font-display text-4xl leading-tight font-bold tracking-tight sm:text-6xl lg:text-7xl">
+              <h1 className="font-display text-5xl leading-[1.05] font-bold tracking-tight sm:text-6xl sm:leading-tight lg:text-7xl">
                 <span className="block bg-gradient-to-b from-white via-neutral-200 to-neutral-400 bg-clip-text pb-1 text-transparent drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)]">
                   Grand Opening
                 </span>
@@ -60,19 +61,19 @@ export default function HeroBanner() {
                 </span>
               </h1>
 
-              <p className="mt-3 font-display text-lg text-white/90 italic sm:mt-4 sm:text-2xl">
+              <p className="mt-4 font-display text-xl text-white/90 italic sm:mt-4 sm:text-2xl">
                 Big Comfort. Bigger Savings.
               </p>
             </div>
 
-            <ul className="flex flex-wrap gap-2 sm:items-center sm:gap-x-5 sm:gap-y-2 sm:text-base sm:font-semibold sm:text-white">
+            <ul className="flex flex-col gap-3 border-l-2 border-brand-gold/40 pl-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5 sm:gap-y-2 sm:border-0 sm:pl-0 sm:text-base sm:font-semibold sm:text-white">
               {FEATURES.map(({ icon: Icon, label }, index) => (
                 <li
                   key={label}
-                  className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 py-1.5 pr-3 pl-1.5 text-xs font-semibold text-white sm:border-0 sm:bg-transparent sm:p-0 sm:text-base"
+                  className="flex items-center gap-2.5 text-sm font-semibold text-white sm:gap-1.5 sm:text-base"
                 >
-                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-gold text-brand-charcoal sm:size-8">
-                    <Icon className="size-3.5 sm:size-4.5" aria-hidden="true" />
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-gold text-brand-charcoal sm:size-8">
+                    <Icon className="size-4 sm:size-4.5" aria-hidden="true" />
                   </span>
                   <span>{label}</span>
                   {index < FEATURES.length - 1 && (
@@ -82,10 +83,10 @@ export default function HeroBanner() {
               ))}
             </ul>
 
-            <div className="flex flex-wrap items-center gap-2.5 sm:gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
               <Link
                 href="/grand-opening-sale"
-                className={`${BUTTON_BASE} border-transparent bg-gradient-to-b from-[#ffd43b] to-[#f7a900] text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_4px_14px_rgba(0,0,0,0.5)]`}
+                className={`${BUTTON_BASE} w-full border-transparent bg-gradient-to-b from-[#ffd43b] to-[#f7a900] text-black shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_4px_14px_rgba(0,0,0,0.5)] sm:w-auto`}
               >
                 <ShoppingCart className="size-4 shrink-0 sm:size-5" strokeWidth={2.5} aria-hidden="true" />
                 <span>Shop Grand Opening Deals</span>
@@ -93,7 +94,7 @@ export default function HeroBanner() {
               </Link>
               <Link
                 href="/about"
-                className={`${BUTTON_BASE} border-white/70 bg-white/5 text-white backdrop-blur-sm hover:bg-white/15 sm:border-white/80`}
+                className={`${BUTTON_BASE} w-full border-white/70 bg-white/5 text-white backdrop-blur-sm hover:bg-white/15 sm:w-auto sm:border-white/80`}
               >
                 <Store className="size-4 shrink-0 sm:size-5" strokeWidth={2.5} aria-hidden="true" />
                 <span>Visit Our Showroom</span>
