@@ -175,6 +175,14 @@ model Product {
   // Manually flagged by staff to appear on the storefront Deals page,
   // independent of whether any variant has a compareAtCents markdown price.
   isDeal       Boolean           @default(false)
+  // Staff-ticked on the admin form's Warranty tab. Public (unlike brand/
+  // supplier): when true the storefront product page shows a "Warrantied"
+  // marker plus `warrantyNote` as "Warranty Details" under the description.
+  // Existing products default to false — no backfill. The API only ever
+  // returns warrantyNote while isWarrantied is true (see serializeProduct), so
+  // a leftover note on an un-ticked product can never reach the storefront.
+  isWarrantied Boolean           @default(false)
+  warrantyNote String?
   variants     Variant[]
   images       ProductImage[]
   videos       ProductVideo[]

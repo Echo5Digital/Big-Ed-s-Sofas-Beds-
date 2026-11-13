@@ -14,6 +14,7 @@ import CategoryMultiSelect from "@/components/products/CategoryMultiSelect";
 import LinkedProductPicker from "@/components/products/LinkedProductPicker";
 import ProductFormTabs from "@/components/products/ProductFormTabs";
 import ProductSupplierSelect from "@/components/products/ProductSupplierSelect";
+import ProductWarrantyFields from "@/components/products/ProductWarrantyFields";
 import FormField, { fieldInputClass } from "@/components/products/FormField";
 import { api, ApiClientError } from "@/lib/api/client";
 
@@ -23,6 +24,7 @@ const TABS = [
   { key: "category", label: "Category" },
   { key: "attributes", label: "Attributes" },
   { key: "linked", label: "Linked Products" },
+  { key: "warranty", label: "Warranty" },
 ];
 
 function slugify(value) {
@@ -67,6 +69,8 @@ function EditProductContent() {
   const [brand, setBrand] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [currentSupplier, setCurrentSupplier] = useState(null);
+  const [isWarrantied, setIsWarrantied] = useState(false);
+  const [warrantyNote, setWarrantyNote] = useState("");
   const [costCents, setCostCents] = useState("");
   const [priceCents, setPriceCents] = useState("");
   const [compareAtCents, setCompareAtCents] = useState("");
@@ -103,6 +107,8 @@ function EditProductContent() {
         setBrand(product.brand ?? "");
         setSupplierId(product.supplierId ?? "");
         setCurrentSupplier(product.supplier ?? null);
+        setIsWarrantied(Boolean(product.isWarrantied));
+        setWarrantyNote(product.warrantyNote ?? "");
         setCostCents(variant?.costCents ? (variant.costCents / 100).toString() : "");
         setPriceCents(variant ? (variant.priceCents / 100).toString() : "");
         setCompareAtCents(variant?.compareAtCents ? (variant.compareAtCents / 100).toString() : "");
@@ -175,6 +181,8 @@ function EditProductContent() {
         status,
         brand: brand.trim() || null,
         supplierId: supplierId || null,
+        isWarrantied,
+        warrantyNote: isWarrantied ? warrantyNote.trim() || null : null,
         itemName: itemName || null,
         color: color || null,
         material: material || null,
@@ -449,6 +457,18 @@ function EditProductContent() {
                   need to also edit the other product.
                 </p>
                 <LinkedProductPicker linkedProducts={linkedProducts} onChange={setLinkedProducts} excludeProductId={id} />
+              </div>
+            )}
+
+            {tab === "warranty" && (
+              <div className="flex flex-col gap-4">
+                <h2 className="font-display text-base font-bold text-brand-charcoal">Warranty</h2>
+                <ProductWarrantyFields
+                  isWarrantied={isWarrantied}
+                  onToggle={setIsWarrantied}
+                  note={warrantyNote}
+                  onNoteChange={setWarrantyNote}
+                />
               </div>
             )}
           </div>

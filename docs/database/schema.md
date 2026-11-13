@@ -152,6 +152,12 @@ which stays required. `Product.brand` and `Product.supplierId` are
 `serializeProduct` only includes them when a staff route passes
 `includeInternal: true` (same opt-in pattern as `includeCost`).
 
+`Product.isWarrantied` (default `false`) and `Product.warrantyNote` are the
+opposite — **public**: when `isWarrantied` is true the storefront product page
+shows a "Warrantied" marker and the note under the description as "Warranty
+Details". `serializeProduct` only returns `warrantyNote` while `isWarrantied`
+is true, and the create/update routes clear the note when the box is un-ticked.
+
 ### Delivery (`Delivery`, `Pickup`, `StatusHistory`)
 
 Reserved for the fulfillment console described on page 9 of the kickoff

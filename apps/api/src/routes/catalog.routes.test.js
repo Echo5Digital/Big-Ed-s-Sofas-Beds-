@@ -8,6 +8,8 @@ const {
   serializeProduct,
   PRODUCT_INCLUDE_STAFF,
   assertSupplierExists,
+  normalizeWarrantyOnCreate,
+  normalizeWarrantyOnUpdate,
 } = require("./catalog.routes");
 
 // Runs against the real dev database (same convention as auth.routes.test.js
@@ -1008,5 +1010,97 @@ describe("catalog.routes — product brand/supplier (internal-only)", () => {
     expect(after).not.toBeNull();
     expect(after.supplierId).toBeNull();
     expect(after.brand).toBe(BRAND);
+  });
+});
+
+// Product.isWarrantied / warrantyNote are PUBLIC (the storefront product page
+// shows "Warrantied" and the note as "Warranty Details"), unlike brand/supplier.
+// The one rule that must hold: the note only ever leaves the API while the
+// product is actually flagged warrantied.
+describe("catalog.routes — product warranty", () => {
+  const { productCreateSchema, productUpdateSchema } = require("@big-eds/validation");
+
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const NOTE = `1-year limited warranty ${suffix}`;
+  const createdIds = [];
+
+  async function makeProduct(extra = {}) {
+    const key = `${suffix}-${createdIds.length}`;
+    const created = await prisma.product.create({
+      data: {
+        name: `Warranty Test ${key}`,
+        slug: `warranty-test-${key}`,
+        status: "ACTIVE",
+        variants: { create: [{ sku: `WARRANTY-TEST-${key}`, name: `Warranty Test ${key}`, priceCents: 1000 }] },
+        ...extra,
+      },
+      include: PRODUCT_INCLUDE_STAFF,
+    });
+    createdIds.push(created.id);
+    return created;
+  }
+
+  afterAll(async () => {
+    for (const id of createdIds) {
+      await prisma.stockBalance.deleteMany({ where: { variant: { productId: id } } });
+      await prisma.variant.deleteMany({ where: { productId: id } });
+      await prisma.product.delete({ where: { id } });
+    }
+  });
+
+  it("a new product defaults to not warrantied with no note (existing products are unaffected)", async () => {
+    const product = await makeProduct();
+
+    expect(product.isWarrantied).toBe(false);
+    expect(product.warrantyNote).toBeNull();
+    const serialized = serializeProduct(product);
+    expect(serialized.isWarrantied).toBe(false);
+    expect(serialized.warrantyNote).toBeNull();
+  });
+
+  it("returns isWarrantied and the note on the default (public) shape when warrantied", async () => {
+    const product = await makeProduct({ isWarrantied: true, warrantyNote: NOTE });
+
+    const serialized = serializeProduct(product); // no options — what the public routes call
+    expect(serialized.isWarrantied).toBe(true);
+    expect(serialized.warrantyNote).toBe(NOTE);
+  });
+
+  it("never returns a leftover note for a product that is not warrantied", async () => {
+    const product = await makeProduct({ isWarrantied: false, warrantyNote: NOTE });
+
+    const serialized = serializeProduct(product);
+    expect(serialized.isWarrantied).toBe(false);
+    expect(serialized.warrantyNote).toBeNull();
+    expect(JSON.stringify(serialized)).not.toContain(NOTE);
+  });
+
+  it("create drops the note unless isWarrantied is explicitly true", () => {
+    expect(normalizeWarrantyOnCreate({ isWarrantied: true, warrantyNote: NOTE }).warrantyNote).toBe(NOTE);
+    expect(normalizeWarrantyOnCreate({ isWarrantied: false, warrantyNote: NOTE }).warrantyNote).toBeNull();
+    expect(normalizeWarrantyOnCreate({ warrantyNote: NOTE }).warrantyNote).toBeNull();
+  });
+
+  it("update clears the note only on an explicit isWarrantied: false, and otherwise leaves it alone", () => {
+    expect(normalizeWarrantyOnUpdate({ isWarrantied: false, warrantyNote: NOTE }).warrantyNote).toBeNull();
+    expect(normalizeWarrantyOnUpdate({ isWarrantied: true, warrantyNote: NOTE }).warrantyNote).toBe(NOTE);
+    // e.g. the products list's Deals checkbox sends only { isDeal } — must not touch warranty fields.
+    const dealsOnly = normalizeWarrantyOnUpdate({ isDeal: true });
+    expect(dealsOnly).toEqual({ isDeal: true });
+    expect(dealsOnly).not.toHaveProperty("warrantyNote");
+  });
+
+  it("validation accepts a boolean flag and a note up to 2000 chars, trims it, and rejects the rest", () => {
+    const base = { name: "X", slug: "x", variants: [{ sku: "X-1", name: "X", priceCents: 100 }] };
+
+    const ok = productCreateSchema.safeParse({ ...base, isWarrantied: true, warrantyNote: "  Covers the frame  " });
+    expect(ok.success).toBe(true);
+    expect(ok.data.warrantyNote).toBe("Covers the frame");
+
+    expect(productCreateSchema.safeParse({ ...base }).success).toBe(true);
+    expect(productCreateSchema.safeParse({ ...base, warrantyNote: null }).success).toBe(true);
+    expect(productCreateSchema.safeParse({ ...base, isWarrantied: "yes" }).success).toBe(false);
+    expect(productCreateSchema.safeParse({ ...base, warrantyNote: "x".repeat(2001) }).success).toBe(false);
+    expect(productUpdateSchema.safeParse({ isWarrantied: false, warrantyNote: null }).success).toBe(true);
   });
 });

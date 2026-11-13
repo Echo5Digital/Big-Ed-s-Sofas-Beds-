@@ -294,21 +294,31 @@ async function ProductDetailPage({ product }) {
             </p>
           </div>
 
-          <div
-            className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-sm font-medium ${
-              isLimitedStock
-                ? "border-brand-gold-dark/30 bg-brand-gold/10 text-brand-gold-dark"
-                : inStock
-                  ? "border-green-600/20 bg-green-600/5 text-green-800"
-                  : "border-brand-red/20 bg-brand-red/5 text-brand-red-dark"
-            }`}
-          >
-            {inStock ? (
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            ) : (
-              <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <div className="flex flex-wrap items-stretch gap-2">
+            <div
+              className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-sm font-medium ${
+                isLimitedStock
+                  ? "border-brand-gold-dark/30 bg-brand-gold/10 text-brand-gold-dark"
+                  : inStock
+                    ? "border-green-600/20 bg-green-600/5 text-green-800"
+                    : "border-brand-red/20 bg-brand-red/5 text-brand-red-dark"
+              }`}
+            >
+              {inStock ? (
+                <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              ) : (
+                <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              )}
+              <span>{isLimitedStock ? "Limited Stock" : inStock ? "In Stock" : "Out of Stock"}</span>
+            </div>
+
+            {/* Staff-ticked on the admin form's Warranty tab (Product.isWarrantied). */}
+            {product.isWarrantied && (
+              <div className="flex items-start gap-2 rounded-xl border border-green-600/20 bg-green-600/5 px-4 py-3 text-sm font-medium text-green-800">
+                <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <span>Warrantied</span>
+              </div>
             )}
-            <span>{isLimitedStock ? "Limited Stock" : inStock ? "In Stock" : "Out of Stock"}</span>
           </div>
 
           <ProductAttributes product={product} />
@@ -356,6 +366,16 @@ async function ProductDetailPage({ product }) {
           <h2 className="font-display text-xl font-semibold text-brand-charcoal sm:text-2xl">Description</h2>
           <p className="mt-3 max-w-3xl whitespace-pre-line text-sm leading-relaxed text-brand-charcoal/75 sm:text-base">
             <InlineMarkdown text={product.description} />
+          </p>
+        </Container>
+      )}
+
+      {/* The API only returns warrantyNote while isWarrantied is true. */}
+      {product.isWarrantied && product.warrantyNote && (
+        <Container className="mt-10">
+          <h2 className="font-display text-xl font-semibold text-brand-charcoal sm:text-2xl">Warranty Details</h2>
+          <p className="mt-3 max-w-3xl whitespace-pre-line text-sm leading-relaxed text-brand-charcoal/75 sm:text-base">
+            <InlineMarkdown text={product.warrantyNote} />
           </p>
         </Container>
       )}
