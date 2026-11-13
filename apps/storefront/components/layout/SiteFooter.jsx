@@ -44,14 +44,14 @@ function FooterColumn({ title, links }) {
 export default function SiteFooter() {
   return (
     <footer className="bg-brand-charcoal text-white">
-      <Container className="grid grid-cols-2 gap-x-6 gap-y-8 py-10 sm:gap-10 sm:py-12 lg:grid-cols-5">
-        <div className="col-span-2 flex flex-col items-center gap-3 text-center sm:items-start sm:text-left lg:col-span-1">
+      <Container className="grid grid-cols-2 gap-x-6 gap-y-10 py-10 sm:gap-10 sm:py-12 lg:grid-cols-5">
+        <div className="col-span-2 flex flex-col items-start gap-3 text-left lg:col-span-1">
           <Image
             src={siteConfig.logo.src}
             alt={siteConfig.logo.alt}
             width={siteConfig.logo.width}
             height={siteConfig.logo.height}
-            className="h-16 w-auto shrink-0 self-center sm:self-start"
+            className="h-16 w-auto shrink-0"
           />
           <p className="text-xs tracking-wide text-white/50">
             QUALITY FURNITURE &bull; COMFORT FOR LIFE
@@ -61,7 +61,7 @@ export default function SiteFooter() {
         <FooterColumn title="Quick Links" links={siteConfig.footerQuickLinks} />
         <FooterColumn title="Company" links={siteConfig.footerCompanyLinks} />
 
-        <div className="col-span-2 sm:col-span-1">
+        <div className="col-span-2 border-t border-white/10 pt-8 sm:col-span-1 sm:border-t-0 sm:pt-0">
           <h3 className="mb-3 text-sm font-bold tracking-wide text-white">Store Information</h3>
           <ul className="flex flex-col gap-2.5 text-sm text-white/70">
             <li className="flex items-start gap-2">
@@ -91,7 +91,7 @@ export default function SiteFooter() {
           </ul>
         </div>
 
-        <div className="col-span-2 sm:col-span-1">
+        <div className="col-span-2 border-t border-white/10 pt-8 sm:col-span-1 sm:border-t-0 sm:pt-0">
           <h3 className="mb-3 text-sm font-bold tracking-wide text-white">Follow Us</h3>
           <div className="mb-5 flex items-center gap-2">
             {socialLinks.map(({ label, href, Icon }) => (

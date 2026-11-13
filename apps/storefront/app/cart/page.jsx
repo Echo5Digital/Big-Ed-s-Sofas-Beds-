@@ -38,7 +38,7 @@ export default function CartPage() {
                   className="flex gap-4 rounded-xl border border-brand-charcoal/10 bg-white p-4"
                 >
                   <Link
-                    href={`/products/${item.slug}`}
+                    href={`/shop/${item.slug}`}
                     className="relative size-20 shrink-0 overflow-hidden rounded-lg bg-brand-cream sm:size-24"
                   >
                     {item.image && (
@@ -49,7 +49,7 @@ export default function CartPage() {
                   <div className="flex flex-1 flex-col gap-2">
                     <div className="flex items-start justify-between gap-3">
                       <Link
-                        href={`/products/${item.slug}`}
+                        href={`/shop/${item.slug}`}
                         className="text-sm font-semibold text-brand-charcoal hover:text-brand-red-dark sm:text-base"
                       >
                         {item.name}

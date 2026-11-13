@@ -41,7 +41,7 @@ export default function DealCard({ deal, size = "default" }) {
   return (
     <li className="w-[calc((100%-(var(--cols)-1)*var(--gap))/var(--cols))]">
       <Link
-        href={`/products/${deal.slug}`}
+        href={`/shop/${deal.slug}`}
         className="group relative flex h-full flex-col rounded-2xl bg-white p-2.5 shadow-[0_12px_32px_-14px_rgba(20,30,70,0.38)] ring-1 ring-black/5 transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_22px_40px_-16px_rgba(163,6,16,0.45)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-red sm:p-3"
       >
         <span className="absolute -top-2.5 -left-1.5 z-10 -rotate-6 rounded-md bg-linear-to-b from-[#ee1c28] to-[#a30610] px-2.5 py-1 text-[10px] font-black tracking-wide text-white italic shadow-[0_3px_8px_rgba(163,6,16,0.45)] ring-1 ring-white/30 sm:-top-3 sm:-left-2.5 sm:px-3 sm:text-xs">

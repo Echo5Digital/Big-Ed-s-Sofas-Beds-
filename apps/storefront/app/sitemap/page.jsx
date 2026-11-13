@@ -52,13 +52,18 @@ export default async function SitemapPage() {
     getCategories(),
     getProducts({ pageSize: 100 }),
   ]);
+  const categoriesById = new Map(allCategories.map((c) => [c.id, c]));
   const shopByRoom = allCategories
     .filter((c) => !c.parentId)
     .map((group) => ({ label: group.name, href: `/shop/${group.slug}` }));
   const shopByCategory = allCategories
     .filter((c) => c.parentId)
-    .map((category) => ({ label: category.name, href: `/shop/${category.slug}` }));
-  const productLinks = allProducts.map((product) => ({ label: product.name, href: `/products/${product.slug}` }));
+    .map((category) => {
+      const parent = categoriesById.get(category.parentId);
+      const path = parent ? `${parent.slug}/${category.slug}` : category.slug;
+      return { label: category.name, href: `/shop/${path}` };
+    });
+  const productLinks = allProducts.map((product) => ({ label: product.name, href: `/shop/${product.slug}` }));
   const blogLinks = blogPosts.map((post) => ({ label: post.title, href: `/blog/${post.slug}` }));
 
   const legalPages = [

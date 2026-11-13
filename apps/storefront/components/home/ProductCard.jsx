@@ -39,7 +39,7 @@ export default function ProductCard({ product, showRatingValue = false }) {
           previous object-contain treatment. */}
       <div className="relative aspect-square shrink-0 overflow-hidden bg-brand-cream">
         <Link
-          href={`/products/${product.slug}`}
+          href={`/shop/${product.slug}`}
           className="absolute inset-0 block focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red"
         >
           {product.image && (
@@ -78,7 +78,7 @@ export default function ProductCard({ product, showRatingValue = false }) {
 
       <div className="flex flex-1 flex-col gap-1.5 p-3.5">
         <Link
-          href={`/products/${product.slug}`}
+          href={`/shop/${product.slug}`}
           className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold text-brand-charcoal hover:text-brand-red-dark focus-visible:outline-none"
         >
           <InlineMarkdown text={product.name} />

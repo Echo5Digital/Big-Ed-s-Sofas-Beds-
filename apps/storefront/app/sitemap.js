@@ -34,14 +34,19 @@ export default async function sitemap() {
     priority: route.priority,
   }));
 
-  const categoryEntries = categories.map((category) => ({
-    url: `${siteUrl}/shop/${category.slug}`,
-    changeFrequency: "weekly",
-    priority: 0.7,
-  }));
+  const categoriesById = new Map(categories.map((c) => [c.id, c]));
+  const categoryEntries = categories.map((category) => {
+    const parent = category.parentId ? categoriesById.get(category.parentId) : null;
+    const path = parent ? `${parent.slug}/${category.slug}` : category.slug;
+    return {
+      url: `${siteUrl}/shop/${path}`,
+      changeFrequency: "weekly",
+      priority: 0.7,
+    };
+  });
 
   const productEntries = products.map((product) => ({
-    url: `${siteUrl}/products/${product.slug}`,
+    url: `${siteUrl}/shop/${product.slug}`,
     changeFrequency: "weekly",
     priority: 0.6,
   }));

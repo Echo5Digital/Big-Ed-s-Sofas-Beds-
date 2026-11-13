@@ -1,10 +1,13 @@
 // Live catalog data, never stale-cached — see app/page.jsx for rationale.
 export const instant = false;
 
-import { notFound } from "next/navigation";
-import { CheckCircle2, AlertCircle, Truck, RotateCcw, ShieldCheck } from "lucide-react";
+import { notFound, permanentRedirect } from "next/navigation";
+import { PackageSearch, CheckCircle2, AlertCircle, Truck, RotateCcw, ShieldCheck } from "lucide-react";
 import { stripInlineMarkdown } from "@big-eds/ui";
 import Container from "@/components/ui/Container";
+import EmptyState from "@/components/ui/EmptyState";
+import ShopPageHero from "@/components/ui/ShopPageHero";
+import ProductGridWithControls from "@/components/shop/ProductGridWithControls";
 import Price from "@/components/ui/Price";
 import StarRating from "@/components/ui/StarRating";
 import InlineMarkdown from "@/components/ui/InlineMarkdown";
@@ -13,7 +16,7 @@ import ProductImageGallery from "@/components/products/ProductImageGallery";
 import ProductAttributes from "@/components/products/ProductAttributes";
 import ProductPurchasePanel from "@/components/products/ProductPurchasePanel";
 import FrequentlyBoughtTogether from "@/components/products/FrequentlyBoughtTogether";
-import { getProductBySlug, getProducts, getCategories } from "@/lib/api/catalog";
+import { getCategories, getAllProducts, getProductBySlug, getProducts } from "@/lib/api/catalog";
 import { normalizeProductForCard } from "@/lib/api/normalize";
 import {
   homepageDisplayRating,
@@ -26,6 +29,12 @@ import { topLevelCategorySlugFor } from "@/lib/categoryTree";
 import { pairedCategorySlugsFor } from "@/lib/categoryPairings";
 import { ApiClientError } from "@/lib/api/client";
 
+// Only these top-level categories get a sub-category filter in the sidebar
+// (Office and Accessories each have just one trivial catch-all child, so a
+// sub-category filter for them would be pointless — confirmed product
+// decision).
+const CATEGORY_FILTER_PARENT_SLUGS = ["living-room", "bedroom", "dining"];
+
 // Matches the trust-badge strip pattern on the reference sites (free
 // delivery / easy returns / warranty) — informational only, not a new
 // fulfillment or policy capability; copy mirrors what ProductPurchasePanel
@@ -36,31 +45,150 @@ const TRUST_BADGES = [
   { icon: ShieldCheck, label: "Quality Checked", detail: "Inspected before it leaves our warehouse" },
 ];
 
+// Resolves a /shop/[...slug] path against the live category list. Categories
+// are a real two-level tree (Category.parentId, seeded in
+// packages/database/prisma/seed.js — e.g. Living Room -> Stationary Sofas &
+// Loveseats, Sectionals, Recliners, etc.): a parent slug rolls up every
+// product from its sub-categories too (a product tagged only to "Stationary
+// Sofas & Loveseats" still shows up on /shop/living-room), not just products
+// tagged directly to the parent itself — matching the same rollup behavior as
+// the /shop page's category filter (see
+// components/shop/ProductGridWithControls.jsx). A leaf slug (no children)
+// shows only its own directly-tagged products, same as before.
+//
+// Fetches every product across the category (+ children, for a parent) via
+// getAllProducts (loops the API's paginated endpoint per slug), not just one
+// page of it — the sidebar filters (price/material/color/in-stock) and sort
+// in ProductGridWithControls need the complete set to work correctly;
+// pagination happens client-side, over the filtered result.
+async function resolveCategory(slug, categories) {
+  const category = categories.find((c) => c.slug === slug);
+  if (!category) return null;
+
+  const children = categories.filter((c) => c.parentId === category.id);
+  const slugsToFetch = [slug, ...children.map((c) => c.slug)];
+
+  const results = await Promise.all(
+    slugsToFetch.map((s) => getAllProducts({ category: s, sort: "oldest" }))
+  );
+  // A product tagged to BOTH the parent and one of its children (via primary
+  // + secondary category tags) would otherwise appear twice once their
+  // product lists are merged.
+  const seenIds = new Set();
+  const products = results
+    .flatMap((r) => r.products)
+    .filter((p) => (seenIds.has(p.id) ? false : (seenIds.add(p.id), true)));
+
+  // Scoped down to just this parent + its own children — ProductGridWithControls
+  // builds a Category filter tree from whatever `categories` it's given (see
+  // buildCategoryTree in lib/categoryTree.js), so passing the full site-wide
+  // list here would surface every other room's categories too. Only built for
+  // the rooms in CATEGORY_FILTER_PARENT_SLUGS; everywhere else this stays
+  // empty and ProductGridWithControls's Category filter section doesn't render
+  // (same as /shop/[category] behaved before this filter existed).
+  const categoriesForFilter = CATEGORY_FILTER_PARENT_SLUGS.includes(slug) ? [category, ...children] : [];
+
+  return { category, children, products, categoriesForFilter };
+}
+
+// /shop/[...slug] serves three URL shapes with one route: a top-level
+// category (1 segment), a sub-category nested under its parent (2 segments,
+// e.g. /shop/living-room/stationary-sofas-loveseats), and a product (1
+// segment, falling back from category resolution). Category and product
+// slugs are each globally unique (Category.slug/Product.slug, both
+// @unique in schema.prisma) so there's no ambiguity once category lookup has
+// failed. A 1-segment request that resolves to a *sub*-category (its own
+// old flat URL, e.g. /shop/stationary-sofas-loveseats) redirects to its
+// nested URL rather than rendering, so old bookmarks/search results still
+// land somewhere correct instead of 404ing.
+async function resolveShopRoute(segments) {
+  const categories = await getCategories();
+
+  if (segments.length === 2) {
+    const [parentSlug, childSlug] = segments;
+    const parent = categories.find((c) => c.slug === parentSlug);
+    const child = categories.find((c) => c.slug === childSlug);
+    if (!parent || !child || child.parentId !== parent.id) {
+      return null;
+    }
+    const resolved = await resolveCategory(childSlug, categories);
+    return resolved ? { type: "category", slug: childSlug, ...resolved } : null;
+  }
+
+  if (segments.length === 1) {
+    const [slug] = segments;
+    const resolved = await resolveCategory(slug, categories);
+    if (resolved) {
+      if (resolved.category.parentId) {
+        const parent = categories.find((c) => c.id === resolved.category.parentId);
+        if (parent) {
+          permanentRedirect(`/shop/${parent.slug}/${slug}`);
+        }
+      }
+      return { type: "category", slug, ...resolved };
+    }
+
+    const product = await getProductBySlug(slug).catch((err) => {
+      if (err instanceof ApiClientError && err.status === 404) return null;
+      throw err;
+    });
+    if (product) {
+      return { type: "product", slug, product };
+    }
+  }
+
+  return null;
+}
+
 export async function generateMetadata({ params }) {
-  const { slug } = await params;
-  const product = await getProductBySlug(slug).catch(() => null);
-  if (!product) {
-    return { title: "Product Not Found | Big Ed's Sofas & Beds" };
+  const { slug: segments } = await params;
+  const resolved = await resolveShopRoute(segments);
+  if (!resolved) {
+    return { title: "Not Found | Big Ed's Sofas & Beds" };
+  }
+  if (resolved.type === "category") {
+    return { title: `${resolved.category.name} | Big Ed's Sofas & Beds` };
   }
   return {
-    title: `${stripInlineMarkdown(product.name)} | Big Ed's Sofas & Beds`,
-    description: product.description ? stripInlineMarkdown(product.description) : null,
+    title: `${stripInlineMarkdown(resolved.product.name)} | Big Ed's Sofas & Beds`,
+    description: resolved.product.description ? stripInlineMarkdown(resolved.product.description) : null,
   };
 }
 
-export default async function ProductDetailPage({ params }) {
-  const { slug } = await params;
+async function CategoryPage({ category, products: rawProducts, categoriesForFilter, slug }) {
+  const seed = await currentDaySeed();
+  const products = shuffleProducts(rawProducts, seed, `category-${slug}`)
+    .map(normalizeProductForCard)
+    .map(withDisplayRating);
 
-  let product;
-  try {
-    product = await getProductBySlug(slug);
-  } catch (err) {
-    if (err instanceof ApiClientError && err.status === 404) {
-      notFound();
-    }
-    throw err;
-  }
+  return (
+    <div className="pb-10">
+      <ShopPageHero title={category.name} />
 
+      <Container className="mt-8">
+        <div className="mt-6">
+          {products.length > 0 ? (
+            <ProductGridWithControls
+              products={products}
+              categories={categoriesForFilter}
+              hideParentCategoryCheckbox={CATEGORY_FILTER_PARENT_SLUGS.includes(slug)}
+            />
+          ) : (
+            <EmptyState
+              icon={PackageSearch}
+              title="No products found in this category yet"
+              description="We're still stocking this category online. Check back soon, or browse all furniture in the meantime."
+              actionLabel="Shop All Furniture"
+              actionHref="/shop"
+            />
+          )}
+        </div>
+      </Container>
+    </div>
+  );
+}
+
+async function ProductDetailPage({ product }) {
   const defaultVariant = product.variants.find((v) => v.isActive) ?? product.variants[0];
   const totalAvailable = defaultVariant?.availability?.totalAvailable ?? 0;
   const inStock = totalAvailable > 0;
@@ -246,4 +374,26 @@ export default async function ProductDetailPage({ params }) {
       )}
     </div>
   );
+}
+
+export default async function ShopRoutePage({ params }) {
+  const { slug: segments } = await params;
+  const resolved = await resolveShopRoute(segments);
+
+  if (!resolved) {
+    notFound();
+  }
+
+  if (resolved.type === "category") {
+    return (
+      <CategoryPage
+        category={resolved.category}
+        products={resolved.products}
+        categoriesForFilter={resolved.categoriesForFilter}
+        slug={resolved.slug}
+      />
+    );
+  }
+
+  return <ProductDetailPage product={resolved.product} />;
 }

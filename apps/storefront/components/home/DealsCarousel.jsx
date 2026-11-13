@@ -199,7 +199,7 @@ export default function DealsCarousel({ products }) {
               className="absolute left-1/2 top-1/2 w-[68%] sm:w-[58%] lg:w-[62%] max-w-75 cursor-pointer"
             >
               {isCenter ? (
-                <Link href={`/products/${product.slug}`} className="block">
+                <Link href={`/shop/${product.slug}`} className="block">
                   {cardContent}
                 </Link>
               ) : (

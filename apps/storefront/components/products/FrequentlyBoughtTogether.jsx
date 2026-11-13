@@ -76,7 +76,7 @@ export default function FrequentlyBoughtTogether({ items }) {
                   />
                 </span>
                 <Link
-                  href={`/products/${item.slug}`}
+                  href={`/shop/${item.slug}`}
                   className="line-clamp-2 text-xs font-semibold text-brand-charcoal hover:text-brand-red-dark"
                 >
                   {stripInlineMarkdown(item.name)}
