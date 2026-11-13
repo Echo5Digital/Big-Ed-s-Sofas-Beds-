@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { Download } from "lucide-react";
 import RequireAuth from "@/components/layout/RequireAuth";
 import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
@@ -36,6 +37,7 @@ function ReceiveModal({ open, onClose, po, onDone }) {
 function ReceiveForm({ po, onClose, onDone }) {
   const [locationId, setLocationId] = useState(po.locationId);
   const [quantities, setQuantities] = useState({});
+  const [pendingNotes, setPendingNotes] = useState({});
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -47,7 +49,11 @@ function ReceiveForm({ po, onClose, onDone }) {
     setSubmitting(true);
     try {
       const lines = outstandingLines
-        .map((l) => ({ poLineId: l.id, acceptedQty: Number(quantities[l.id] || 0) }))
+        .map((l) => ({
+          poLineId: l.id,
+          acceptedQty: Number(quantities[l.id] || 0),
+          pendingNote: pendingNotes[l.id]?.trim() || undefined,
+        }))
         .filter((l) => l.acceptedQty > 0);
 
       if (lines.length === 0) {
@@ -67,25 +73,48 @@ function ReceiveForm({ po, onClose, onDone }) {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      {outstandingLines.map((line) => (
-        <div key={line.id} className="flex items-center justify-between gap-3 rounded-lg border border-black/10 p-3">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-brand-charcoal">{line.skuSnapshot}</p>
-            <p className="text-xs text-brand-charcoal/50">
-              {line.receivedQty} of {line.expectedQty} received
-            </p>
+      {outstandingLines.map((line) => {
+        const remaining = line.expectedQty - line.receivedQty;
+        const qty = Number(quantities[line.id] || 0);
+        const willBeShort = qty > 0 && qty < remaining;
+        return (
+          <div key={line.id} className="flex flex-col gap-2 rounded-lg border border-black/10 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-brand-charcoal">{line.skuSnapshot}</p>
+                <p className="text-xs text-brand-charcoal/50">
+                  {line.receivedQty} of {line.expectedQty} received
+                </p>
+                {line.pendingNote && (
+                  <p className="mt-1 text-xs text-amber-700">Previous balance note: {line.pendingNote}</p>
+                )}
+              </div>
+              <input
+                type="number"
+                min="0"
+                max={remaining}
+                placeholder="Qty"
+                value={quantities[line.id] ?? ""}
+                onChange={(e) => setQuantities((prev) => ({ ...prev, [line.id]: e.target.value }))}
+                className="w-24 shrink-0 rounded-lg border border-black/15 px-2.5 py-1.5 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+              />
+            </div>
+            {willBeShort && (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-brand-charcoal/70">
+                  Pending note — balance of {remaining - qty} still owed (optional)
+                </label>
+                <input
+                  value={pendingNotes[line.id] ?? ""}
+                  onChange={(e) => setPendingNotes((prev) => ({ ...prev, [line.id]: e.target.value }))}
+                  placeholder="e.g. remainder backordered, expected next week"
+                  className="rounded-lg border border-black/15 px-2.5 py-1.5 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+                />
+              </div>
+            )}
           </div>
-          <input
-            type="number"
-            min="0"
-            max={line.expectedQty - line.receivedQty}
-            placeholder="Qty"
-            value={quantities[line.id] ?? ""}
-            onChange={(e) => setQuantities((prev) => ({ ...prev, [line.id]: e.target.value }))}
-            className="w-24 rounded-lg border border-black/15 px-2.5 py-1.5 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-          />
-        </div>
-      ))}
+        );
+      })}
 
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
@@ -108,6 +137,7 @@ function PurchaseOrderDetailContent() {
   const [error, setError] = useState(null);
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [actionError, setActionError] = useState(null);
+  const [downloading, setDownloading] = useState(false);
 
   const load = useCallback(() => {
     api
@@ -140,6 +170,18 @@ function PurchaseOrderDetailContent() {
     }
   }
 
+  async function handleDownloadPdf() {
+    setActionError(null);
+    setDownloading(true);
+    try {
+      await api.downloadFile(`/purchasing/purchase-orders/${id}/export.pdf`, `${po.poNumber}.pdf`);
+    } catch (err) {
+      setActionError(err instanceof ApiClientError ? err.message : "Failed to download PDF.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   if (error) {
     return <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>;
   }
@@ -150,6 +192,11 @@ function PurchaseOrderDetailContent() {
 
   const columns = [
     { key: "sku", header: "SKU", render: (l) => l.skuSnapshot },
+    {
+      key: "expectedDate",
+      header: "Expected Date",
+      render: (l) => (l.expectedDate ? new Date(l.expectedDate).toLocaleDateString() : "—"),
+    },
     { key: "expectedQty", header: "Expected" },
     { key: "receivedQty", header: "Received" },
     { key: "unitCost", header: "Unit Cost", render: (l) => formatCentsAsCurrency(l.unitCostCents) },
@@ -157,6 +204,11 @@ function PurchaseOrderDetailContent() {
       key: "lineTotal",
       header: "Line Total",
       render: (l) => formatCentsAsCurrency(l.expectedQty * l.unitCostCents + l.taxCents + l.freightCents),
+    },
+    {
+      key: "pendingNote",
+      header: "Pending Note",
+      render: (l) => (l.pendingNote ? <span className="text-amber-700">{l.pendingNote}</span> : "—"),
     },
   ];
 
@@ -185,6 +237,9 @@ function PurchaseOrderDetailContent() {
         {["SENT_TO_VENDOR", "PARTIALLY_RECEIVED"].includes(po.status) && hasPermission("purchasing:receive") && (
           <Button onClick={() => setReceiveOpen(true)}>Receive Stock</Button>
         )}
+        <Button variant="outline" icon={Download} onClick={handleDownloadPdf} disabled={downloading}>
+          {downloading ? "Downloading…" : "Download PDF"}
+        </Button>
       </Card>
 
       <DataTable columns={columns} rows={po.lines} />

@@ -960,7 +960,6 @@ model PurchaseOrder {
   supplier      Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   status        PurchaseOrderStatus @default(DRAFT)
   locationId    String
-  expectedDate  DateTime?
   notes         String?
   createdById   String?
   createdBy     User?               @relation("POCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -989,6 +988,15 @@ model POLine {
   unitCostCents   Int
   taxCents        Int           @default(0)
   freightCents    Int           @default(0)
+  // Per-line delivery expectation — replaces the old PO-level expectedDate so
+  // a single PO spanning multiple SKUs can have different expected dates per
+  // item instead of one date forced across every line.
+  expectedDate    DateTime?
+  // Running "balance owed" status set when a receipt leaves this line short
+  // (receivedQty < expectedQty) — overwritten on each partial receive, not an
+  // append-only history (ReceiptLine.differenceNotes already is that ledger).
+  // Cleared back to null once the line is fully received.
+  pendingNote     String?
   receiptLines    ReceiptLine[]
 
   @@index([purchaseOrderId])

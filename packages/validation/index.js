@@ -310,7 +310,6 @@ const supplierUpdateSchema = supplierCreateSchema
 const purchaseOrderCreateSchema = z.object({
   supplierId: z.string().uuid(),
   locationId: z.string().uuid(),
-  expectedDate: z.string().datetime().optional().nullable(),
   notes: z.string().max(1000).optional().nullable(),
   lines: z
     .array(
@@ -320,6 +319,10 @@ const purchaseOrderCreateSchema = z.object({
         unitCostCents: z.number().int().nonnegative(),
         taxCents: z.number().int().nonnegative().optional(),
         freightCents: z.number().int().nonnegative().optional(),
+        // Per-line delivery expectation — a PO spanning multiple SKUs can
+        // have a different expected date per item rather than one date
+        // forced across the whole order.
+        expectedDate: z.string().datetime().optional().nullable(),
       })
     )
     .min(1),
@@ -339,6 +342,10 @@ const goodsReceiptCreateSchema = z.object({
         acceptedQty: z.number().int().nonnegative(),
         damagedQty: z.number().int().nonnegative().optional(),
         differenceNotes: z.string().max(500).optional().nullable(),
+        // Current "balance owed" note for this line, set when the receipt
+        // leaves it short (receivedQty < expectedQty). Omit/blank to leave
+        // any prior note on the line untouched for this receipt round.
+        pendingNote: z.string().max(500).optional().nullable(),
       })
     )
     .min(1),

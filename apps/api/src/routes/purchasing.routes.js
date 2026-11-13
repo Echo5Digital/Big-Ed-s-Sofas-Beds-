@@ -1,4 +1,5 @@
 const express = require("express");
+const PDFDocument = require("pdfkit");
 const { prisma } = require("@big-eds/database");
 const {
   supplierCreateSchema,
@@ -63,7 +64,6 @@ function serializePO(po) {
     status: po.status,
     supplier: po.supplier ? { id: po.supplier.id, name: po.supplier.name } : undefined,
     locationId: po.locationId,
-    expectedDate: po.expectedDate,
     notes: po.notes,
     approvedAt: po.approvedAt,
     lines: po.lines?.map((l) => ({
@@ -75,10 +75,24 @@ function serializePO(po) {
       unitCostCents: l.unitCostCents,
       taxCents: l.taxCents,
       freightCents: l.freightCents,
+      expectedDate: l.expectedDate,
+      pendingNote: l.pendingNote,
     })),
     createdAt: po.createdAt,
     updatedAt: po.updatedAt,
   };
+}
+
+// `status=ACTIVE`/`status=COMPLETED` are admin-UI convenience filters (the
+// Purchasing list's two tabs) layered on top of the real PurchaseOrderStatus
+// enum — "Completed" means fully RECEIVED, everything else (including
+// CANCELED) is still "Active" so it doesn't silently disappear from view.
+// A caller can still pass an exact status (e.g. ?status=DRAFT) as before.
+function statusFilterFromQuery(status) {
+  if (!status) return undefined;
+  if (status === "ACTIVE") return { not: "RECEIVED" };
+  if (status === "COMPLETED") return "RECEIVED";
+  return String(status);
 }
 
 router.get(
@@ -87,7 +101,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const { status } = req.query;
     const purchaseOrders = await prisma.purchaseOrder.findMany({
-      where: status ? { status: String(status) } : undefined,
+      where: status ? { status: statusFilterFromQuery(status) } : undefined,
       include: { supplier: true, lines: true },
       orderBy: { createdAt: "desc" },
     });
@@ -128,7 +142,6 @@ router.post(
           status: "DRAFT",
           supplierId: poData.supplierId,
           locationId: poData.locationId,
-          expectedDate: poData.expectedDate ? new Date(poData.expectedDate) : undefined,
           notes: poData.notes,
           createdById: req.user.id,
           lines: {
@@ -139,6 +152,7 @@ router.post(
               unitCostCents: l.unitCostCents,
               taxCents: l.taxCents ?? 0,
               freightCents: l.freightCents ?? 0,
+              expectedDate: l.expectedDate ? new Date(l.expectedDate) : undefined,
             })),
           },
         },
@@ -214,24 +228,120 @@ router.get(
     });
     if (!po) throw new NotFoundError("Purchase order not found");
 
-    // PDF export is a documented MVP requirement; a real render (e.g.
-    // Puppeteer/PDFKit) is intentionally deferred until the layout is
-    // approved. This returns the structured data a PDF template would
-    // consume so the admin UI can build/preview before that's wired up.
+    // Structured JSON a PDF template (or any other export) would consume.
+    // The actual PDF render lives at /export.pdf below — this endpoint stays
+    // for any caller that wants the raw data rather than a file download.
     res.json({
       poNumber: po.poNumber,
       supplier: po.supplier.name,
       status: po.status,
-      expectedDate: po.expectedDate,
       lines: po.lines.map((l) => ({
         sku: l.skuSnapshot,
         product: l.variant.product.name,
         variant: l.variant.name,
         expectedQty: l.expectedQty,
         unitCostCents: l.unitCostCents,
+        expectedDate: l.expectedDate,
         lineTotalCents: l.expectedQty * l.unitCostCents + l.taxCents + l.freightCents,
       })),
     });
+  })
+);
+
+function formatCurrencyFromCents(cents) {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+router.get(
+  "/purchase-orders/:id/export.pdf",
+  requirePermission("purchasing:read"),
+  asyncHandler(async (req, res) => {
+    const po = await prisma.purchaseOrder.findUnique({
+      where: { id: req.params.id },
+      include: {
+        supplier: true,
+        lines: { include: { variant: { include: { product: true } } } },
+        createdBy: { select: { firstName: true, lastName: true } },
+        approvedBy: { select: { firstName: true, lastName: true } },
+      },
+    });
+    if (!po) throw new NotFoundError("Purchase order not found");
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${po.poNumber}.pdf"`);
+
+    const doc = new PDFDocument({ size: "LETTER", margin: 50 });
+    doc.pipe(res);
+
+    doc.fontSize(20).text("Purchase Order", { continued: true }).fontSize(20).text(`  ${po.poNumber}`);
+    doc.moveDown(0.5);
+    doc.fontSize(10).fillColor("#555").text(`Status: ${po.status.replaceAll("_", " ")}`);
+    doc.text(`Supplier: ${po.supplier.name}`);
+    if (po.createdBy) doc.text(`Created by: ${po.createdBy.firstName} ${po.createdBy.lastName}`);
+    if (po.approvedBy) doc.text(`Approved by: ${po.approvedBy.firstName} ${po.approvedBy.lastName}`);
+    doc.text(`Created: ${po.createdAt.toLocaleDateString()}`);
+    if (po.notes) doc.text(`Notes: ${po.notes}`);
+    doc.fillColor("#000");
+    doc.moveDown();
+
+    const columns = [
+      { label: "SKU", width: 90 },
+      { label: "Product", width: 150 },
+      { label: "Expected", width: 70 },
+      { label: "Qty", width: 40 },
+      { label: "Unit Cost", width: 70 },
+      { label: "Line Total", width: 70 },
+    ];
+
+    function drawRow(y, cells, { bold = false } = {}) {
+      let x = doc.page.margins.left;
+      doc.fontSize(9).font(bold ? "Helvetica-Bold" : "Helvetica");
+      columns.forEach((col, i) => {
+        doc.text(String(cells[i] ?? ""), x, y, { width: col.width, ellipsis: true });
+        x += col.width;
+      });
+    }
+
+    let y = doc.y;
+    drawRow(y, columns.map((c) => c.label), { bold: true });
+    y += 16;
+    doc
+      .moveTo(doc.page.margins.left, y - 4)
+      .lineTo(doc.page.margins.left + columns.reduce((sum, c) => sum + c.width, 0), y - 4)
+      .strokeColor("#ccc")
+      .stroke();
+
+    let grandTotalCents = 0;
+    for (const line of po.lines) {
+      if (y > doc.page.height - doc.page.margins.bottom - 40) {
+        doc.addPage();
+        y = doc.page.margins.top;
+      }
+      const lineTotalCents = line.expectedQty * line.unitCostCents + line.taxCents + line.freightCents;
+      grandTotalCents += lineTotalCents;
+      drawRow(y, [
+        line.skuSnapshot,
+        line.variant.product.name,
+        line.expectedDate ? new Date(line.expectedDate).toLocaleDateString() : "—",
+        line.expectedQty,
+        formatCurrencyFromCents(line.unitCostCents),
+        formatCurrencyFromCents(lineTotalCents),
+      ]);
+      y += 18;
+    }
+
+    y += 8;
+    doc
+      .moveTo(doc.page.margins.left, y - 4)
+      .lineTo(doc.page.margins.left + columns.reduce((sum, c) => sum + c.width, 0), y - 4)
+      .strokeColor("#ccc")
+      .stroke();
+    doc.fontSize(10).font("Helvetica-Bold").text(`Total: ${formatCurrencyFromCents(grandTotalCents)}`, doc.page.margins.left, y, {
+      width: columns.reduce((sum, c) => sum + c.width, 0),
+      align: "right",
+    });
+
+    doc.end();
   })
 );
 

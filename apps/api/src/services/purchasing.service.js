@@ -55,9 +55,17 @@ async function receivePurchaseOrder({ purchaseOrderId, locationId, notes, lines,
           );
         }
 
+        // A line left short (receivedQty < expectedQty) keeps whatever
+        // balance note this receipt provided, or its prior note if this
+        // round didn't supply one. A line that just became fully received
+        // has no outstanding balance left to annotate, so the note clears.
+        const stillShort = newReceivedQty < poLine.expectedQty;
         await tx.pOLine.update({
           where: { id: poLine.id },
-          data: { receivedQty: newReceivedQty },
+          data: {
+            receivedQty: newReceivedQty,
+            pendingNote: stillShort ? (receiptLine.pendingNote ?? poLine.pendingNote) : null,
+          },
         });
 
         if (receiptLine.acceptedQty > 0) {

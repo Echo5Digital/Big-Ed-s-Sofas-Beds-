@@ -167,4 +167,142 @@ describe("purchasing.service — receivePurchaseOrder cost sync", () => {
       })
     ).rejects.toThrow(/Cannot receive against a PO in status DRAFT/);
   });
+
+  it("rejects a receipt that would push receivedQty past expectedQty (over-receive guard, unaffected by the pendingNote change)", async () => {
+    const po = await createSentPO(10000, 5);
+    const poLine = po.lines[0];
+
+    await expect(
+      purchasingService.receivePurchaseOrder({
+        purchaseOrderId: po.id,
+        locationId: location.id,
+        lines: [{ poLineId: poLine.id, acceptedQty: 6 }],
+        receivedById: null,
+      })
+    ).rejects.toThrow(/would exceed the expected quantity/);
+  });
+});
+
+describe("purchasing.service — receivePurchaseOrder pendingNote", () => {
+  let supplier;
+  let location;
+  let product;
+  let variant;
+
+  beforeAll(async () => {
+    supplier = await prisma.supplier.create({
+      data: { name: `Pending Note Test Supplier ${Date.now()}` },
+    });
+    location = await prisma.location.create({
+      data: { name: "Pending Note Test Warehouse", type: "WAREHOUSE", isActive: true },
+    });
+    product = await prisma.product.create({
+      data: {
+        name: `Pending Note Test Product ${Date.now()}`,
+        slug: `pending-note-test-${Date.now()}`,
+        status: "ACTIVE",
+      },
+    });
+    variant = await prisma.variant.create({
+      data: {
+        productId: product.id,
+        sku: `PENDING-NOTE-TEST-${Date.now()}`,
+        name: "Default",
+        priceCents: 50000,
+        costCents: null,
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await prisma.priceHistory.deleteMany({ where: { variantId: variant.id } });
+    await prisma.receiptLine.deleteMany({ where: { poLine: { variantId: variant.id } } });
+    await prisma.goodsReceipt.deleteMany({ where: { purchaseOrder: { lines: { some: { variantId: variant.id } } } } });
+    await prisma.pOLine.deleteMany({ where: { variantId: variant.id } });
+    await prisma.purchaseOrder.deleteMany({ where: { supplierId: supplier.id } });
+    await prisma.stockMovement.deleteMany({ where: { variantId: variant.id } });
+    await prisma.stockBalance.deleteMany({ where: { variantId: variant.id } });
+    await prisma.variant.delete({ where: { id: variant.id } });
+    await prisma.product.delete({ where: { id: product.id } });
+    await prisma.location.delete({ where: { id: location.id } });
+    await prisma.supplier.delete({ where: { id: supplier.id } });
+  });
+
+  async function createSentPO(expectedQty) {
+    const count = await prisma.purchaseOrder.count();
+    return prisma.purchaseOrder.create({
+      data: {
+        poNumber: `PO-PENDING-NOTE-${count + 1}-${Date.now()}`,
+        status: "SENT_TO_VENDOR",
+        supplierId: supplier.id,
+        locationId: location.id,
+        lines: {
+          create: [{ variantId: variant.id, skuSnapshot: variant.sku, expectedQty, unitCostCents: 1000 }],
+        },
+      },
+      include: { lines: true },
+    });
+  }
+
+  it("sets pendingNote on a line left short by a partial receipt", async () => {
+    const po = await createSentPO(10);
+    const poLine = po.lines[0];
+
+    await purchasingService.receivePurchaseOrder({
+      purchaseOrderId: po.id,
+      locationId: location.id,
+      lines: [{ poLineId: poLine.id, acceptedQty: 6, pendingNote: "remainder backordered" }],
+      receivedById: null,
+    });
+
+    const updated = await prisma.pOLine.findUnique({ where: { id: poLine.id } });
+    expect(updated.receivedQty).toBe(6);
+    expect(updated.pendingNote).toBe("remainder backordered");
+  });
+
+  it("keeps the prior pendingNote when a later short receipt doesn't supply a new one", async () => {
+    const po = await createSentPO(10);
+    const poLine = po.lines[0];
+
+    await purchasingService.receivePurchaseOrder({
+      purchaseOrderId: po.id,
+      locationId: location.id,
+      lines: [{ poLineId: poLine.id, acceptedQty: 4, pendingNote: "first batch short" }],
+      receivedById: null,
+    });
+
+    await purchasingService.receivePurchaseOrder({
+      purchaseOrderId: po.id,
+      locationId: location.id,
+      lines: [{ poLineId: poLine.id, acceptedQty: 2 }],
+      receivedById: null,
+    });
+
+    const updated = await prisma.pOLine.findUnique({ where: { id: poLine.id } });
+    expect(updated.receivedQty).toBe(6);
+    expect(updated.pendingNote).toBe("first batch short");
+  });
+
+  it("clears pendingNote once the line becomes fully received", async () => {
+    const po = await createSentPO(10);
+    const poLine = po.lines[0];
+
+    await purchasingService.receivePurchaseOrder({
+      purchaseOrderId: po.id,
+      locationId: location.id,
+      lines: [{ poLineId: poLine.id, acceptedQty: 7, pendingNote: "short this round" }],
+      receivedById: null,
+    });
+
+    await purchasingService.receivePurchaseOrder({
+      purchaseOrderId: po.id,
+      locationId: location.id,
+      lines: [{ poLineId: poLine.id, acceptedQty: 3 }],
+      receivedById: null,
+    });
+
+    const updated = await prisma.pOLine.findUnique({ where: { id: poLine.id } });
+    expect(updated.receivedQty).toBe(10);
+    expect(updated.pendingNote).toBeNull();
+  });
 });

@@ -95,6 +95,39 @@ async function upload(path, formData, isRetry = false) {
   return payload;
 }
 
+// Fetches a binary response (e.g. a generated PDF) and triggers a normal
+// browser "Save As" download — there's no <a href> that can hit this
+// endpoint directly since it requires the same httpOnly session cookie
+// every other admin request uses, so the file has to come through fetch
+// (credentials: "include") and be turned into an object URL instead.
+async function downloadFile(path, filename, isRetry = false) {
+  const url = `${API_BASE}/api${path}`;
+  const response = await fetch(url, { credentials: "include" });
+
+  if (response.status === 401 && !isRetry && !path.startsWith("/auth/")) {
+    const refreshResponse = await refreshAccessToken();
+    if (refreshResponse.ok) {
+      return downloadFile(path, filename, true);
+    }
+  }
+
+  if (!response.ok) {
+    const isJson = response.headers.get("content-type")?.includes("application/json");
+    const payload = isJson ? await response.json() : null;
+    throw new ApiClientError(payload?.error?.message || "Download failed", response.status, payload?.error?.details);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
 // Rarely-changing reference data (categories, locations) was being refetched
 // from scratch on every single page mount with no sharing across
 // navigations — each call pays a full round trip to the remote DB plus
@@ -126,6 +159,7 @@ export const api = {
   patch: (path, body) => request(path, { method: "PATCH", body }),
   delete: (path) => request(path, { method: "DELETE" }),
   upload,
+  downloadFile,
 };
 
 export { ApiClientError };

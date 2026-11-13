@@ -25,7 +25,7 @@ router.get(
   "/balances",
   requirePermission("inventory:read"),
   asyncHandler(async (req, res) => {
-    const { locationId, lowStockOnly } = req.query;
+    const { locationId, lowStockOnly, supplierId } = req.query;
 
     await inventoryService.expireStaleReservations();
 
@@ -36,9 +36,12 @@ router.get(
     // normal adjust-and-verify flow. A stable sort keeps a row in the same
     // place before and after editing it.
     const balances = await prisma.stockBalance.findMany({
-      where: locationId ? { locationId: String(locationId) } : undefined,
+      where: {
+        ...(locationId ? { locationId: String(locationId) } : {}),
+        ...(supplierId ? { variant: { product: { supplierId: String(supplierId) } } } : {}),
+      },
       include: {
-        variant: { include: { product: true } },
+        variant: { include: { product: { include: { supplier: true } } } },
         location: true,
       },
       orderBy: [{ variant: { product: { name: "asc" } } }, { variant: { sku: "asc" } }, { location: { name: "asc" } }],
@@ -52,6 +55,9 @@ router.get(
         sku: b.variant.sku,
         productName: b.variant.product.name,
         variantName: b.variant.name,
+        costCents: b.variant.costCents,
+        supplierId: b.variant.product.supplierId,
+        supplierName: b.variant.product.supplier?.name ?? null,
         locationId: b.locationId,
         locationName: b.location.name,
         onHand: b.onHand,

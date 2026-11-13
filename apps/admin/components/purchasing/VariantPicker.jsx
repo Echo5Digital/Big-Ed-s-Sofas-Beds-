@@ -23,7 +23,11 @@ export default function VariantPicker({ value, onChange }) {
       api
         .get(`/catalog/admin/products?q=${encodeURIComponent(trimmedQuery)}`)
         .then((data) => {
-          const variants = data.products.flatMap((p) => p.variants.map((v) => ({ ...v, productName: p.name })));
+          // costCents carries through so the PO form can preset the line's
+          // unit cost from the product's last known supplier cost.
+          const variants = data.products.flatMap((p) =>
+            p.variants.map((v) => ({ ...v, productName: p.name, costCents: v.costCents }))
+          );
           setSearchState({ query: trimmedQuery, results: variants, error: null });
         })
         .catch(() => setSearchState({ query: trimmedQuery, results: [], error: "Search failed." }));

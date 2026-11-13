@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeftRight, Search, SlidersHorizontal } from "lucide-react";
+import { ArrowLeftRight, PackagePlus, Search, SlidersHorizontal } from "lucide-react";
 import RequireAuth from "@/components/layout/RequireAuth";
 import PageHeader from "@/components/ui/PageHeader";
 import DataTable from "@/components/ui/DataTable";
@@ -10,6 +10,7 @@ import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { api, ApiClientError } from "@/lib/api/client";
+import { INVENTORY_TO_PO_STORAGE_KEY } from "@/lib/inventoryToPurchaseOrder";
 
 function AdjustModal({ open, onClose, balance, onDone }) {
   const [type, setType] = useState("ADJUSTMENT_INCREASE");
@@ -265,10 +266,6 @@ function InventoryContent() {
   // sidebar navigation (a plain useState would keep a stale value when only
   // the query string changes on this same page).
   const lowStockOnly = searchParams.get("lowStockOnly") === "true";
-
-  function setLowStockOnly(checked) {
-    router.replace(checked ? "/inventory?lowStockOnly=true" : "/inventory", { scroll: false });
-  }
   const [error, setError] = useState(null);
   const [adjustTarget, setAdjustTarget] = useState(null);
   const [transferTarget, setTransferTarget] = useState(null);
@@ -277,14 +274,32 @@ function InventoryContent() {
   // modal above) or the picker is dismissed.
   const [pickingLocationFor, setPickingLocationFor] = useState(null);
   const [pickerAction, setPickerAction] = useState(null);
+  // Only shown/used in the Low Stock Only view — filters which supplier's
+  // items are listed, and also presets the new PO's supplier when sending a
+  // selection to Purchasing.
+  const [supplierFilter, setSupplierFilter] = useState("");
+  const [selectedVariantIds, setSelectedVariantIds] = useState(new Set());
+
+  function setLowStockOnly(checked) {
+    router.replace(checked ? "/inventory?lowStockOnly=true" : "/inventory", { scroll: false });
+    // Both the supplier filter and any row selection only make sense in the
+    // low-stock view they were created for — stale leftovers would otherwise
+    // silently carry over (e.g. a supplier filter from low-stock mode still
+    // narrowing the full list after unchecking it).
+    setSupplierFilter("");
+    setSelectedVariantIds(new Set());
+  }
 
   const load = useCallback(() => {
-    const query = lowStockOnly ? "?lowStockOnly=true" : "";
+    const params = new URLSearchParams();
+    if (lowStockOnly) params.set("lowStockOnly", "true");
+    if (lowStockOnly && supplierFilter) params.set("supplierId", supplierFilter);
+    const query = params.toString();
     api
-      .get(`/inventory/balances${query}`)
+      .get(`/inventory/balances${query ? `?${query}` : ""}`)
       .then((data) => setBalances(data.balances))
       .catch((err) => setError(err instanceof ApiClientError ? err.message : "Failed to load inventory."));
-  }, [lowStockOnly]);
+  }, [lowStockOnly, supplierFilter]);
 
   useEffect(() => {
     load();
@@ -295,6 +310,14 @@ function InventoryContent() {
       .getCached("/inventory/locations")
       .then((data) => setLocations(data.locations))
       .catch(() => setLocations([]));
+  }, []);
+
+  const [suppliers, setSuppliers] = useState([]);
+  useEffect(() => {
+    api
+      .get("/purchasing/suppliers")
+      .then((data) => setSuppliers(data.suppliers.filter((s) => s.isActive)))
+      .catch(() => setSuppliers([]));
   }, []);
 
   // One StockBalance row exists per variant+location (see GET /inventory/balances),
@@ -311,10 +334,16 @@ function InventoryContent() {
           variantId: b.variantId,
           sku: b.sku,
           productName: b.productName,
+          costCents: b.costCents,
+          supplierId: b.supplierId,
+          supplierName: b.supplierName,
+          suggestedReorderQty: 0,
           locationBalances: [],
         });
       }
-      byVariant.get(b.variantId).locationBalances.push(b);
+      const row = byVariant.get(b.variantId);
+      row.locationBalances.push(b);
+      row.suggestedReorderQty += b.suggestedReorderQty;
     }
     return Array.from(byVariant.values());
   }, [balances]);
@@ -327,6 +356,50 @@ function InventoryContent() {
       (b) => b.sku.toLowerCase().includes(query) || b.productName.toLowerCase().includes(query)
     );
   }, [groupedBalances, search]);
+
+  // Suppliers actually present among the currently-loaded low-stock rows —
+  // narrower and more useful than the full supplier list, which would mostly
+  // show suppliers with nothing currently low.
+  const suppliersInView = useMemo(() => {
+    if (!groupedBalances) return [];
+    const ids = new Set(groupedBalances.filter((b) => b.supplierId).map((b) => b.supplierId));
+    return suppliers.filter((s) => ids.has(s.id));
+  }, [groupedBalances, suppliers]);
+
+  const toggleSelected = useCallback((variantId) => {
+    setSelectedVariantIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(variantId)) next.delete(variantId);
+      else next.add(variantId);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAllVisible = useCallback(() => {
+    setSelectedVariantIds((prev) => {
+      const visibleIds = (filteredBalances ?? []).map((b) => b.variantId);
+      const allSelected = visibleIds.length > 0 && visibleIds.every((id) => prev.has(id));
+      return allSelected ? new Set() : new Set(visibleIds);
+    });
+  }, [filteredBalances]);
+
+  const sendToPurchaseOrder = useCallback(
+    (rows) => {
+      const payload = {
+        supplierId: supplierFilter || rows[0]?.supplierId || "",
+        lines: rows.map((r) => ({
+          variantId: r.variantId,
+          sku: r.sku,
+          productName: r.productName,
+          expectedQty: r.suggestedReorderQty || 1,
+          unitCostCents: r.costCents ?? 0,
+        })),
+      };
+      sessionStorage.setItem(INVENTORY_TO_PO_STORAGE_KEY, JSON.stringify(payload));
+      router.push("/purchasing/new?fromInventory=1");
+    },
+    [supplierFilter, router]
+  );
 
   const openAdjust = useCallback((product) => {
     if (product.locationBalances.length === 1) {
@@ -359,6 +432,34 @@ function InventoryContent() {
   // day — see inventory.service.js: onHand - reserved - quarantined.
   const columns = useMemo(
     () => [
+      ...(lowStockOnly
+        ? [
+            {
+              key: "select",
+              header: (
+                <input
+                  type="checkbox"
+                  aria-label="Select all visible rows"
+                  checked={
+                    (filteredBalances ?? []).length > 0 &&
+                    (filteredBalances ?? []).every((b) => selectedVariantIds.has(b.variantId))
+                  }
+                  onChange={toggleSelectAllVisible}
+                  className="size-4 rounded border-black/20 text-brand-red focus:ring-brand-red"
+                />
+              ),
+              render: (r) => (
+                <input
+                  type="checkbox"
+                  aria-label={`Select ${r.productName}`}
+                  checked={selectedVariantIds.has(r.variantId)}
+                  onChange={() => toggleSelected(r.variantId)}
+                  className="size-4 rounded border-black/20 text-brand-red focus:ring-brand-red"
+                />
+              ),
+            },
+          ]
+        : []),
       {
         key: "actions",
         header: "",
@@ -380,11 +481,22 @@ function InventoryContent() {
               <ArrowLeftRight className="size-3.5" aria-hidden="true" />
               Transfer
             </button>
+            {lowStockOnly && (
+              <button
+                type="button"
+                onClick={() => sendToPurchaseOrder([r])}
+                className="inline-flex min-h-9 items-center gap-1 rounded-full border border-black/15 px-3 py-1.5 text-xs font-semibold hover:bg-gray-50"
+              >
+                <PackagePlus className="size-3.5" aria-hidden="true" />
+                Create PO
+              </button>
+            )}
           </div>
         ),
       },
       { key: "sku", header: "SKU" },
       { key: "productName", header: "Product", render: (r) => r.productName },
+      { key: "supplierName", header: "Supplier", render: (r) => r.supplierName ?? "—" },
       ...locations.map((location) => ({
         key: `location-${location.id}`,
         header: location.name,
@@ -401,13 +513,25 @@ function InventoryContent() {
       {
         key: "suggestedReorderQty",
         header: "Suggested Reorder",
-        render: (r) => {
-          const total = r.locationBalances.reduce((sum, lb) => sum + lb.suggestedReorderQty, 0);
-          return total > 0 ? total : "—";
-        },
+        render: (r) => (r.suggestedReorderQty > 0 ? r.suggestedReorderQty : "—"),
       },
     ],
-    [locations, openAdjust, openTransfer]
+    [
+      locations,
+      lowStockOnly,
+      filteredBalances,
+      selectedVariantIds,
+      openAdjust,
+      openTransfer,
+      toggleSelected,
+      toggleSelectAllVisible,
+      sendToPurchaseOrder,
+    ]
+  );
+
+  const selectedRows = useMemo(
+    () => (groupedBalances ?? []).filter((b) => selectedVariantIds.has(b.variantId)),
+    [groupedBalances, selectedVariantIds]
   );
 
   return (
@@ -430,20 +554,54 @@ function InventoryContent() {
 
       {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-      <div className="relative mb-4 sm:max-w-xs">
-        <Search
-          className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-brand-charcoal/40"
-          aria-hidden="true"
-        />
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by SKU or name"
-          aria-label="Search inventory by SKU or name"
-          className="w-full rounded-lg border border-black/15 py-2 pl-9 pr-3 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
-        />
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative sm:max-w-xs sm:flex-1">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-brand-charcoal/40"
+            aria-hidden="true"
+          />
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by SKU or name"
+            aria-label="Search inventory by SKU or name"
+            className="w-full rounded-lg border border-black/15 py-2 pl-9 pr-3 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+          />
+        </div>
+
+        {lowStockOnly && (
+          <div className="flex flex-col gap-1.5 sm:w-56">
+            <label htmlFor="supplier-filter" className="sr-only">
+              Filter by supplier
+            </label>
+            <select
+              id="supplier-filter"
+              value={supplierFilter}
+              onChange={(e) => setSupplierFilter(e.target.value)}
+              className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+            >
+              <option value="">All suppliers</option>
+              {suppliersInView.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
+
+      {lowStockOnly && selectedRows.length > 0 && (
+        <div className="mb-4 flex flex-col gap-3 rounded-xl border border-brand-red/20 bg-brand-red/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm font-semibold text-brand-charcoal">
+            {selectedRows.length} item{selectedRows.length === 1 ? "" : "s"} selected
+          </p>
+          <Button size="sm" icon={PackagePlus} onClick={() => sendToPurchaseOrder(selectedRows)}>
+            Create Purchase Order
+          </Button>
+        </div>
+      )}
 
       <DataTable
         columns={columns}
