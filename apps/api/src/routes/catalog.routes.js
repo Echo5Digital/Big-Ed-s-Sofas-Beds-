@@ -233,6 +233,22 @@ async function assertSupplierExists(supplierId) {
   if (!supplier) throw new ValidationError({ fieldErrors: { supplierId: ["Supplier not found"] } });
 }
 
+// A warranty note only makes sense on a warrantied product. Create: a product
+// is warrantied only if explicitly ticked, so any note without
+// `isWarrantied: true` is dropped. Update: only an explicit `isWarrantied:
+// false` clears it — a PATCH that doesn't mention the flag (e.g. the Deals
+// checkbox on the products list) must leave an existing warranty and its note
+// untouched. Both mutate and return `productData`.
+function normalizeWarrantyOnCreate(productData) {
+  if (productData.isWarrantied !== true) productData.warrantyNote = null;
+  return productData;
+}
+
+function normalizeWarrantyOnUpdate(productData) {
+  if (productData.isWarrantied === false) productData.warrantyNote = null;
+  return productData;
+}
+
 // POS's product search (apps/pos/components/checkout/ProductSearch.jsx) only
 // ever reads variant sku/name/price/availability/thumbnail — it never shows
 // full-size images, category, or description. Those extra relations are real
@@ -329,6 +345,10 @@ function serializeProduct(product, { includeCost = false, includeInternal = fals
     dimensions: product.dimensions,
     status: product.status,
     isDeal: product.isDeal,
+    isWarrantied: product.isWarrantied,
+    // Never returned unless the product is actually flagged warrantied, so a
+    // leftover note on an un-ticked product can't reach the public storefront.
+    warrantyNote: product.isWarrantied ? (product.warrantyNote ?? null) : null,
     category: product.category ? { id: product.category.id, name: product.category.name, slug: product.category.slug } : null,
     displayCategory: pickDisplayCategory(product),
     categories: (product.categoryTags ?? []).map((tag) => ({
@@ -581,6 +601,7 @@ router.post(
   asyncHandler(async (req, res) => {
     const { variants, images, videos, categoryIds, linkedProductIds, initialStock, ...productData } = req.body;
     await assertSupplierExists(productData.supplierId);
+    normalizeWarrantyOnCreate(productData);
     // Secondary categories are purely additive to the primary categoryId —
     // dedupe so the same category never appears as both, which would violate
     // the ProductCategory composite primary key.
@@ -679,6 +700,7 @@ router.patch(
   asyncHandler(async (req, res) => {
     const { variants, images, videos, categoryIds, linkedProductIds, ...productData } = req.body;
     await assertSupplierExists(productData.supplierId);
+    normalizeWarrantyOnUpdate(productData);
 
     if (variants) {
       // Partial updates only: adjust price/sku/details on existing variants,
@@ -935,3 +957,5 @@ module.exports.serializeProduct = serializeProduct;
 module.exports.PRODUCT_INCLUDE_STAFF = PRODUCT_INCLUDE_STAFF;
 module.exports.assertSupplierExists = assertSupplierExists;
 module.exports.createCategory = createCategory;
+module.exports.normalizeWarrantyOnCreate = normalizeWarrantyOnCreate;
+module.exports.normalizeWarrantyOnUpdate = normalizeWarrantyOnUpdate;

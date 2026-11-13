@@ -15,6 +15,7 @@ import ProductInitialStockInputs from "@/components/products/ProductInitialStock
 import LinkedProductPicker from "@/components/products/LinkedProductPicker";
 import ProductFormTabs from "@/components/products/ProductFormTabs";
 import ProductSupplierSelect from "@/components/products/ProductSupplierSelect";
+import ProductWarrantyFields from "@/components/products/ProductWarrantyFields";
 import FormField, { fieldInputClass } from "@/components/products/FormField";
 import { api, ApiClientError } from "@/lib/api/client";
 
@@ -24,6 +25,7 @@ const TABS = [
   { key: "category", label: "Category" },
   { key: "attributes", label: "Attributes" },
   { key: "linked", label: "Linked Products" },
+  { key: "warranty", label: "Warranty" },
 ];
 
 function slugify(value) {
@@ -68,6 +70,8 @@ function NewProductContent() {
   const [sku, setSku] = useState("");
   const [brand, setBrand] = useState("");
   const [supplierId, setSupplierId] = useState("");
+  const [isWarrantied, setIsWarrantied] = useState(false);
+  const [warrantyNote, setWarrantyNote] = useState("");
   const [costCents, setCostCents] = useState("");
   const [priceCents, setPriceCents] = useState("");
   const [compareAtCents, setCompareAtCents] = useState("");
@@ -136,6 +140,8 @@ function NewProductContent() {
         status,
         brand: brand.trim() || undefined,
         supplierId: supplierId || undefined,
+        isWarrantied,
+        warrantyNote: isWarrantied ? warrantyNote.trim() || undefined : undefined,
         itemName: itemName || undefined,
         color: color || undefined,
         material: material || undefined,
@@ -401,6 +407,18 @@ function NewProductContent() {
                   need to also edit the other product.
                 </p>
                 <LinkedProductPicker linkedProducts={linkedProducts} onChange={setLinkedProducts} />
+              </div>
+            )}
+
+            {tab === "warranty" && (
+              <div className="flex flex-col gap-4">
+                <h2 className="font-display text-base font-bold text-brand-charcoal">Warranty</h2>
+                <ProductWarrantyFields
+                  isWarrantied={isWarrantied}
+                  onToggle={setIsWarrantied}
+                  note={warrantyNote}
+                  onNoteChange={setWarrantyNote}
+                />
               </div>
             )}
           </div>

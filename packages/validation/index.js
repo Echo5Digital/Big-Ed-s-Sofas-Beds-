@@ -209,6 +209,11 @@ const productCreateSchema = z.object({
   status: z.enum(["DRAFT", "ACTIVE", "ARCHIVED"]).optional(),
   // Staff-controlled flag for inclusion on the storefront Deals page.
   isDeal: z.boolean().optional(),
+  // Warranty tab: when ticked the storefront product page shows "Warrantied"
+  // plus `warrantyNote` as "Warranty Details". Unlike brand/supplierId these
+  // are public. The routes clear warrantyNote whenever isWarrantied is false.
+  isWarrantied: z.boolean().optional(),
+  warrantyNote: z.string().trim().max(2000).optional().nullable(),
   variants: z.array(variantCreateSchema).min(1),
   images: z.array(productImageInputSchema).optional(),
   videos: z.array(productVideoInputSchema).optional(),
