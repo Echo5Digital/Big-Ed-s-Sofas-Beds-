@@ -8,6 +8,7 @@ const {
   serializeProduct,
   PRODUCT_INCLUDE_STAFF,
   assertSupplierExists,
+  createCategory,
 } = require("./catalog.routes");
 
 // Runs against the real dev database (same convention as auth.routes.test.js
@@ -1008,5 +1009,83 @@ describe("catalog.routes — product brand/supplier (internal-only)", () => {
     expect(after).not.toBeNull();
     expect(after.supplierId).toBeNull();
     expect(after.brand).toBe(BRAND);
+  });
+});
+
+// Backs the admin "Add new category" UI (CategoryMultiSelect) — staff create
+// a child category inline from the product form's Category tab. These cover
+// the edge cases the bare `prisma.category.create({ data: req.body })` used
+// to leave unhandled: a duplicate slug surfacing as a raw Prisma P2002
+// instead of a clean error, every new row landing at sortOrder 0 and tying
+// with existing siblings, and nothing stopping a 3rd-level (grandchild)
+// category that apps/storefront/lib/categoryTree.js's two-level assumption
+// would then silently mishandle.
+describe("catalog.routes — createCategory", () => {
+  const createdCategoryIds = [];
+  let topLevelParent;
+  let existingChild;
+
+  beforeAll(async () => {
+    topLevelParent = await prisma.category.findFirst({ where: { parentId: null } });
+    expect(topLevelParent).toBeTruthy();
+    existingChild = await prisma.category.findFirst({ where: { parentId: { not: null } } });
+    expect(existingChild).toBeTruthy();
+  });
+
+  afterAll(async () => {
+    await prisma.category.deleteMany({ where: { id: { in: createdCategoryIds } } });
+  });
+
+  it("creates a child category under a top-level parent, auto-incrementing sortOrder among its siblings", async () => {
+    const maxSibling = await prisma.category.aggregate({
+      where: { parentId: topLevelParent.id },
+      _max: { sortOrder: true },
+    });
+
+    const slug = `test-category-${Date.now()}`;
+    const category = await createCategory({ name: "Test Category", slug, parentId: topLevelParent.id });
+    createdCategoryIds.push(category.id);
+
+    expect(category.parentId).toBe(topLevelParent.id);
+    expect(category.sortOrder).toBe((maxSibling._max.sortOrder ?? -1) + 1);
+  });
+
+  it("creates a top-level category when parentId is omitted", async () => {
+    const slug = `test-root-category-${Date.now()}`;
+    const category = await createCategory({ name: "Test Root Category", slug });
+    createdCategoryIds.push(category.id);
+
+    expect(category.parentId).toBeNull();
+  });
+
+  it("rejects a duplicate slug with a clean ConflictError instead of a raw Prisma error", async () => {
+    const slug = `test-dup-category-${Date.now()}`;
+    const first = await createCategory({ name: "Dup Test", slug, parentId: topLevelParent.id });
+    createdCategoryIds.push(first.id);
+
+    await expect(createCategory({ name: "Dup Test Again", slug, parentId: topLevelParent.id })).rejects.toMatchObject({
+      statusCode: 409,
+      message: "A category with this slug already exists",
+    });
+  });
+
+  it("rejects nesting a category under a category that already has a parent (no grandchildren)", async () => {
+    await expect(
+      createCategory({ name: "Grandchild Test", slug: `test-grandchild-${Date.now()}`, parentId: existingChild.id })
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it("rejects an unknown parentId with a 404", async () => {
+    await expect(
+      createCategory({ name: "Orphan Test", slug: `test-orphan-${Date.now()}`, parentId: "00000000-0000-0000-0000-000000000000" })
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it("respects an explicitly passed sortOrder instead of auto-computing one", async () => {
+    const slug = `test-explicit-sort-${Date.now()}`;
+    const category = await createCategory({ name: "Explicit Sort Test", slug, parentId: topLevelParent.id, sortOrder: 999 });
+    createdCategoryIds.push(category.id);
+
+    expect(category.sortOrder).toBe(999);
   });
 });

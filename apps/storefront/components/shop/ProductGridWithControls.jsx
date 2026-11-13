@@ -40,11 +40,11 @@ function priceBoundsOf(products) {
 export default function ProductGridWithControls({ products, categories, gridClassName, hideParentCategoryCheckbox }) {
   const bounds = useMemo(() => priceBoundsOf(products), [products]);
   // `categories` is whatever subtree the caller passes: /shop passes the full
-  // site-wide list; /shop/[category] passes just the current room's own
-  // parent+children (Living Room/Bedroom/Dining only — see
-  // CATEGORY_FILTER_PARENT_SLUGS in app/shop/[category]/page.jsx) or an empty
-  // array everywhere else, in which case the Category filter section below
-  // simply doesn't render, same as Material/Color when empty.
+  // site-wide list; /shop/[...slug] passes just the current top-level
+  // category's own parent+children when it actually has children, or an
+  // empty array otherwise (a childless category, or a sub-category page
+  // itself), in which case the Category filter section below simply doesn't
+  // render, same as Material/Color when empty.
   const categoryTree = useMemo(() => buildCategoryTree(categories ?? []), [categories]);
 
   const [sort, setSort] = useState("relevance");

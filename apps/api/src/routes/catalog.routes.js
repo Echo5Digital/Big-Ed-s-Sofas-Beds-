@@ -476,13 +476,47 @@ router.get(
 
 // --- Staff (admin) -----------------------------------------------------
 
+// Categories are only ever two levels deep (see
+// apps/storefront/lib/categoryTree.js) — a category whose parent itself has
+// a parentId would be a grandchild, which every consumer of the flat
+// category list silently mishandles (dropped from buildCategoryTree,
+// skipped in the rollup/pairing logic). Extracted from the route handler so
+// it's directly testable the same way as this file's other exported helpers
+// (pickDisplayCategory, syncProductLinksAsGroup, etc.) — no supertest/HTTP
+// layer exists anywhere in this API.
+async function createCategory({ name, slug, image, parentId, sortOrder }) {
+  const existing = await prisma.category.findUnique({ where: { slug } });
+  if (existing) {
+    throw new ConflictError("A category with this slug already exists", { slug });
+  }
+
+  if (parentId) {
+    const parent = await prisma.category.findUnique({ where: { id: parentId } });
+    if (!parent) throw new NotFoundError("Parent category not found");
+    if (parent.parentId) {
+      throw new ConflictError("Categories can only be nested one level deep", { parentId });
+    }
+  }
+
+  const resolvedSortOrder =
+    sortOrder ??
+    ((await prisma.category.aggregate({
+      where: { parentId: parentId ?? null },
+      _max: { sortOrder: true },
+    }))._max.sortOrder ?? -1) + 1;
+
+  return prisma.category.create({
+    data: { name, slug, image, parentId: parentId ?? null, sortOrder: resolvedSortOrder },
+  });
+}
+
 router.post(
   "/categories",
   requireAuth,
   requirePermission("catalog:write"),
   validateBody(categoryCreateSchema),
   asyncHandler(async (req, res) => {
-    const category = await prisma.category.create({ data: req.body });
+    const category = await createCategory(req.body);
     res.status(201).json({ category });
   })
 );
@@ -900,3 +934,4 @@ module.exports.getProductDeleteBlockers = getProductDeleteBlockers;
 module.exports.serializeProduct = serializeProduct;
 module.exports.PRODUCT_INCLUDE_STAFF = PRODUCT_INCLUDE_STAFF;
 module.exports.assertSupplierExists = assertSupplierExists;
+module.exports.createCategory = createCategory;

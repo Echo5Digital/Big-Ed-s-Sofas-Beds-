@@ -37,69 +37,13 @@ export const siteConfig = {
     youtube: "#",
     tiktok: "#",
   },
-  // Hrefs point at real Category.slug values seeded in packages/database/prisma/seed.js.
-  // Top-level groups with children render as dropdown/mega-menus; items with no
-  // children (Deals, About) render as plain links. Financing and Contact are
-  // intentionally header-free — they only appear in the footer and on their own pages.
-  nav: [
-    { label: "About", href: "/about" },
-    {
-      label: "Living Room",
-      href: "/shop/living-room",
-      children: [
-        { label: "Stationary Sofa & Loveseats", href: "/shop/living-room/stationary-sofas-loveseats" },
-        { label: "Stationary Sectionals", href: "/shop/living-room/stationary-sectionals" },
-        { label: "Reclining Sofa & Loveseats", href: "/shop/living-room/reclining-sofas-loveseats" },
-        { label: "Reclining Sectionals", href: "/shop/living-room/reclining-sectionals" },
-        { label: "Recliners & Lift Chairs", href: "/shop/living-room/recliners-lift-chairs" },
-        { label: "Sleepers & Futons", href: "/shop/living-room/sleepers-futons" },
-        { label: "Occasional Tables", href: "/shop/living-room/occasional-tables" },
-        { label: "TV Stands", href: "/shop/living-room/tv-stands" },
-      ],
-    },
-    {
-      label: "Bedroom",
-      href: "/shop/bedroom",
-      children: [
-        { label: "Beds", href: "/shop/bedroom/beds" },
-        { label: "Bedroom Furniture", href: "/shop/bedroom/bedroom-furniture" },
-        { label: "Mattresses", href: "/shop/bedroom/mattresses" },
-        { label: "Daybeds", href: "/shop/bedroom/daybeds" },
-        { label: "Bunk Beds", href: "/shop/bedroom/bunk-beds" },
-        { label: "Vanities & Mirrors", href: "/shop/bedroom/vanities-mirrors" },
-      ],
-    },
-    {
-      label: "Dining",
-      href: "/shop/dining",
-      children: [
-        { label: "Dining Room Furniture", href: "/shop/dining/dining-room-furniture" },
-        { label: "Barstools", href: "/shop/dining/barstools" },
-      ],
-    },
-    {
-      label: "Office",
-      href: "/shop/office",
-      children: [{ label: "Office & Bookcase", href: "/shop/office/office-bookcase" }],
-    },
-    {
-      label: "Accessories",
-      href: "/shop/accessories",
-      children: [{ label: "Home Accessories", href: "/shop/accessories/home-accessories" }],
-    },
-    {
-      label: "Deals",
-      href: "/deals",
-    },
-  ],
-  footerQuickLinks: [
-    { label: "Living Room", href: "/shop/living-room" },
-    { label: "Bedroom", href: "/shop/bedroom" },
-    { label: "Dining", href: "/shop/dining" },
-    { label: "Office", href: "/shop/office" },
-    { label: "Accessories", href: "/shop/accessories" },
-    { label: "Deals", href: "/deals" },
-  ],
+  // Header nav and footer "Quick Links" (both category-based) are built live
+  // from the real Category table — see lib/categoryTree.js's buildNavItems
+  // and buildFooterCategoryLinks, consumed by SiteHeader/MobileNavigation
+  // and SiteFooter respectively — so a category created via the admin's
+  // "Add new category" shows up with no edit here. Only non-category nav
+  // entries stay static (merged in by buildNavItems at the same positions
+  // the old hand-authored list had them: About first, Deals last).
   footerCompanyLinks: [
     { label: "Financing", href: "/financing" },
     { label: "About Us", href: "/about" },

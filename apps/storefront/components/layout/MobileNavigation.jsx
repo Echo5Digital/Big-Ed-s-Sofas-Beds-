@@ -4,7 +4,6 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { X, MapPin, ArrowRight, ChevronDown } from "lucide-react";
-import { siteConfig } from "@/lib/mock-data/site-config";
 import Button from "@/components/ui/Button";
 
 function MobileNavItem({ item, onNavigate }) {
@@ -68,7 +67,7 @@ function MobileNavItem({ item, onNavigate }) {
   );
 }
 
-export default function MobileNavigation({ open, onClose }) {
+export default function MobileNavigation({ open, onClose, navItems }) {
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
@@ -94,7 +93,7 @@ export default function MobileNavigation({ open, onClose }) {
 
         <nav aria-label="Mobile">
           <ul className="flex flex-col gap-1">
-            {siteConfig.nav.map((item) => (
+            {navItems.map((item) => (
               <MobileNavItem key={item.label} item={item} onNavigate={onClose} />
             ))}
           </ul>

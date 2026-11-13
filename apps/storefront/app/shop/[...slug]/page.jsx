@@ -29,12 +29,6 @@ import { topLevelCategorySlugFor } from "@/lib/categoryTree";
 import { pairedCategorySlugsFor } from "@/lib/categoryPairings";
 import { ApiClientError } from "@/lib/api/client";
 
-// Only these top-level categories get a sub-category filter in the sidebar
-// (Office and Accessories each have just one trivial catch-all child, so a
-// sub-category filter for them would be pointless — confirmed product
-// decision).
-const CATEGORY_FILTER_PARENT_SLUGS = ["living-room", "bedroom", "dining"];
-
 // Matches the trust-badge strip pattern on the reference sites (free
 // delivery / easy returns / warranty) — informational only, not a new
 // fulfillment or policy capability; copy mirrors what ProductPurchasePanel
@@ -82,11 +76,14 @@ async function resolveCategory(slug, categories) {
   // Scoped down to just this parent + its own children — ProductGridWithControls
   // builds a Category filter tree from whatever `categories` it's given (see
   // buildCategoryTree in lib/categoryTree.js), so passing the full site-wide
-  // list here would surface every other room's categories too. Only built for
-  // the rooms in CATEGORY_FILTER_PARENT_SLUGS; everywhere else this stays
-  // empty and ProductGridWithControls's Category filter section doesn't render
-  // (same as /shop/[category] behaved before this filter existed).
-  const categoriesForFilter = CATEGORY_FILTER_PARENT_SLUGS.includes(slug) ? [category, ...children] : [];
+  // list here would surface every other room's categories too. Any top-level
+  // category that actually has children gets the filter; a childless one
+  // (or a sub-category page itself, which has no children of its own) stays
+  // an empty array, so ProductGridWithControls's Category filter section
+  // just doesn't render — this makes a newly admin-created child
+  // automatically grant its parent the sidebar filter too, with no matching
+  // allow-list edit required.
+  const categoriesForFilter = children.length > 0 ? [category, ...children] : [];
 
   return { category, children, products, categoriesForFilter };
 }
@@ -171,7 +168,7 @@ async function CategoryPage({ category, products: rawProducts, categoriesForFilt
             <ProductGridWithControls
               products={products}
               categories={categoriesForFilter}
-              hideParentCategoryCheckbox={CATEGORY_FILTER_PARENT_SLUGS.includes(slug)}
+              hideParentCategoryCheckbox={categoriesForFilter.length > 0}
             />
           ) : (
             <EmptyState

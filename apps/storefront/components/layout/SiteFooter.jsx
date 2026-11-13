@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { MapPin, Phone, Clock, Facebook, Instagram, Youtube, Mail } from "lucide-react";
 import { siteConfig } from "@/lib/mock-data/site-config";
+import { buildFooterCategoryLinks } from "@/lib/categoryTree";
 import Container from "@/components/ui/Container";
 
 const COPYRIGHT_YEAR = 2026;
@@ -41,7 +42,9 @@ function FooterColumn({ title, links }) {
   );
 }
 
-export default function SiteFooter() {
+export default function SiteFooter({ categories }) {
+  const footerQuickLinks = buildFooterCategoryLinks(categories);
+
   return (
     <footer className="bg-brand-charcoal text-white">
       <Container className="grid grid-cols-2 gap-x-6 gap-y-10 py-10 sm:gap-10 sm:py-12 lg:grid-cols-5">
@@ -58,7 +61,7 @@ export default function SiteFooter() {
           </p>
         </div>
 
-        <FooterColumn title="Quick Links" links={siteConfig.footerQuickLinks} />
+        <FooterColumn title="Quick Links" links={footerQuickLinks} />
         <FooterColumn title="Company" links={siteConfig.footerCompanyLinks} />
 
         <div className="col-span-2 border-t border-white/10 pt-8 sm:col-span-1 sm:border-t-0 sm:pt-0">

@@ -336,7 +336,12 @@ function NewProductContent() {
             {tab === "category" && (
               <div className="flex flex-col gap-4">
                 <h2 className="font-display text-base font-bold text-brand-charcoal">Category</h2>
-                <CategoryMultiSelect categories={categories} selectedIds={categoryIds} onChange={setCategoryIds} />
+                <CategoryMultiSelect
+                  categories={categories}
+                  selectedIds={categoryIds}
+                  onChange={setCategoryIds}
+                  onCategoryCreated={(category) => setCategories((prev) => [...prev, category])}
+                />
               </div>
             )}
 

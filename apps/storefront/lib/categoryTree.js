@@ -33,6 +33,41 @@ export function expandCategoryIdWithChildren(categoryId, categories) {
   return [categoryId, ...childIds];
 }
 
+// Builds the header/mobile nav and footer "Quick Links" structure from the
+// live category list, replacing what used to be a hand-maintained tree in
+// lib/mock-data/site-config.js — a category created in the admin
+// (CategoryMultiSelect's "Add new category") now shows up here with no
+// further manual edit. "About" and "Deals" aren't categories at all (no
+// Category row backs them), so they're merged in at the same positions the
+// old static list had them: About first, categories in seeded sortOrder,
+// Deals last.
+export function buildNavItems(categories) {
+  const tree = buildCategoryTree(categories);
+  return [
+    { label: "About", href: "/about" },
+    ...tree.map((parent) => ({
+      label: parent.name,
+      href: `/shop/${parent.slug}`,
+      children: parent.children.map((child) => ({
+        label: child.name,
+        href: `/shop/${parent.slug}/${child.slug}`,
+      })),
+    })),
+    { label: "Deals", href: "/deals" },
+  ];
+}
+
+// Footer "Quick Links" — just the top-level categories, no children (same
+// shape the old hardcoded footerQuickLinks had), plus the same trailing
+// "Deals" entry.
+export function buildFooterCategoryLinks(categories) {
+  const tree = buildCategoryTree(categories);
+  return [
+    ...tree.map((parent) => ({ label: parent.name, href: `/shop/${parent.slug}` })),
+    { label: "Deals", href: "/deals" },
+  ];
+}
+
 // A product's own category is frequently a sub-category (e.g. "Stationary
 // Sectionals"), but category-pairing intent (see lib/categoryPairings.js)
 // lives at the top level ("Living Room"). Walks up one level — the model is

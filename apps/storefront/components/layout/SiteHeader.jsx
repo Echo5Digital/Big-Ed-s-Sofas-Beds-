@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Heart, User, ShoppingBag, Menu, ArrowRight, MapPin, ChevronDown } from "lucide-react";
 import { siteConfig } from "@/lib/mock-data/site-config";
+import { buildNavItems } from "@/lib/categoryTree";
 import { useDemoCart } from "@/components/layout/DemoCartProvider";
 import SearchBox from "@/components/layout/SearchBox";
 import MobileNavigation from "@/components/layout/MobileNavigation";
@@ -76,10 +77,11 @@ function NavItem({ item }) {
   );
 }
 
-export default function SiteHeader() {
+export default function SiteHeader({ categories }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { cartCount, wishlistIds } = useDemoCart();
   const headerRef = useRef(null);
+  const navItems = buildNavItems(categories);
 
   // Exposes the sticky header's real, responsive height as a CSS variable so
   // other sticky elements below it (e.g. the shop filter sidebar — see
@@ -115,7 +117,7 @@ export default function SiteHeader() {
 
         <nav aria-label="Primary" className="hidden min-w-0 flex-1 lg:block">
           <ul className="flex items-center justify-center gap-0.5 whitespace-nowrap text-[12px] font-semibold text-brand-charcoal xl:gap-2.5 xl:text-sm">
-            {siteConfig.nav.map((item) => (
+            {navItems.map((item) => (
               <NavItem key={item.label} item={item} />
             ))}
           </ul>
@@ -216,7 +218,7 @@ export default function SiteHeader() {
         <SearchBox />
       </div>
 
-      <MobileNavigation open={mobileOpen} onClose={() => setMobileOpen(false)} />
+      <MobileNavigation open={mobileOpen} onClose={() => setMobileOpen(false)} navItems={navItems} />
     </header>
   );
 }

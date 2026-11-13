@@ -1,9 +1,11 @@
+import { cacheLife } from "next/cache";
 import { Fredoka, Inter, Caveat, Luckiest_Guy, Lora } from "next/font/google";
 import "./globals.css";
 import { DemoCartProvider } from "@/components/layout/DemoCartProvider";
 import SiteHeader from "@/components/layout/SiteHeader";
 import SiteFooter from "@/components/layout/SiteFooter";
 import FloatingContactButtons from "@/components/layout/FloatingContactButtons";
+import { getCategories } from "@/lib/api/catalog";
 
 const fredoka = Fredoka({
   variable: "--font-fredoka",
@@ -45,7 +47,26 @@ export const metadata = {
   },
 };
 
-export default function RootLayout({ children }) {
+// RootLayout wraps every route, including ones that deliberately stay
+// prerenderable (the homepage's own data uses this exact "use cache" +
+// cacheLife("minutes") pattern — see getHomepageData in app/page.jsx) — an
+// uncached fetch here would force every route in the app into blocking/
+// dynamic rendering regardless of that route's own `instant` setting,
+// which is the "Next.js encountered uncached data during prerendering"
+// error this fixes. A category created via the admin now shows up in the
+// nav/footer within a few minutes rather than instantly, the same
+// staleness tradeoff the homepage's category-adjacent content already
+// accepts — acceptable here since this is nav chrome, not checkout/stock
+// data.
+async function getLayoutCategories() {
+  "use cache";
+  cacheLife("minutes");
+  return getCategories();
+}
+
+export default async function RootLayout({ children }) {
+  const categories = await getLayoutCategories();
+
   return (
     <html
       lang="en"
@@ -53,9 +74,9 @@ export default function RootLayout({ children }) {
     >
       <body className="min-h-full flex flex-col bg-brand-cream text-brand-charcoal">
         <DemoCartProvider>
-          <SiteHeader />
+          <SiteHeader categories={categories} />
           <main className="flex-1">{children}</main>
-          <SiteFooter />
+          <SiteFooter categories={categories} />
           <FloatingContactButtons />
         </DemoCartProvider>
       </body>
