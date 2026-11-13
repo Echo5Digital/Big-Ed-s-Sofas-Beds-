@@ -212,6 +212,27 @@ const PRODUCT_INCLUDE = {
   },
 };
 
+// Staff-only superset of PRODUCT_INCLUDE: also loads the product's supplier,
+// which is internal data. Deliberately a separate constant (not folded into
+// PRODUCT_INCLUDE) so the two public storefront routes never even query it —
+// every staff route (create/update/archive/admin list+detail) uses this one
+// and passes `includeInternal: true` to serializeProduct.
+const PRODUCT_INCLUDE_STAFF = {
+  ...PRODUCT_INCLUDE,
+  supplier: { select: { id: true, name: true } },
+};
+
+// A bare foreign-key violation on Product.supplierId would surface as a 500;
+// check up front so a stale/forged id gets a normal 422 the admin form can
+// show against the field. Inactive suppliers are intentionally still allowed:
+// the form resends a product's current supplierId on every save, so rejecting
+// a since-deactivated supplier here would block unrelated edits to that product.
+async function assertSupplierExists(supplierId) {
+  if (!supplierId) return;
+  const supplier = await prisma.supplier.findUnique({ where: { id: supplierId }, select: { id: true } });
+  if (!supplier) throw new ValidationError({ fieldErrors: { supplierId: ["Supplier not found"] } });
+}
+
 // POS's product search (apps/pos/components/checkout/ProductSearch.jsx) only
 // ever reads variant sku/name/price/availability/thumbnail — it never shows
 // full-size images, category, or description. Those extra relations are real
@@ -285,13 +306,23 @@ function computeAvailability(variant) {
 // also called directly by the two public storefront routes (GET /products,
 // GET /products/:slug) with no auth at all, so costCents must never be
 // reachable through any code path that doesn't explicitly opt in per-request.
-function serializeProduct(product, { includeCost = false } = {}) {
+//
+// `includeInternal` follows the same rule for `brand` and `supplier` (staff-
+// facing catalog data customers must never see): default false, passed `true`
+// only by staff routes that loaded the product with PRODUCT_INCLUDE_STAFF.
+function serializeProduct(product, { includeCost = false, includeInternal = false } = {}) {
   return {
     id: product.id,
     name: product.name,
     slug: product.slug,
     description: product.description,
-    brand: product.brand,
+    ...(includeInternal
+      ? {
+          brand: product.brand ?? null,
+          supplierId: product.supplierId ?? null,
+          supplier: product.supplier ? { id: product.supplier.id, name: product.supplier.name } : null,
+        }
+      : null),
     itemName: product.itemName,
     color: product.color,
     material: product.material,
@@ -515,6 +546,7 @@ router.post(
   validateBody(productCreateSchema),
   asyncHandler(async (req, res) => {
     const { variants, images, videos, categoryIds, linkedProductIds, initialStock, ...productData } = req.body;
+    await assertSupplierExists(productData.supplierId);
     // Secondary categories are purely additive to the primary categoryId —
     // dedupe so the same category never appears as both, which would violate
     // the ProductCategory composite primary key.
@@ -543,7 +575,7 @@ router.post(
             ? { create: secondaryCategoryIds.map((categoryId) => ({ categoryId })) }
             : undefined,
         },
-        include: PRODUCT_INCLUDE,
+        include: PRODUCT_INCLUDE_STAFF,
       });
 
       // Every variant needs a StockBalance row to show up on the Inventory
@@ -598,10 +630,10 @@ router.post(
     // transaction, so `product.linkedProducts` would otherwise still read
     // empty on the response to this very request.
     const finalProduct = stockEntries.length > 0 || dedupedLinkIds.length > 0
-      ? await prisma.product.findUniqueOrThrow({ where: { id: product.id }, include: PRODUCT_INCLUDE })
+      ? await prisma.product.findUniqueOrThrow({ where: { id: product.id }, include: PRODUCT_INCLUDE_STAFF })
       : product;
 
-    res.status(201).json({ product: serializeProduct(finalProduct) });
+    res.status(201).json({ product: serializeProduct(finalProduct, { includeInternal: true }) });
   })
 );
 
@@ -612,6 +644,7 @@ router.patch(
   validateBody(productUpdateSchema),
   asyncHandler(async (req, res) => {
     const { variants, images, videos, categoryIds, linkedProductIds, ...productData } = req.body;
+    await assertSupplierExists(productData.supplierId);
 
     if (variants) {
       // Partial updates only: adjust price/sku/details on existing variants,
@@ -671,10 +704,10 @@ router.patch(
         images: images ? { create: images.map((img, i) => ({ ...img, sortOrder: i })) } : undefined,
         videos: videos ? { create: videos.map((v, i) => ({ ...v, sortOrder: i })) } : undefined,
       },
-      include: PRODUCT_INCLUDE,
+      include: PRODUCT_INCLUDE_STAFF,
     });
 
-    res.json({ product: serializeProduct(product) });
+    res.json({ product: serializeProduct(product, { includeInternal: true }) });
   })
 );
 
@@ -699,14 +732,14 @@ router.patch(
     const product = await prisma.product.update({
       where: { id: req.params.id },
       data: { status: "ARCHIVED" },
-      include: PRODUCT_INCLUDE,
+      include: PRODUCT_INCLUDE_STAFF,
     });
 
     await prisma.auditLog.create({
       data: { userId: req.user.id, action: "product.archive", entityType: "Product", entityId: product.id },
     });
 
-    res.json({ product: serializeProduct(product) });
+    res.json({ product: serializeProduct(product, { includeInternal: true }) });
   })
 );
 
@@ -726,14 +759,14 @@ router.patch(
     const product = await prisma.product.update({
       where: { id: req.params.id },
       data: { status: "DRAFT" },
-      include: PRODUCT_INCLUDE,
+      include: PRODUCT_INCLUDE_STAFF,
     });
 
     await prisma.auditLog.create({
       data: { userId: req.user.id, action: "product.unarchive", entityType: "Product", entityId: product.id },
     });
 
-    res.json({ product: serializeProduct(product) });
+    res.json({ product: serializeProduct(product, { includeInternal: true }) });
   })
 );
 
@@ -824,7 +857,7 @@ router.get(
       : undefined;
     const products = await prisma.product.findMany({
       where,
-      include: PRODUCT_INCLUDE,
+      include: PRODUCT_INCLUDE_STAFF,
       orderBy: { createdAt: "desc" },
       // Only caps the search path — the unfiltered (no ?q) call the edit page
       // relies on to load the full catalog is untouched.
@@ -835,7 +868,7 @@ router.get(
     // seeing cost, so this is checked per-request rather than folded into
     // the route-level permission gate.
     const includeCost = req.user.permissions.has("catalog:cost:view");
-    res.json({ products: products.map((p) => serializeProduct(p, { includeCost })) });
+    res.json({ products: products.map((p) => serializeProduct(p, { includeCost, includeInternal: true })) });
   })
 );
 
@@ -851,12 +884,12 @@ router.get(
   asyncHandler(async (req, res) => {
     const product = await prisma.product.findUnique({
       where: { id: req.params.id },
-      include: PRODUCT_INCLUDE,
+      include: PRODUCT_INCLUDE_STAFF,
     });
     if (!product) throw new NotFoundError("Product not found");
 
     const includeCost = req.user.permissions.has("catalog:cost:view");
-    res.json({ product: serializeProduct(product, { includeCost }) });
+    res.json({ product: serializeProduct(product, { includeCost, includeInternal: true }) });
   })
 );
 
@@ -865,3 +898,5 @@ module.exports.pickDisplayCategory = pickDisplayCategory;
 module.exports.syncProductLinksAsGroup = syncProductLinksAsGroup;
 module.exports.getProductDeleteBlockers = getProductDeleteBlockers;
 module.exports.serializeProduct = serializeProduct;
+module.exports.PRODUCT_INCLUDE_STAFF = PRODUCT_INCLUDE_STAFF;
+module.exports.assertSupplierExists = assertSupplierExists;

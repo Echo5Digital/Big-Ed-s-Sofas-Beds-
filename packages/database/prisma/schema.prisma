@@ -155,7 +155,15 @@ model Product {
   categoryId   String?
   category     Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   categoryTags ProductCategory[]
+  // Internal-only: `brand` and `supplier` are staff-facing catalog data and
+  // must never be returned by the public storefront routes (see
+  // serializeProduct's `includeInternal` in apps/api/src/routes/catalog.routes.js).
   brand        String?
+  // Who we buy this product from. Nullable + SetNull so deleting/retiring a
+  // Supplier never blocks or cascades into the catalog (PurchaseOrder keeps
+  // its own non-null supplierId — this is just the product's default vendor).
+  supplierId   String?
+  supplier     Supplier?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   // Product-level display attributes shown on the storefront detail page.
   // Each is optional and hidden from the live page when not set — distinct
   // from Variant.color/size, which vary per sellable SKU.
@@ -184,6 +192,7 @@ model Product {
 
   @@index([slug])
   @@index([categoryId])
+  @@index([supplierId])
   @@index([status])
   @@index([isDeal])
 }
@@ -921,6 +930,7 @@ model Supplier {
   notes          String?
   isActive       Boolean         @default(true)
   purchaseOrders PurchaseOrder[]
+  products       Product[]
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 }

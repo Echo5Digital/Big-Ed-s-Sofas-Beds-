@@ -194,7 +194,12 @@ const productCreateSchema = z.object({
   // Additional categories this product should also appear under — see the
   // ProductCategory join table. Deduplicated against categoryId server-side.
   categoryIds: z.array(z.string().uuid()).optional(),
-  brand: z.string().max(120).optional().nullable(),
+  // `brand` and `supplierId` are internal-only (staff-facing) — never returned
+  // by the public storefront routes, see serializeProduct's `includeInternal`.
+  brand: z.string().trim().max(120).optional().nullable(),
+  // Existing Supplier.id this product is bought from; the route verifies it
+  // exists (a bare FK violation would otherwise surface as a 500).
+  supplierId: z.string().uuid().optional().nullable(),
   // Product-level display attributes, each hidden from the live storefront
   // page when unset. Distinct from Variant.color/size (which vary per SKU).
   itemName: z.string().max(160).optional().nullable(),

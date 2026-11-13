@@ -144,6 +144,14 @@ before emailing vendor" rule. `POLine.receivedQty` accumulates across
 multiple `GoodsReceipt` records to support partial/repeated deliveries
 without over-receiving (enforced in `apps/api/src/routes/purchasing.routes.js`).
 
+`Product.supplierId` (nullable, `onDelete: SetNull`) records the vendor a
+product is normally bought from; it is independent of `PurchaseOrder.supplierId`,
+which stays required. `Product.brand` and `Product.supplierId` are
+**internal-only** catalog data: the public storefront routes
+(`GET /catalog/products`, `GET /catalog/products/:slug`) never return them —
+`serializeProduct` only includes them when a staff route passes
+`includeInternal: true` (same opt-in pattern as `includeCost`).
+
 ### Delivery (`Delivery`, `Pickup`, `StatusHistory`)
 
 Reserved for the fulfillment console described on page 9 of the kickoff

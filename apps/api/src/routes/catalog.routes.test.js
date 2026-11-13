@@ -1,7 +1,14 @@
 const { prisma } = require("@big-eds/database");
 const { productCreateSchema, productUpdateSchema } = require("@big-eds/validation");
 const inventoryService = require("../services/inventory.service");
-const { pickDisplayCategory, syncProductLinksAsGroup, getProductDeleteBlockers, serializeProduct } = require("./catalog.routes");
+const {
+  pickDisplayCategory,
+  syncProductLinksAsGroup,
+  getProductDeleteBlockers,
+  serializeProduct,
+  PRODUCT_INCLUDE_STAFF,
+  assertSupplierExists,
+} = require("./catalog.routes");
 
 // Runs against the real dev database (same convention as auth.routes.test.js
 // and pos.service.test.js — no Prisma mock layer). Regression test for a bug
@@ -769,6 +776,7 @@ describe("catalog.routes — serializeProduct cost visibility", () => {
         category: true,
         categoryTags: { include: { category: true } },
         images: { orderBy: { sortOrder: "asc" } },
+        videos: { orderBy: { sortOrder: "asc" } },
         variants: { include: { stockBalances: { include: { location: true } } } },
         linkedTo: { include: { linkedProduct: { select: { id: true, slug: true, name: true, images: true, variants: true } } } },
       },
@@ -808,7 +816,10 @@ describe("catalog.routes — serializeProduct cost visibility", () => {
     // parameter (an options object) the numeric array index instead, which
     // crashed destructuring ({ includeCost } of a number) on every request
     // past the first. Exercises the exact call shape GET /products now uses.
-    const products = [{ variants: [], images: [], categoryTags: [], linkedTo: [] }, { variants: [], images: [], categoryTags: [], linkedTo: [] }];
+    const products = [
+      { variants: [], images: [], videos: [], categoryTags: [], linkedTo: [] },
+      { variants: [], images: [], videos: [], categoryTags: [], linkedTo: [] },
+    ];
 
     expect(() => products.map((p) => serializeProduct(p))).not.toThrow();
   });
@@ -853,6 +864,7 @@ describe("catalog.routes — GET /admin/products/:id", () => {
         category: true,
         categoryTags: { include: { category: true } },
         images: { orderBy: { sortOrder: "asc" } },
+        videos: { orderBy: { sortOrder: "asc" } },
         variants: { include: { stockBalances: { include: { location: true } } } },
         linkedTo: { include: { linkedProduct: { select: { id: true, slug: true, name: true, images: true, variants: true } } } },
       },
@@ -867,5 +879,134 @@ describe("catalog.routes — GET /admin/products/:id", () => {
   it("resolves to null for an id that doesn't exist, which the route turns into a 404", async () => {
     const found = await prisma.product.findUnique({ where: { id: "00000000-0000-4000-8000-000000000000" } });
     expect(found).toBeNull();
+  });
+});
+
+// `brand` and `supplier` are internal, staff-facing catalog data (Product.brand,
+// Product.supplierId). The two public storefront routes call
+// serializeProduct(product) with no options, so `includeInternal` defaulting to
+// false is the only thing keeping them out of customer-visible JSON — same
+// guard as `includeCost` above. Every staff route passes includeInternal: true.
+describe("catalog.routes — product brand/supplier (internal-only)", () => {
+  const { productCreateSchema, productUpdateSchema } = require("@big-eds/validation");
+  const { ValidationError } = require("../lib/errors");
+
+  let supplier;
+  let product;
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const SUPPLIER_NAME = `Internal Test Supplier ${suffix}`;
+  const BRAND = `Internal Test Brand ${suffix}`;
+
+  beforeAll(async () => {
+    supplier = await prisma.supplier.create({ data: { name: SUPPLIER_NAME } });
+    product = await prisma.product.create({
+      data: {
+        name: `Brand Supplier Test ${suffix}`,
+        slug: `brand-supplier-test-${suffix}`,
+        status: "ACTIVE",
+        brand: BRAND,
+        supplierId: supplier.id,
+        variants: { create: [{ sku: `BRAND-SUP-TEST-${suffix}`, name: `Brand Supplier Test ${suffix}`, priceCents: 10000 }] },
+      },
+      include: PRODUCT_INCLUDE_STAFF,
+    });
+  });
+
+  afterAll(async () => {
+    if (product) {
+      await prisma.stockBalance.deleteMany({ where: { variant: { productId: product.id } } });
+      await prisma.variant.deleteMany({ where: { productId: product.id } });
+      await prisma.product.delete({ where: { id: product.id } });
+    }
+    // Already gone if the SetNull test below ran; deleteMany tolerates that.
+    await prisma.supplier.deleteMany({ where: { id: supplier.id } });
+  });
+
+  it("omits brand, supplierId and supplier by default (the shape both public storefront routes return)", () => {
+    const serialized = serializeProduct(product);
+
+    expect(serialized).not.toHaveProperty("brand");
+    expect(serialized).not.toHaveProperty("supplierId");
+    expect(serialized).not.toHaveProperty("supplier");
+  });
+
+  it("omits them when includeInternal is explicitly false, and leaks neither value anywhere in the JSON", () => {
+    const serialized = serializeProduct(product, { includeInternal: false });
+
+    expect(serialized).not.toHaveProperty("brand");
+    expect(serialized).not.toHaveProperty("supplier");
+    const json = JSON.stringify(serialized);
+    expect(json).not.toContain(BRAND);
+    expect(json).not.toContain(SUPPLIER_NAME);
+  });
+
+  it("includes brand, supplierId and supplier {id, name} only when includeInternal is true (the staff path)", () => {
+    const serialized = serializeProduct(product, { includeInternal: true });
+
+    expect(serialized.brand).toBe(BRAND);
+    expect(serialized.supplierId).toBe(supplier.id);
+    expect(serialized.supplier).toEqual({ id: supplier.id, name: SUPPLIER_NAME });
+  });
+
+  it("returns nulls (not undefined) for a product with no brand or supplier on the staff path", async () => {
+    const bare = await prisma.product.create({
+      data: {
+        name: `Bare ${suffix}`,
+        slug: `bare-brand-supplier-test-${suffix}`,
+        variants: { create: [{ sku: `BARE-BS-TEST-${suffix}`, name: `Bare ${suffix}`, priceCents: 500 }] },
+      },
+      include: PRODUCT_INCLUDE_STAFF,
+    });
+    try {
+      const serialized = serializeProduct(bare, { includeInternal: true });
+      expect(serialized.brand).toBeNull();
+      expect(serialized.supplierId).toBeNull();
+      expect(serialized.supplier).toBeNull();
+    } finally {
+      await prisma.variant.deleteMany({ where: { productId: bare.id } });
+      await prisma.product.delete({ where: { id: bare.id } });
+    }
+  });
+
+  it("assertSupplierExists allows no supplier, allows a real one, and rejects an unknown id with a 422 on supplierId", async () => {
+    await expect(assertSupplierExists(undefined)).resolves.toBeUndefined();
+    await expect(assertSupplierExists(null)).resolves.toBeUndefined();
+    await expect(assertSupplierExists(supplier.id)).resolves.toBeUndefined();
+
+    const err = await assertSupplierExists("00000000-0000-4000-8000-000000000000").catch((e) => e);
+    expect(err).toBeInstanceOf(ValidationError);
+    expect(err.statusCode).toBe(422);
+    expect(err.details.fieldErrors.supplierId).toEqual(["Supplier not found"]);
+  });
+
+  it("assertSupplierExists still allows a deactivated supplier (the form resends it on every unrelated save)", async () => {
+    await prisma.supplier.update({ where: { id: supplier.id }, data: { isActive: false } });
+    await expect(assertSupplierExists(supplier.id)).resolves.toBeUndefined();
+    await prisma.supplier.update({ where: { id: supplier.id }, data: { isActive: true } });
+  });
+
+  it("validation accepts a uuid or null supplierId, rejects anything else, and trims brand", () => {
+    const base = { name: "X", slug: "x", variants: [{ sku: "X-1", name: "X", priceCents: 100 }] };
+
+    const ok = productCreateSchema.safeParse({ ...base, brand: "  Acme  ", supplierId: supplier.id });
+    expect(ok.success).toBe(true);
+    expect(ok.data.brand).toBe("Acme");
+    expect(ok.data.supplierId).toBe(supplier.id);
+
+    expect(productCreateSchema.safeParse({ ...base, supplierId: null }).success).toBe(true);
+    expect(productCreateSchema.safeParse({ ...base }).success).toBe(true);
+    expect(productCreateSchema.safeParse({ ...base, supplierId: "not-a-uuid" }).success).toBe(false);
+    expect(productCreateSchema.safeParse({ ...base, brand: "x".repeat(121) }).success).toBe(false);
+    // PATCH clearing both fields (what the admin Edit form sends when emptied).
+    expect(productUpdateSchema.safeParse({ brand: null, supplierId: null }).success).toBe(true);
+  });
+
+  it("deleting a supplier clears Product.supplierId (SetNull) instead of blocking or deleting the product", async () => {
+    await prisma.supplier.delete({ where: { id: supplier.id } });
+
+    const after = await prisma.product.findUnique({ where: { id: product.id } });
+    expect(after).not.toBeNull();
+    expect(after.supplierId).toBeNull();
+    expect(after.brand).toBe(BRAND);
   });
 });

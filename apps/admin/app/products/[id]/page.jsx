@@ -13,6 +13,7 @@ import ProductVideoPicker from "@/components/products/ProductVideoPicker";
 import CategoryMultiSelect from "@/components/products/CategoryMultiSelect";
 import LinkedProductPicker from "@/components/products/LinkedProductPicker";
 import ProductFormTabs from "@/components/products/ProductFormTabs";
+import ProductSupplierSelect from "@/components/products/ProductSupplierSelect";
 import FormField, { fieldInputClass } from "@/components/products/FormField";
 import { api, ApiClientError } from "@/lib/api/client";
 
@@ -63,6 +64,9 @@ function EditProductContent() {
   const [status, setStatus] = useState("DRAFT");
   const [variantId, setVariantId] = useState(null);
   const [sku, setSku] = useState("");
+  const [brand, setBrand] = useState("");
+  const [supplierId, setSupplierId] = useState("");
+  const [currentSupplier, setCurrentSupplier] = useState(null);
   const [costCents, setCostCents] = useState("");
   const [priceCents, setPriceCents] = useState("");
   const [compareAtCents, setCompareAtCents] = useState("");
@@ -96,6 +100,9 @@ function EditProductContent() {
         setStatus(product.status);
         setVariantId(variant?.id ?? null);
         setSku(variant?.sku ?? "");
+        setBrand(product.brand ?? "");
+        setSupplierId(product.supplierId ?? "");
+        setCurrentSupplier(product.supplier ?? null);
         setCostCents(variant?.costCents ? (variant.costCents / 100).toString() : "");
         setPriceCents(variant ? (variant.priceCents / 100).toString() : "");
         setCompareAtCents(variant?.compareAtCents ? (variant.compareAtCents / 100).toString() : "");
@@ -166,6 +173,8 @@ function EditProductContent() {
         categoryIds: secondaryCategoryIds,
         description: description || null,
         status,
+        brand: brand.trim() || null,
+        supplierId: supplierId || null,
         itemName: itemName || null,
         color: color || null,
         material: material || null,
@@ -299,6 +308,18 @@ function EditProductContent() {
             {tab === "inventory" && (
               <div className="flex flex-col gap-4">
                 <h2 className="font-display text-base font-bold text-brand-charcoal">Inventory</h2>
+
+                <FormField id="brand" label="Brand" hint="Internal only — not shown to customers.">
+                  <input
+                    id="brand"
+                    maxLength={120}
+                    value={brand}
+                    onChange={(e) => setBrand(e.target.value)}
+                    className={fieldInputClass}
+                  />
+                </FormField>
+
+                <ProductSupplierSelect value={supplierId} onChange={setSupplierId} currentSupplier={currentSupplier} />
 
                 {canViewCost && (
                   <FormField
