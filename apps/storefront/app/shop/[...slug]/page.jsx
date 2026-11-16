@@ -16,6 +16,7 @@ import ProductImageGallery from "@/components/products/ProductImageGallery";
 import ProductAttributes from "@/components/products/ProductAttributes";
 import ProductPurchasePanel from "@/components/products/ProductPurchasePanel";
 import FrequentlyBoughtTogether from "@/components/products/FrequentlyBoughtTogether";
+import ReviewsSection from "@/components/products/ReviewsSection";
 import { getCategories, getAllProducts, getProductBySlug, getProducts } from "@/lib/api/catalog";
 import { normalizeProductForCard } from "@/lib/api/normalize";
 import {
@@ -25,8 +26,8 @@ import {
   withDisplayRating,
 } from "@/lib/dailyRotation";
 import { currentDaySeed } from "@/lib/currentDaySeed";
-import { topLevelCategorySlugFor } from "@/lib/categoryTree";
-import { pairedCategorySlugsFor } from "@/lib/categoryPairings";
+import { topLevelCategorySlugFor, expandSlugWithChildren, effectiveSubcategorySlugFor } from "@/lib/categoryTree";
+import { roomAwarePairingsFor } from "@/lib/categoryPairings";
 import { ApiClientError } from "@/lib/api/client";
 
 // Matches the trust-badge strip pattern on the reference sites (free
@@ -228,32 +229,84 @@ async function ProductDetailPage({ product }) {
   // never needs to be set from both products' admin pages.
   const linkedProducts = (product.linkedProducts ?? []).map(normalizeProductForCard).map(withDisplayRating);
 
-  // "Frequently Bought Together" deliberately pairs this product with OTHER-
-  // category products (see lib/categoryPairings.js) — the opposite axis from
-  // `related` above, which is same-category. One product is picked per
-  // paired category (not a pool of many) to keep the bundle widget small and
-  // scannable, same reasoning FBT widgets on reference sites use.
-  const FBT_PICK_COUNT = 2;
+  // "Frequently Bought Together" pairs this product with OTHER-subcategory
+  // products chosen from a hand-curated, priority-ordered map (see
+  // lib/categoryPairings.js) — the opposite axis from `related` above, which
+  // is same-category. Walks the mapped subcategories in priority order,
+  // collecting eligible (in-stock, not-this-product, not-already-picked)
+  // candidates until it has FBT_MAX_PICKS, rather than picking exactly one
+  // per mapped entry — a subcategory with nothing eligible is simply skipped
+  // and the next one in priority order is tried, same as the "fewer than 3
+  // instead of forcing unrelated recommendations" requirement this is built
+  // against.
+  const FBT_MAX_PICKS = 3;
   let frequentlyBoughtTogether = [];
   if (product.category) {
     const categories = await getCategories();
-    const topLevelSlug = topLevelCategorySlugFor(product.category, categories);
-    const pairedSlugs = pairedCategorySlugsFor(topLevelSlug).slice(0, FBT_PICK_COUNT);
     const daySeed = await currentDaySeed();
+    const secondarySlugs = (product.categories ?? []).map((c) => c.slug);
+    // The product's primary category isn't reliably its subcategory — see
+    // effectiveSubcategorySlugFor's comment — so this resolves the real
+    // subcategory from either the primary or secondary tags before looking
+    // up its pairing row. A product with no subcategory tagged anywhere
+    // (rare, but possible) has no SUBCATEGORY_PAIRINGS entry either, so
+    // mappedSlugs comes back empty and this goes straight to the top-level
+    // fallback below.
+    const subcategorySlug = effectiveSubcategorySlugFor(product.category, product.categories, categories);
+    const mappedSlugs = subcategorySlug ? roomAwarePairingsFor(subcategorySlug, secondarySlugs) : [];
 
-    const picks = (
-      await Promise.all(
-        pairedSlugs.map(async (slug) => {
-          const { products: candidates } = await getProducts({ category: slug, pageSize: 20, sort: "oldest" });
-          const inStockCandidates = candidates.filter((p) => p.id !== product.id);
-          if (inStockCandidates.length === 0) return null;
-          return shuffleProducts(inStockCandidates, daySeed, `fbt-${product.id}-${slug}`)[0];
-        })
-      )
-    ).filter(Boolean);
+    const picked = [];
+    const pickedIds = new Set([product.id]);
+    for (const mappedSlug of mappedSlugs) {
+      if (picked.length >= FBT_MAX_PICKS) break;
+      // A mapped entry can be a specific subcategory (e.g. "occasional-tables")
+      // or a top-level room slug meaning "any subcategory in that room" (e.g.
+      // the Home Accessories fallback's "living-room") — expand it to every
+      // slug that needs querying either way.
+      const slugsToQuery = expandSlugWithChildren(mappedSlug, categories);
+      const results = await Promise.all(
+        slugsToQuery.map((slug) => getProducts({ category: slug, pageSize: 20, sort: "oldest" }))
+      );
+      const candidates = results
+        .flatMap((r) => r.products)
+        .filter((p) => !pickedIds.has(p.id) && (p.variants?.find((v) => v.isActive) ?? p.variants?.[0])?.availability?.totalAvailable > 0);
+      if (candidates.length === 0) continue;
 
-    if (picks.length > 0) {
-      frequentlyBoughtTogether = [product, ...picks].map(normalizeProductForCard).map(withDisplayRating);
+      const shuffled = shuffleProducts(candidates, daySeed, `fbt-${product.id}-${mappedSlug}`);
+      for (const candidate of shuffled) {
+        if (picked.length >= FBT_MAX_PICKS) break;
+        if (pickedIds.has(candidate.id)) continue;
+        picked.push(candidate);
+        pickedIds.add(candidate.id);
+      }
+    }
+
+    // Fallback: the mapped subcategories yielded nothing at all — try other
+    // products in this product's own top-level category instead of hiding
+    // the section outright. There's no real sales/popularity signal in the
+    // schema (Product has no sales-count field), so "popular" here is the
+    // same stable daily rotation the "You May Also Like" section above uses,
+    // not an actual best-seller ranking.
+    if (picked.length === 0) {
+      const topLevelSlug = topLevelCategorySlugFor(product.category, categories);
+      const fallbackSlugs = expandSlugWithChildren(topLevelSlug, categories);
+      const results = await Promise.all(
+        fallbackSlugs.map((slug) => getProducts({ category: slug, pageSize: 20, sort: "oldest" }))
+      );
+      const candidates = results
+        .flatMap((r) => r.products)
+        .filter((p) => !pickedIds.has(p.id) && (p.variants?.find((v) => v.isActive) ?? p.variants?.[0])?.availability?.totalAvailable > 0);
+      const shuffled = shuffleProducts(candidates, daySeed, `fbt-fallback-${product.id}`);
+      for (const candidate of shuffled) {
+        if (picked.length >= FBT_MAX_PICKS) break;
+        if (pickedIds.has(candidate.id)) continue;
+        picked.push(candidate);
+        pickedIds.add(candidate.id);
+      }
+    }
+
+    if (picked.length > 0) {
+      frequentlyBoughtTogether = [product, ...picked].map(normalizeProductForCard).map(withDisplayRating);
     }
   }
 
@@ -262,7 +315,7 @@ async function ProductDetailPage({ product }) {
 
   return (
     <div className="pb-10">
-      <Container className="pt-6 grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start lg:gap-12">
+      <Container className="grid grid-cols-1 gap-10 pt-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-start lg:gap-14">
         <ProductImageGallery
           images={product.images}
           name={plainName}
@@ -270,59 +323,64 @@ async function ProductDetailPage({ product }) {
           discountPercent={discountPercent}
         />
 
-        <div className="flex flex-col gap-4">
-          <div>
-            <h1 className="font-display text-2xl font-bold text-brand-charcoal sm:text-3xl">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-2.5">
+            <h1 className="font-display text-2xl leading-tight font-bold text-brand-charcoal sm:text-3xl">
               <InlineMarkdown text={product.name} />
             </h1>
-            <div className="mt-2">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <StarRating rating={displayRating} reviewCount={displayReviewCount} showValue />
+              <span className="text-xs font-medium uppercase tracking-wide text-brand-charcoal/40">
+                SKU: {defaultVariant?.sku}
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 border-b border-brand-charcoal/10 pb-4">
+          {/* "Buy box": the price + stock/warranty state grouped into one
+              bordered panel, mirroring the boxed price/availability card
+              reference storefronts use to anchor the purchase decision,
+              instead of those signals being loose rows down the page. */}
+          <div className="flex flex-col gap-4 rounded-2xl border border-brand-charcoal/10 bg-white p-5 shadow-sm">
             <Price
               price={defaultVariant ? defaultVariant.priceCents / 100 : 0}
               compareAtPrice={defaultVariant?.compareAtCents ? defaultVariant.compareAtCents / 100 : null}
+              size="lg"
               showDiscount
             />
-            <p className="text-xs font-medium uppercase tracking-wide text-brand-charcoal/50">
-              SKU: {defaultVariant?.sku}
-            </p>
-          </div>
 
-          <div className="flex flex-wrap items-stretch gap-2">
-            <div
-              className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-sm font-medium ${
-                isLimitedStock
-                  ? "border-brand-gold-dark/30 bg-brand-gold/10 text-brand-gold-dark"
-                  : inStock
-                    ? "border-green-600/20 bg-green-600/5 text-green-800"
-                    : "border-brand-red/20 bg-brand-red/5 text-brand-red-dark"
-              }`}
-            >
-              {inStock ? (
-                <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              ) : (
-                <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <div className="flex flex-wrap items-stretch gap-2">
+              <div
+                className={`flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-semibold ${
+                  isLimitedStock
+                    ? "border-brand-gold-dark/30 bg-brand-gold/10 text-brand-gold-dark"
+                    : inStock
+                      ? "border-green-600/20 bg-green-600/5 text-green-800"
+                      : "border-brand-red/20 bg-brand-red/5 text-brand-red-dark"
+                }`}
+              >
+                {inStock ? (
+                  <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />
+                ) : (
+                  <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+                )}
+                <span>{isLimitedStock ? "Limited Stock" : inStock ? "In Stock" : "Out of Stock"}</span>
+              </div>
+
+              {/* Staff-ticked on the admin form's Warranty tab (Product.isWarrantied). */}
+              {product.isWarrantied && (
+                <div className="flex items-center gap-2 rounded-full border border-green-600/20 bg-green-600/5 px-3.5 py-1.5 text-sm font-semibold text-green-800">
+                  <ShieldCheck className="size-4 shrink-0" aria-hidden="true" />
+                  <span>Warrantied</span>
+                </div>
               )}
-              <span>{isLimitedStock ? "Limited Stock" : inStock ? "In Stock" : "Out of Stock"}</span>
             </div>
 
-            {/* Staff-ticked on the admin form's Warranty tab (Product.isWarrantied). */}
-            {product.isWarrantied && (
-              <div className="flex items-start gap-2 rounded-xl border border-green-600/20 bg-green-600/5 px-4 py-3 text-sm font-medium text-green-800">
-                <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                <span>Warrantied</span>
-              </div>
-            )}
+            <ProductAttributes product={product} />
+
+            <ProductPurchasePanel product={product} />
           </div>
 
-          <ProductAttributes product={product} />
-
-          <ProductPurchasePanel product={product} />
-
-          <div className="grid grid-cols-1 gap-3 rounded-xl border border-brand-charcoal/10 bg-brand-cream/60 p-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 rounded-2xl border border-brand-charcoal/10 bg-brand-cream/60 p-5 sm:grid-cols-3">
             {TRUST_BADGES.map(({ icon: Icon, label, detail }) => (
               <div key={label} className="flex items-start gap-2.5">
                 <Icon className="mt-0.5 size-5 shrink-0 text-brand-red-dark" aria-hidden="true" />
@@ -335,8 +393,8 @@ async function ProductDetailPage({ product }) {
           </div>
 
           {linkedProducts.length > 0 && (
-            <div className="flex flex-col gap-2 border-t border-brand-charcoal/10 pt-4">
-              <h2 className="text-sm font-semibold text-brand-charcoal">Available As</h2>
+            <div className="flex flex-col gap-3">
+              <h2 className="font-display text-base font-semibold text-brand-charcoal">Available As</h2>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {linkedProducts.map((item) => (
                   <ProductCard key={item.id} product={item} />
@@ -348,7 +406,7 @@ async function ProductDetailPage({ product }) {
       </Container>
 
       {frequentlyBoughtTogether.length > 1 && (
-        <Container className="mt-10">
+        <Container className="mt-12 border-t border-brand-charcoal/10 pt-10 sm:mt-14 sm:pt-12">
           <h2 className="font-display text-xl font-semibold text-brand-charcoal sm:text-2xl">
             Frequently Bought Together
           </h2>
@@ -359,7 +417,7 @@ async function ProductDetailPage({ product }) {
       )}
 
       {product.description && (
-        <Container className="mt-10">
+        <Container className="mt-12 border-t border-brand-charcoal/10 pt-10 sm:mt-14 sm:pt-12">
           <h2 className="font-display text-xl font-semibold text-brand-charcoal sm:text-2xl">Description</h2>
           <p className="mt-3 max-w-3xl whitespace-pre-line text-sm leading-relaxed text-brand-charcoal/75 sm:text-base">
             <InlineMarkdown text={product.description} />
@@ -367,9 +425,13 @@ async function ProductDetailPage({ product }) {
         </Container>
       )}
 
+      <Container className="mt-12 border-t border-brand-charcoal/10 pt-10 sm:mt-14 sm:pt-12">
+        <ReviewsSection productSlug={product.slug} reviews={product.reviews ?? []} />
+      </Container>
+
       {/* The API only returns warrantyNote while isWarrantied is true. */}
       {product.isWarrantied && product.warrantyNote && (
-        <Container className="mt-10">
+        <Container className="mt-12 border-t border-brand-charcoal/10 pt-10 sm:mt-14 sm:pt-12">
           <h2 className="font-display text-xl font-semibold text-brand-charcoal sm:text-2xl">Warranty Details</h2>
           <p className="mt-3 max-w-3xl whitespace-pre-line text-sm leading-relaxed text-brand-charcoal/75 sm:text-base">
             <InlineMarkdown text={product.warrantyNote} />
@@ -378,7 +440,7 @@ async function ProductDetailPage({ product }) {
       )}
 
       {related.length > 0 && (
-        <Container className="mt-14">
+        <Container className="mt-12 border-t border-brand-charcoal/10 pt-10 sm:mt-16 sm:pt-12">
           <h2 className="font-display text-xl font-semibold text-brand-charcoal sm:text-2xl">
             You May Also Like
           </h2>

@@ -195,6 +195,7 @@ model Product {
   // a self-referential many-to-many, not a meaningful direction.
   linkedTo     ProductLink[]     @relation("ProductLinksFrom")
   linkedFrom   ProductLink[]     @relation("ProductLinksTo")
+  reviews      Review[]
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
 
@@ -214,6 +215,37 @@ model ProductLink {
 
   @@id([productId, linkedProductId])
   @@index([linkedProductId])
+}
+
+enum ReviewStatus {
+  // 4-5 star submissions land here directly (auto-published) — see
+  // POST /products/:slug/reviews in catalog.routes.js.
+  APPROVED
+  // 1-3 star submissions land here and are hidden from the storefront until
+  // staff act on them — surfaced as an alert badge on the admin Products
+  // list/sidebar (see GET /admin/reviews/pending-count).
+  PENDING
+}
+
+// A guest-submitted product review, not tied to a signed-in Customer account
+// (this storefront's review form only ever asks for a name/email, mirroring
+// how a guest Customer row is created implicitly at checkout — see
+// Customer's own comment) — authorName/authorEmail are plain free-text, not
+// an FK, so a review always keeps its original author info even if that
+// email never becomes/isn't a registered Customer.
+model Review {
+  id          String       @id @default(uuid())
+  productId   String
+  product     Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rating      Int // 1-5, enforced by the Zod schema (packages/validation) — not a DB CHECK constraint
+  body        String
+  authorName  String
+  authorEmail String
+  status      ReviewStatus @default(PENDING)
+  createdAt   DateTime     @default(now())
+
+  @@index([productId])
+  @@index([status])
 }
 
 model Variant {

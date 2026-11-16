@@ -29,13 +29,13 @@ export default function ProductImageGallery({ images, name, inStock, discountPer
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       <div
         ref={frameRef}
         onMouseEnter={handleMouseMove}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setZoom(null)}
-        className="group relative aspect-4/3 w-full overflow-hidden rounded-2xl bg-brand-cream shadow-sm"
+        className="group relative aspect-4/3 w-full overflow-hidden rounded-2xl border border-brand-charcoal/10 bg-brand-cream shadow-sm"
       >
         {active && (
           <>
@@ -79,7 +79,7 @@ export default function ProductImageGallery({ images, name, inStock, discountPer
       </div>
 
       {images.length > 1 && (
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="flex gap-2.5 overflow-x-auto pb-1">
           {images.map((img, index) => (
             <button
               key={img.id ?? img.url}
@@ -87,8 +87,10 @@ export default function ProductImageGallery({ images, name, inStock, discountPer
               onClick={() => setActiveIndex(index)}
               aria-label={`Show image ${index + 1} of ${images.length}`}
               aria-pressed={activeIndex === index}
-              className={`relative size-16 shrink-0 overflow-hidden rounded-lg border-2 transition-colors sm:size-20 ${
-                activeIndex === index ? "border-brand-red" : "border-transparent hover:border-brand-charcoal/20"
+              className={`relative size-16 shrink-0 overflow-hidden rounded-lg border-2 bg-brand-cream transition-colors sm:size-20 ${
+                activeIndex === index
+                  ? "border-brand-red shadow-sm"
+                  : "border-brand-charcoal/10 hover:border-brand-charcoal/30"
               }`}
             >
               <Image src={img.url} alt="" fill sizes="80px" className="object-cover" />

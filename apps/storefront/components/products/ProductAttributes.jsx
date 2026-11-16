@@ -13,7 +13,7 @@ export default function ProductAttributes({ product }) {
   if (rows.length === 0) return null;
 
   return (
-    <dl className="flex flex-col gap-1.5 border-b border-brand-charcoal/10 pb-4 text-sm">
+    <dl className="flex flex-col gap-1.5 border-t border-brand-charcoal/10 pt-4 text-sm">
       {rows.map(({ key, label }) => (
         <div key={key} className="flex gap-1.5">
           <dt className="font-semibold text-brand-charcoal">{label}:</dt>

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { PlusCircle, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, MessageSquare, PlusCircle, Search, Trash2 } from "lucide-react";
 import RequireAuth from "@/components/layout/RequireAuth";
 import PageHeader from "@/components/ui/PageHeader";
 import DataTable from "@/components/ui/DataTable";
@@ -129,7 +129,26 @@ function ProductsContent() {
 
   const columns = [
     { key: "sku", header: "SKU", render: (r) => r.variant.sku },
-    { key: "name", header: "Product", render: (r) => r.product.name },
+    {
+      key: "name",
+      header: "Product",
+      render: (r) => (
+        <div className="flex items-center gap-1.5">
+          {/* Leading alert — only ever set on a product's FIRST variant row
+              (see pendingReviewCount on serializeProduct, GET
+              /admin/products), same one-row-per-product convention the
+              delete button below already follows, so a multi-variant
+              product doesn't show the icon on every one of its rows. */}
+          {r.product.pendingReviewCount > 0 && (
+            <AlertTriangle
+              className="size-4 shrink-0 text-brand-gold-dark"
+              aria-label={`${r.product.pendingReviewCount} review(s) need moderation`}
+            />
+          )}
+          <span>{r.product.name}</span>
+        </div>
+      ),
+    },
     { key: "category", header: "Category", render: (r) => r.product.displayCategory?.name ?? "—" },
     {
       key: "price",
@@ -177,9 +196,25 @@ function ProductsContent() {
           <Link href={`/products/${r.product.id}`} className="font-semibold text-brand-red hover:text-brand-red-dark">
             Edit
           </Link>
-          {/* Rows are per-variant, but delete is a product-level action — only
-              render it once, on that product's first variant row, so a
-              multi-variant product doesn't show the button N times. */}
+          {/* Rows are per-variant, but reviews/delete are product-level
+              actions — only render them once, on that product's first
+              variant row, so a multi-variant product doesn't show either
+              button N times. */}
+          {r.product.variants[0]?.id === r.variant.id && (
+            <Link
+              href={`/products/${r.product.id}?tab=reviews`}
+              aria-label={`View reviews for ${r.product.name}`}
+              title="Reviews"
+              className="relative rounded-lg p-1.5 text-brand-charcoal/50 transition-colors hover:bg-brand-cream hover:text-brand-charcoal focus-visible:outline-2 focus-visible:outline-brand-red"
+            >
+              <MessageSquare className="size-4" aria-hidden="true" />
+              {r.product.pendingReviewCount > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex size-3.5 items-center justify-center rounded-full bg-brand-red text-[8px] font-bold text-white">
+                  {r.product.pendingReviewCount > 9 ? "9+" : r.product.pendingReviewCount}
+                </span>
+              )}
+            </Link>
+          )}
           {r.product.variants[0]?.id === r.variant.id && (
             <button
               type="button"

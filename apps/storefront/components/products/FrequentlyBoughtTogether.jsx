@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Plus, ShoppingCart, Check } from "lucide-react";
+import { ShoppingCart, Check } from "lucide-react";
 import { stripInlineMarkdown } from "@big-eds/ui";
 import { useDemoCart } from "@/components/layout/DemoCartProvider";
 import { formatCurrency } from "@/utils/formatCurrency";
@@ -16,6 +16,15 @@ import { formatCurrency } from "@/utils/formatCurrency";
 // cart in one action. `items` is an array of already-normalized product-card
 // shapes (normalizeProductForCard) — the first entry is always the current
 // product itself, so the widget visually anchors on "this + these".
+//
+// Laid out as a plain responsive grid of item tiles (2-up on phones, up to
+// 4-up on desktop) rather than a single flex row of "item + item + item"
+// with inline "+" separators — those separators only read correctly in one
+// unbroken row, and wrapped onto multiple rows (the common case on mobile,
+// where up to 4 tiles don't fit on one line) they ended up sitting between
+// the wrong pairs of tiles with no visual relationship to what they were
+// "adding". The bundle framing instead comes from the shared card border and
+// the summary bar directly underneath, not a per-item connector symbol.
 export default function FrequentlyBoughtTogether({ items }) {
   const { addToCart, cartItems } = useDemoCart();
   const [checkedIds, setCheckedIds] = useState(() => new Set(items.map((item) => item.id)));
@@ -42,80 +51,86 @@ export default function FrequentlyBoughtTogether({ items }) {
   }
 
   return (
-    <div className="rounded-2xl border border-brand-charcoal/10 bg-white p-5 sm:p-6">
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
-        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-          {items.map((item, index) => (
-            <div key={item.id} className="flex items-center gap-3 sm:gap-4">
-              <label className="group flex w-28 shrink-0 flex-col items-center gap-2 text-center sm:w-32">
+    <div className="overflow-hidden rounded-2xl border border-brand-charcoal/10 bg-white shadow-sm">
+      <div className="grid grid-cols-2 gap-3 p-4 sm:gap-4 sm:p-6 md:grid-cols-4">
+        {items.map((item) => {
+          const checked = checkedIds.has(item.id);
+          return (
+            <label
+              key={item.id}
+              className={`group flex cursor-pointer flex-col gap-2.5 rounded-xl border p-2.5 transition-all sm:p-3 ${
+                checked
+                  ? "border-brand-red/30 bg-brand-red/5"
+                  : "border-brand-charcoal/10 hover:border-brand-charcoal/25 hover:bg-brand-charcoal/2"
+              }`}
+            >
+              <span className="relative aspect-square w-full overflow-hidden rounded-lg bg-brand-cream">
+                {item.image && (
+                  <Image
+                    src={item.image}
+                    alt={stripInlineMarkdown(item.name)}
+                    fill
+                    sizes="(max-width: 640px) 45vw, 180px"
+                    className="object-cover"
+                  />
+                )}
                 <span
-                  className={`relative aspect-square w-full overflow-hidden rounded-xl border-2 bg-brand-cream transition-colors ${
-                    checkedIds.has(item.id)
-                      ? "border-brand-red"
-                      : "border-transparent group-hover:border-brand-charcoal/15"
+                  className={`absolute right-1.5 top-1.5 flex size-5 items-center justify-center rounded-full border-2 shadow-sm transition-colors sm:size-5.5 ${
+                    checked
+                      ? "border-brand-red bg-brand-red text-white"
+                      : "border-white bg-white/90 text-transparent"
                   }`}
                 >
-                  {item.image && (
-                    <Image src={item.image} alt={stripInlineMarkdown(item.name)} fill sizes="128px" className="object-cover" />
-                  )}
-                  <span
-                    className={`absolute left-2 top-2 flex size-5 items-center justify-center rounded-full border-2 transition-colors ${
-                      checkedIds.has(item.id)
-                        ? "border-brand-red bg-brand-red text-white"
-                        : "border-white bg-white/80 text-transparent"
-                    }`}
-                  >
-                    <Check className="size-3.5" strokeWidth={3} aria-hidden="true" />
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={checkedIds.has(item.id)}
-                    onChange={() => toggleItem(item.id)}
-                    aria-label={`Include ${stripInlineMarkdown(item.name)} in the bundle`}
-                    className="absolute inset-0 size-full cursor-pointer opacity-0"
-                  />
+                  <Check className="size-3 sm:size-3.5" strokeWidth={3} aria-hidden="true" />
                 </span>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleItem(item.id)}
+                  aria-label={`Include ${stripInlineMarkdown(item.name)} in the bundle`}
+                  className="absolute inset-0 size-full cursor-pointer opacity-0"
+                />
+              </span>
+              <div className="flex flex-1 flex-col gap-0.5">
                 <Link
                   href={`/shop/${item.slug}`}
-                  className="line-clamp-2 text-xs font-semibold text-brand-charcoal hover:text-brand-red-dark"
+                  onClick={(e) => e.stopPropagation()}
+                  className="line-clamp-2 text-xs font-semibold leading-snug text-brand-charcoal hover:text-brand-red-dark sm:text-sm"
                 >
                   {stripInlineMarkdown(item.name)}
                 </Link>
-                <span className="text-xs font-bold text-brand-charcoal">{formatCurrency(item.price)}</span>
-              </label>
-              {index < items.length - 1 && (
-                <Plus className="size-4 shrink-0 text-brand-charcoal/25" aria-hidden="true" />
-              )}
-            </div>
-          ))}
-        </div>
+                <span className="text-xs font-bold text-brand-charcoal sm:text-sm">{formatCurrency(item.price)}</span>
+              </div>
+            </label>
+          );
+        })}
+      </div>
 
-        <div className="flex items-center justify-between gap-4 rounded-xl bg-brand-cream px-5 py-4 lg:ml-8 lg:w-72 lg:shrink-0 lg:flex-col lg:items-stretch lg:gap-3">
-          <div className="lg:text-center">
-            <p className="text-xs text-brand-charcoal/60">
-              Total for {checkedItems.length} item{checkedItems.length === 1 ? "" : "s"}
-            </p>
-            <p className="text-2xl font-bold text-brand-charcoal">{formatCurrency(combinedTotal)}</p>
-          </div>
-          <button
-            type="button"
-            onClick={handleAddSelected}
-            disabled={checkedItems.length === 0}
-            className="flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-brand-red px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-red-dark disabled:cursor-not-allowed disabled:bg-brand-charcoal/20 disabled:text-brand-charcoal/50 disabled:shadow-none"
-          >
-            {justAdded ? (
-              <>
-                <Check className="size-4 shrink-0" aria-hidden="true" />
-                Added
-              </>
-            ) : (
-              <>
-                <ShoppingCart className="size-4 shrink-0" aria-hidden="true" />
-                Add Selected to Cart
-              </>
-            )}
-          </button>
+      <div className="flex flex-col gap-3 border-t border-brand-charcoal/10 bg-brand-cream/60 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div>
+          <p className="text-xs text-brand-charcoal/60">
+            Total for {checkedItems.length} item{checkedItems.length === 1 ? "" : "s"}
+          </p>
+          <p className="text-2xl font-bold text-brand-charcoal">{formatCurrency(combinedTotal)}</p>
         </div>
+        <button
+          type="button"
+          onClick={handleAddSelected}
+          disabled={checkedItems.length === 0}
+          className="flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-brand-red px-5 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-red-dark disabled:cursor-not-allowed disabled:bg-brand-charcoal/20 disabled:text-brand-charcoal/50 disabled:shadow-none sm:py-2.5"
+        >
+          {justAdded ? (
+            <>
+              <Check className="size-4 shrink-0" aria-hidden="true" />
+              Added
+            </>
+          ) : (
+            <>
+              <ShoppingCart className="size-4 shrink-0" aria-hidden="true" />
+              Add Selected to Cart
+            </>
+          )}
+        </button>
       </div>
     </div>
   );

@@ -242,6 +242,17 @@ const productUpdateSchema = productCreateSchema.partial().extend({
   variants: z.array(variantUpdateSchema).optional(),
 });
 
+// Guest product review submission (storefront) — mirrors how a guest
+// Customer row is created from just a name/email at checkout, not a signed-in
+// account. 1-3 star reviews are held as PENDING for staff moderation; 4-5
+// star reviews publish immediately (see POST /products/:slug/reviews).
+const reviewCreateSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  body: z.string().trim().min(1).max(2000),
+  authorName: z.string().trim().min(1).max(120),
+  authorEmail: z.string().trim().email().max(200),
+});
+
 // ---------------------------------------------------------------------------
 // Inventory
 // ---------------------------------------------------------------------------
@@ -549,6 +560,7 @@ module.exports = {
   productVideoInputSchema,
   productCreateSchema,
   productUpdateSchema,
+  reviewCreateSchema,
   stockAdjustSchema,
   stockTransferSchema,
   countCreateSchema,

@@ -1,6 +1,7 @@
 import { formatCurrency } from "@/utils/formatCurrency";
 
 const SIZE_STYLES = {
+  lg: { price: "text-3xl", compareAt: "text-base", off: "text-sm" },
   default: { price: "text-lg", compareAt: "text-sm", off: "text-sm" },
   sm: { price: "text-sm", compareAt: "text-xs", off: "text-xs" },
 };

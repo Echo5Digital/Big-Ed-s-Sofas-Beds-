@@ -89,3 +89,38 @@ export function topLevelCategorySlugFor(category, categories) {
   const parent = categories.find((c) => c.id === fullCategory.parentId);
   return parent?.slug ?? fullCategory.slug;
 }
+
+// A product's primary category isn't reliably its subcategory — real seeded
+// data has products primary-tagged straight to a top-level room (e.g.
+// "office") with the actual subcategory only present as a secondary tag
+// (e.g. "office-bookcase" in product.categories), alongside others that ARE
+// primary-tagged to the subcategory directly. Subcategory-keyed logic (see
+// lib/categoryPairings.js's SUBCATEGORY_PAIRINGS) needs the real subcategory
+// regardless of which slot it's sitting in, so this checks the primary slug
+// first, then each secondary slug, and returns the first one that's actually
+// a subcategory (has a parentId) rather than a top-level room. Returns null
+// if the product has no subcategory tagged anywhere (primary or secondary) —
+// callers should fall back to the top-level category in that case.
+export function effectiveSubcategorySlugFor(primaryCategory, secondaryCategories, categories) {
+  const candidateSlugs = [primaryCategory?.slug, ...(secondaryCategories ?? []).map((c) => c.slug)].filter(Boolean);
+  for (const slug of candidateSlugs) {
+    const match = categories.find((c) => c.slug === slug);
+    if (match?.parentId) return slug;
+  }
+  return null;
+}
+
+// A pairing entry (see lib/categoryPairings.js) can name either a specific
+// subcategory slug or a top-level room slug meaning "any subcategory in this
+// room" — GET /catalog/products?category= only matches that exact slug, it
+// doesn't roll up children (see resolveCategory in
+// app/shop/[...slug]/page.jsx, which does its own expansion for the same
+// reason). Expands a top-level slug into itself + its children's slugs so a
+// caller can query every one of them; a subcategory (or any slug with no
+// children) expands to just itself.
+export function expandSlugWithChildren(slug, categories) {
+  const category = categories.find((c) => c.slug === slug);
+  if (!category) return [slug];
+  const children = categories.filter((c) => c.parentId === category.id);
+  return children.length > 0 ? [slug, ...children.map((c) => c.slug)] : [slug];
+}

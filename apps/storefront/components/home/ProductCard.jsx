@@ -48,7 +48,24 @@ export default function ProductCard({ product, showRatingValue = false }) {
               alt={plainName}
               fill
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
-              className="object-cover transition-transform duration-300 group-hover:scale-105"
+              className={`object-cover transition-all duration-300 ${
+                product.secondImage ? "group-hover:opacity-0" : "group-hover:scale-105"
+              }`}
+            />
+          )}
+          {/* Second photo, cross-faded in on hover — gives a quick second
+              angle without a click, same idea as the PDP's magnifier
+              (ProductImageGallery.jsx) reusing group-hover for a desktop-only
+              reveal. Absent entirely (not just hidden) when a product only
+              has one photo, so there's nothing to flash/fade on touch
+              devices that don't have a true hover state. */}
+          {product.secondImage && (
+            <Image
+              src={product.secondImage}
+              alt={plainName}
+              fill
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
+              className="object-cover opacity-0 transition-opacity duration-300 group-hover:opacity-100"
             />
           )}
         </Link>

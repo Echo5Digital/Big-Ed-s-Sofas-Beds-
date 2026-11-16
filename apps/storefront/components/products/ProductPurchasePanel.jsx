@@ -136,7 +136,7 @@ export default function ProductPurchasePanel({ product }) {
       {isInCart && !justAdded ? (
         <Link
           href="/cart"
-          className="hidden items-center justify-center gap-2 rounded-full bg-brand-red px-6 py-3.5 text-base font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark sm:flex"
+          className="hidden items-center justify-center gap-2 rounded-full bg-brand-red px-6 py-3.5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-brand-red-dark hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark sm:flex"
         >
           <ShoppingCart className="size-5 shrink-0" aria-hidden="true" />
           Go to Cart
@@ -146,7 +146,7 @@ export default function ProductPurchasePanel({ product }) {
           type="button"
           onClick={handleAddToCart}
           disabled={!canAddToCart}
-          className="hidden items-center justify-center gap-2 rounded-full bg-brand-red px-6 py-3.5 text-base font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark disabled:cursor-not-allowed disabled:bg-brand-charcoal/20 disabled:text-brand-charcoal/50 sm:flex"
+          className="hidden items-center justify-center gap-2 rounded-full bg-brand-red px-6 py-3.5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-brand-red-dark hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark disabled:cursor-not-allowed disabled:bg-brand-charcoal/20 disabled:text-brand-charcoal/50 disabled:shadow-none sm:flex"
         >
           {justAdded ? (
             <>

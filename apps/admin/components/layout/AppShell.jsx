@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -20,11 +20,18 @@ import {
   CreditCard,
 } from "lucide-react";
 import { useAuth } from "@/lib/hooks/useAuth";
+import { api } from "@/lib/api/client";
 import NotificationBell from "./NotificationBell";
+
+// Same poll-for-a-count approach as NotificationBell's register-reopen
+// badge — this app has no websocket/SSE infrastructure, so a short interval
+// is how a newly-submitted low-rated review (1-3 stars, held for moderation)
+// surfaces on the Products nav item without a full page reload.
+const REVIEW_POLL_MS = 20000;
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard, permission: "reports:read" },
-  { label: "Products", href: "/products", icon: Package, permission: "catalog:read" },
+  { label: "Products", href: "/products", icon: Package, permission: "catalog:read", countKey: "pendingReviews" },
   { label: "Inventory", href: "/inventory", icon: Boxes, permission: "inventory:read" },
   { label: "Purchase Orders", href: "/purchasing", icon: ClipboardList, permission: "purchasing:read" },
   { label: "Suppliers", href: "/suppliers", icon: Users, permission: "purchasing:read" },
@@ -37,7 +44,7 @@ const NAV_ITEMS = [
   { label: "Settings", href: "/settings", icon: Settings, permission: null },
 ];
 
-function NavLink({ item, pathname, onClick }) {
+function NavLink({ item, pathname, onClick, count }) {
   const Icon = item.icon;
   const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
 
@@ -50,7 +57,16 @@ function NavLink({ item, pathname, onClick }) {
       }`}
     >
       <Icon className="size-4.5 shrink-0" aria-hidden="true" />
-      {item.label}
+      <span className="flex-1">{item.label}</span>
+      {/* Same red-pill alert as NotificationBell's badge — a product with a
+          1-3 star review awaiting moderation (see ProductReviewsTab.jsx)
+          surfaces here too, not just on that product's own row/tab, so it's
+          visible even before an admin opens Products at all. */}
+      {count > 0 && (
+        <span className="flex size-4.5 shrink-0 items-center justify-center rounded-full bg-brand-red text-[10px] font-bold text-white">
+          {count > 9 ? "9+" : count}
+        </span>
+      )}
     </Link>
   );
 }
@@ -58,6 +74,23 @@ function NavLink({ item, pathname, onClick }) {
 function SidebarContent({ pathname, onNavigate }) {
   const { user, logout, hasPermission } = useAuth();
   const router = useRouter();
+  const [pendingReviewCount, setPendingReviewCount] = useState(0);
+
+  const loadPendingReviewCount = useCallback(() => {
+    api
+      .get("/catalog/admin/reviews/pending-count")
+      .then((data) => setPendingReviewCount(data.count))
+      .catch(() => {
+        // Silent — this is a background badge, not a page the admin is
+        // actively waiting on, same reasoning as NotificationBell's load().
+      });
+  }, []);
+
+  useEffect(() => {
+    loadPendingReviewCount();
+    const interval = setInterval(loadPendingReviewCount, REVIEW_POLL_MS);
+    return () => clearInterval(interval);
+  }, [loadPendingReviewCount]);
 
   async function handleLogout() {
     await logout();
@@ -65,6 +98,7 @@ function SidebarContent({ pathname, onNavigate }) {
   }
 
   const visibleItems = NAV_ITEMS.filter((item) => !item.permission || hasPermission(item.permission));
+  const countsByKey = { pendingReviews: pendingReviewCount };
 
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto bg-brand-navy p-4">
@@ -75,7 +109,13 @@ function SidebarContent({ pathname, onNavigate }) {
 
       <nav className="flex flex-1 flex-col gap-1" aria-label="Primary">
         {visibleItems.map((item) => (
-          <NavLink key={item.href} item={item} pathname={pathname} onClick={onNavigate} />
+          <NavLink
+            key={item.href}
+            item={item}
+            pathname={pathname}
+            onClick={onNavigate}
+            count={item.countKey ? countsByKey[item.countKey] : 0}
+          />
         ))}
       </nav>
 

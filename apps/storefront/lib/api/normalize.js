@@ -14,6 +14,10 @@ export function normalizeProductForCard(product) {
     slug: product.slug,
     name: product.name,
     image: product.images?.[0]?.url ?? null,
+    // Shown on hover in place of the primary image (ProductCard) when a
+    // product has more than one photo — null if it only has one, so callers
+    // can just check truthiness rather than comparing against `image`.
+    secondImage: product.images?.[1]?.url ?? null,
     price: variant ? variant.priceCents / 100 : 0,
     compareAtPrice: variant?.compareAtCents ? variant.compareAtCents / 100 : null,
     category: product.category?.slug ?? null,

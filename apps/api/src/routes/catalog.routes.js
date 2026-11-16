@@ -1,7 +1,7 @@
 const express = require("express");
 const multer = require("multer");
 const { prisma } = require("@big-eds/database");
-const { productCreateSchema, productUpdateSchema, categoryCreateSchema } = require("@big-eds/validation");
+const { productCreateSchema, productUpdateSchema, categoryCreateSchema, reviewCreateSchema } = require("@big-eds/validation");
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
@@ -326,12 +326,32 @@ function computeAvailability(variant) {
 // `includeInternal` follows the same rule for `brand` and `supplier` (staff-
 // facing catalog data customers must never see): default false, passed `true`
 // only by staff routes that loaded the product with PRODUCT_INCLUDE_STAFF.
-function serializeProduct(product, { includeCost = false, includeInternal = false } = {}) {
+function serializeProduct(product, { includeCost = false, includeInternal = false, includeReviews = false } = {}) {
   return {
     id: product.id,
     name: product.name,
     slug: product.slug,
     description: product.description,
+    // Real aggregate from APPROVED reviews only — distinct from the
+    // storefront's decorative homepageDisplayRating (lib/dailyRotation.js),
+    // which this field is meant to eventually replace on pages that opt in
+    // via includeReviews. Null (not 0) when there are no reviews yet, so a
+    // caller can tell "no rating data" apart from "rated zero".
+    ...(includeReviews
+      ? {
+          averageRating: product.reviews?.length
+            ? Math.round((product.reviews.reduce((sum, r) => sum + r.rating, 0) / product.reviews.length) * 10) / 10
+            : null,
+          reviewCount: product.reviews?.length ?? 0,
+          reviews: (product.reviews ?? []).map((r) => ({
+            id: r.id,
+            rating: r.rating,
+            body: r.body,
+            authorName: r.authorName,
+            createdAt: r.createdAt,
+          })),
+        }
+      : null),
     ...(includeInternal
       ? {
           brand: product.brand ?? null,
@@ -487,10 +507,56 @@ router.get(
   asyncHandler(async (req, res) => {
     const product = await prisma.product.findUnique({
       where: { slug: req.params.slug },
-      include: PRODUCT_INCLUDE,
+      include: {
+        ...PRODUCT_INCLUDE,
+        // Only ever APPROVED here — a 1-3 star PENDING review stays invisible
+        // to every shopper (including the one who wrote it) until staff act
+        // on it, per the moderation rule in POST /products/:slug/reviews
+        // below. Newest first, same convention as everything else public-
+        // facing that doesn't take an explicit ?sort.
+        reviews: { where: { status: "APPROVED" }, orderBy: { createdAt: "desc" } },
+      },
     });
     if (!product) throw new NotFoundError("Product not found");
-    res.json({ product: serializeProduct(product) });
+    res.json({ product: serializeProduct(product, { includeReviews: true }) });
+  })
+);
+
+// 4-5 star submissions publish immediately (no moderation queue — a glowing
+// review has no real downside to showing right away). 1-3 star submissions
+// land as PENDING and stay invisible on the storefront (see GET
+// /products/:slug above) until a staff member approves or deletes them from
+// the product's Reviews tab in the admin — see PATCH/DELETE
+// /admin/reviews/:id further down. No auth: this is a public, guest-
+// submittable form (same spirit as a guest checkout), not a staff action.
+router.post(
+  "/products/:slug/reviews",
+  validateBody(reviewCreateSchema),
+  asyncHandler(async (req, res) => {
+    const product = await prisma.product.findUnique({ where: { slug: req.params.slug }, select: { id: true } });
+    if (!product) throw new NotFoundError("Product not found");
+
+    const review = await prisma.review.create({
+      data: {
+        productId: product.id,
+        rating: req.body.rating,
+        body: req.body.body,
+        authorName: req.body.authorName,
+        authorEmail: req.body.authorEmail,
+        status: req.body.rating >= 4 ? "APPROVED" : "PENDING",
+      },
+    });
+
+    res.status(201).json({
+      review: {
+        id: review.id,
+        rating: review.rating,
+        body: review.body,
+        authorName: review.authorName,
+        status: review.status,
+        createdAt: review.createdAt,
+      },
+    });
   })
 );
 
@@ -913,7 +979,14 @@ router.get(
       : undefined;
     const products = await prisma.product.findMany({
       where,
-      include: PRODUCT_INCLUDE_STAFF,
+      include: {
+        ...PRODUCT_INCLUDE_STAFF,
+        // Just a count, not the rows — the Products list only needs to know
+        // whether to show the pending-review alert icon on a row, not render
+        // the reviews themselves (that's the per-product Reviews tab, see
+        // GET /admin/products/:id/reviews below).
+        _count: { select: { reviews: { where: { status: "PENDING" } } } },
+      },
       orderBy: { createdAt: "desc" },
       // Only caps the search path — the unfiltered (no ?q) call the edit page
       // relies on to load the full catalog is untouched.
@@ -924,7 +997,12 @@ router.get(
     // seeing cost, so this is checked per-request rather than folded into
     // the route-level permission gate.
     const includeCost = req.user.permissions.has("catalog:cost:view");
-    res.json({ products: products.map((p) => serializeProduct(p, { includeCost, includeInternal: true })) });
+    res.json({
+      products: products.map((p) => ({
+        ...serializeProduct(p, { includeCost, includeInternal: true }),
+        pendingReviewCount: p._count.reviews,
+      })),
+    });
   })
 );
 
@@ -940,12 +1018,85 @@ router.get(
   asyncHandler(async (req, res) => {
     const product = await prisma.product.findUnique({
       where: { id: req.params.id },
-      include: PRODUCT_INCLUDE_STAFF,
+      include: {
+        ...PRODUCT_INCLUDE_STAFF,
+        _count: { select: { reviews: { where: { status: "PENDING" } } } },
+      },
     });
     if (!product) throw new NotFoundError("Product not found");
 
     const includeCost = req.user.permissions.has("catalog:cost:view");
-    res.json({ product: serializeProduct(product, { includeCost, includeInternal: true }) });
+    res.json({
+      product: {
+        ...serializeProduct(product, { includeCost, includeInternal: true }),
+        pendingReviewCount: product._count.reviews,
+      },
+    });
+  })
+);
+
+// --- Reviews (staff moderation) ------------------------------------------
+
+// Polled by the admin sidebar's Products nav badge (mirrors
+// NotificationBell.jsx's "/pos/registers/pending-reopens" poll-for-a-count
+// pattern) — a single lightweight count, not the full pending list, so the
+// badge doesn't have to load every product just to show a number.
+router.get(
+  "/admin/reviews/pending-count",
+  requireAuth,
+  requirePermission("catalog:read"),
+  asyncHandler(async (req, res) => {
+    const count = await prisma.review.count({ where: { status: "PENDING" } });
+    res.json({ count });
+  })
+);
+
+// All of a product's reviews (both APPROVED and PENDING) for its admin edit
+// page's Reviews tab — unlike the public GET /products/:slug, staff need to
+// see PENDING ones too in order to moderate them.
+router.get(
+  "/admin/products/:id/reviews",
+  requireAuth,
+  requirePermission("catalog:read"),
+  asyncHandler(async (req, res) => {
+    const product = await prisma.product.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!product) throw new NotFoundError("Product not found");
+
+    const reviews = await prisma.review.findMany({
+      where: { productId: req.params.id },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json({ reviews });
+  })
+);
+
+// Publishes a PENDING (1-3 star) review as-is — staff can approve or delete,
+// never edit the text/rating (keeps the published review exactly what the
+// customer wrote). Approving an already-APPROVED review is a harmless no-op,
+// not an error, since the admin UI doesn't need to special-case that state.
+router.patch(
+  "/admin/reviews/:id/approve",
+  requireAuth,
+  requirePermission("catalog:write"),
+  asyncHandler(async (req, res) => {
+    const review = await prisma.review.findUnique({ where: { id: req.params.id } });
+    if (!review) throw new NotFoundError("Review not found");
+
+    const updated = await prisma.review.update({ where: { id: review.id }, data: { status: "APPROVED" } });
+    res.json({ review: updated });
+  })
+);
+
+router.delete(
+  "/admin/reviews/:id",
+  requireAuth,
+  requirePermission("catalog:write"),
+  asyncHandler(async (req, res) => {
+    const review = await prisma.review.findUnique({ where: { id: req.params.id } });
+    if (!review) throw new NotFoundError("Review not found");
+
+    await prisma.review.delete({ where: { id: review.id } });
+    res.json({ success: true });
   })
 );
 

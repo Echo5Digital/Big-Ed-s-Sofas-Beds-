@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/layout/RequireAuth";
 import { useAuth } from "@/lib/hooks/useAuth";
 import PageHeader from "@/components/ui/PageHeader";
@@ -15,6 +15,7 @@ import LinkedProductPicker from "@/components/products/LinkedProductPicker";
 import ProductFormTabs from "@/components/products/ProductFormTabs";
 import ProductSupplierSelect from "@/components/products/ProductSupplierSelect";
 import ProductWarrantyFields from "@/components/products/ProductWarrantyFields";
+import ProductReviewsTab from "@/components/products/ProductReviewsTab";
 import FormField, { fieldInputClass } from "@/components/products/FormField";
 import { api, ApiClientError } from "@/lib/api/client";
 
@@ -25,6 +26,7 @@ const TABS = [
   { key: "attributes", label: "Attributes" },
   { key: "linked", label: "Linked Products" },
   { key: "warranty", label: "Warranty" },
+  { key: "reviews", label: "Reviews" },
 ];
 
 function slugify(value) {
@@ -53,9 +55,15 @@ function describeApiError(err, fallback) {
 function EditProductContent() {
   const router = useRouter();
   const { id } = useParams();
+  const searchParams = useSearchParams();
   const { hasPermission } = useAuth();
   const canViewCost = hasPermission("catalog:cost:view");
-  const [tab, setTab] = useState("general");
+  // Lets the Products list's Reviews icon (apps/admin/app/products/page.jsx)
+  // deep-link straight to this tab via ?tab=reviews. Read once via a lazy
+  // initializer (not an effect) — searchParams reflects the already-committed
+  // route on this component's first render, so this is both correct and only
+  // ever runs on mount; after that the tab strip's own state takes over.
+  const [tab, setTab] = useState(() => (TABS.some((t) => t.key === searchParams.get("tab")) ? searchParams.get("tab") : "general"));
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -84,6 +92,9 @@ function EditProductContent() {
   const [linkedProducts, setLinkedProducts] = useState([]);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [pendingReviewCount, setPendingReviewCount] = useState(0);
+
+  const tabsWithBadges = TABS.map((t) => (t.key === "reviews" ? { ...t, badge: pendingReviewCount } : t));
 
   useEffect(() => {
     api
@@ -102,6 +113,7 @@ function EditProductContent() {
         setSlug(product.slug);
         setDescription(product.description ?? "");
         setStatus(product.status);
+        setPendingReviewCount(product.pendingReviewCount ?? 0);
         setVariantId(variant?.id ?? null);
         setSku(variant?.sku ?? "");
         setBrand(product.brand ?? "");
@@ -241,7 +253,7 @@ function EditProductContent() {
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-6">
         <Card className="flex flex-col gap-6 sm:flex-row">
-          <ProductFormTabs tabs={TABS} active={tab} onChange={setTab} />
+          <ProductFormTabs tabs={tabsWithBadges} active={tab} onChange={setTab} />
 
           <div className="flex min-w-0 flex-1 flex-col gap-4 sm:min-h-125">
             {tab === "general" && (
@@ -476,6 +488,10 @@ function EditProductContent() {
                 />
               </div>
             )}
+
+            {tab === "reviews" && (
+              <ProductReviewsTab productId={id} onPendingCountChange={setPendingReviewCount} />
+            )}
           </div>
         </Card>
 
@@ -497,7 +513,10 @@ function EditProductContent() {
 export default function EditProductPage() {
   return (
     <RequireAuth permission="catalog:write">
-      <EditProductContent />
+      {/* useSearchParams needs a Suspense boundary so the route can still be prerendered. */}
+      <Suspense fallback={null}>
+        <EditProductContent />
+      </Suspense>
     </RequireAuth>
   );
 }
