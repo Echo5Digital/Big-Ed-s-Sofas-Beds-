@@ -383,22 +383,75 @@ function InventoryContent() {
     });
   }, [filteredBalances]);
 
+  const [bulkPoError, setBulkPoError] = useState(null);
+  const [creatingBulkPos, setCreatingBulkPos] = useState(false);
+
+  // A single PO belongs to one supplier. When every selected row shares one
+  // supplier, hand the selection off to the New PO editor (via sessionStorage
+  // — see lib/inventoryToPurchaseOrder.js) so expected qty/cost/date can
+  // still be reviewed before saving. When the selection spans suppliers,
+  // there's no single editor to open, so instead create one DRAFT PO per
+  // supplier directly via the API and send staff to the Purchase Orders list
+  // to open and finish each one (location defaults to the first active
+  // location; qty/date are left for editing on the draft).
   const sendToPurchaseOrder = useCallback(
     (rows) => {
-      const payload = {
-        supplierId: supplierFilter || rows[0]?.supplierId || "",
-        lines: rows.map((r) => ({
-          variantId: r.variantId,
-          sku: r.sku,
-          productName: r.productName,
-          expectedQty: r.suggestedReorderQty || 1,
-          unitCostCents: r.costCents ?? 0,
-        })),
-      };
-      sessionStorage.setItem(INVENTORY_TO_PO_STORAGE_KEY, JSON.stringify(payload));
-      router.push("/purchasing/new?fromInventory=1");
+      const distinctSupplierIds = new Set(rows.map((r) => r.supplierId).filter(Boolean));
+
+      if (distinctSupplierIds.size <= 1) {
+        const payload = {
+          supplierId: supplierFilter || rows[0]?.supplierId || "",
+          lines: rows.map((r) => ({
+            variantId: r.variantId,
+            sku: r.sku,
+            productName: r.productName,
+            expectedQty: r.suggestedReorderQty || 1,
+            unitCostCents: r.costCents ?? 0,
+          })),
+        };
+        sessionStorage.setItem(INVENTORY_TO_PO_STORAGE_KEY, JSON.stringify(payload));
+        router.push("/purchasing/new?fromInventory=1");
+        return;
+      }
+
+      setBulkPoError(null);
+      const defaultLocationId = locations[0]?.id;
+      if (!defaultLocationId) {
+        setBulkPoError("No receiving location is set up yet — add one before creating purchase orders.");
+        return;
+      }
+
+      const bySupplier = new Map();
+      for (const r of rows) {
+        if (!r.supplierId) continue;
+        if (!bySupplier.has(r.supplierId)) bySupplier.set(r.supplierId, []);
+        bySupplier.get(r.supplierId).push(r);
+      }
+
+      setCreatingBulkPos(true);
+      Promise.all(
+        Array.from(bySupplier.entries()).map(([supplierId, supplierRows]) =>
+          api.post("/purchasing/purchase-orders", {
+            supplierId,
+            locationId: defaultLocationId,
+            lines: supplierRows.map((r) => ({
+              variantId: r.variantId,
+              expectedQty: r.suggestedReorderQty || 1,
+              unitCostCents: r.costCents ?? 0,
+            })),
+          })
+        )
+      )
+        .then(() => {
+          setSelectedVariantIds(new Set());
+          router.push("/purchasing");
+        })
+        .catch((err) => {
+          setBulkPoError(err instanceof ApiClientError ? err.message : "Failed to create one or more purchase orders.");
+        })
+        .finally(() => setCreatingBulkPos(false));
     },
-    [supplierFilter, router]
+    [supplierFilter, router, locations]
   );
 
   const openAdjust = useCallback((product) => {
@@ -481,16 +534,6 @@ function InventoryContent() {
               <ArrowLeftRight className="size-3.5" aria-hidden="true" />
               Transfer
             </button>
-            {lowStockOnly && (
-              <button
-                type="button"
-                onClick={() => sendToPurchaseOrder([r])}
-                className="inline-flex min-h-9 items-center gap-1 rounded-full border border-black/15 px-3 py-1.5 text-xs font-semibold hover:bg-gray-50"
-              >
-                <PackagePlus className="size-3.5" aria-hidden="true" />
-                Create PO
-              </button>
-            )}
           </div>
         ),
       },
@@ -525,13 +568,17 @@ function InventoryContent() {
       openTransfer,
       toggleSelected,
       toggleSelectAllVisible,
-      sendToPurchaseOrder,
     ]
   );
 
   const selectedRows = useMemo(
     () => (groupedBalances ?? []).filter((b) => selectedVariantIds.has(b.variantId)),
     [groupedBalances, selectedVariantIds]
+  );
+
+  const selectedSupplierCount = useMemo(
+    () => new Set(selectedRows.map((r) => r.supplierId).filter(Boolean)).size,
+    [selectedRows]
   );
 
   return (
@@ -593,13 +640,28 @@ function InventoryContent() {
       </div>
 
       {lowStockOnly && selectedRows.length > 0 && (
-        <div className="mb-4 flex flex-col gap-3 rounded-xl border border-brand-red/20 bg-brand-red/5 p-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm font-semibold text-brand-charcoal">
-            {selectedRows.length} item{selectedRows.length === 1 ? "" : "s"} selected
-          </p>
-          <Button size="sm" icon={PackagePlus} onClick={() => sendToPurchaseOrder(selectedRows)}>
-            Create Purchase Order
-          </Button>
+        <div className="mb-4 flex flex-col gap-3 rounded-xl border border-brand-red/20 bg-brand-red/5 p-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-brand-charcoal">
+                {selectedRows.length} item{selectedRows.length === 1 ? "" : "s"} selected
+              </p>
+              {selectedSupplierCount > 1 && (
+                <p className="text-xs text-brand-charcoal/60">
+                  Spans {selectedSupplierCount} suppliers — a draft PO will be created per supplier.
+                </p>
+              )}
+            </div>
+            <Button
+              size="sm"
+              icon={PackagePlus}
+              disabled={creatingBulkPos}
+              onClick={() => sendToPurchaseOrder(selectedRows)}
+            >
+              {creatingBulkPos ? "Creating…" : "Create Purchase Order"}
+            </Button>
+          </div>
+          {bulkPoError && <p className="text-sm text-red-700">{bulkPoError}</p>}
         </div>
       )}
 

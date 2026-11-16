@@ -5,6 +5,7 @@ const {
   supplierCreateSchema,
   supplierUpdateSchema,
   purchaseOrderCreateSchema,
+  purchaseOrderUpdateSchema,
   purchaseOrderApproveSchema,
   goodsReceiptCreateSchema,
 } = require("@big-eds/validation");
@@ -161,6 +162,67 @@ router.post(
     });
 
     res.status(201).json({ purchaseOrder: serializePO(po) });
+  })
+);
+
+// DRAFT-only edit: location, notes, and each existing line's qty/cost/tax/
+// freight/expected date. Deliberately doesn't let a caller add/remove lines
+// or repick a line's variant — this is for filling in the numbers on a PO
+// that already has its SKUs set (e.g. the Inventory bulk hand-off), not a
+// full re-draft. Once submitted, line amounts are what's being approved, so
+// editing in place after that would bypass the approval it already has.
+router.patch(
+  "/purchase-orders/:id",
+  requirePermission("purchasing:write"),
+  validateBody(purchaseOrderUpdateSchema),
+  asyncHandler(async (req, res) => {
+    const existing = await prisma.purchaseOrder.findUnique({
+      where: { id: req.params.id },
+      include: { lines: true },
+    });
+    if (!existing) throw new NotFoundError("Purchase order not found");
+    if (existing.status !== "DRAFT") {
+      throw new ConflictError(`Cannot edit a PO in status ${existing.status}`);
+    }
+
+    const { locationId, notes, lines } = req.body;
+
+    if (lines) {
+      const existingLineIds = new Set(existing.lines.map((l) => l.id));
+      for (const line of lines) {
+        if (!existingLineIds.has(line.id)) {
+          throw new ConflictError(`Line ${line.id} does not belong to this purchase order`);
+        }
+      }
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      if (lines) {
+        for (const line of lines) {
+          await tx.pOLine.update({
+            where: { id: line.id },
+            data: {
+              expectedQty: line.expectedQty,
+              unitCostCents: line.unitCostCents,
+              taxCents: line.taxCents ?? 0,
+              freightCents: line.freightCents ?? 0,
+              expectedDate: line.expectedDate ? new Date(line.expectedDate) : null,
+            },
+          });
+        }
+      }
+
+      return tx.purchaseOrder.update({
+        where: { id: existing.id },
+        data: {
+          locationId: locationId ?? undefined,
+          notes: notes ?? undefined,
+        },
+        include: { supplier: true, lines: true },
+      });
+    });
+
+    res.json({ purchaseOrder: serializePO(updated) });
   })
 );
 

@@ -24,6 +24,12 @@ const STATUS_TONE = {
   CANCELED: "danger",
 };
 
+// The PDF is the document sent to the vendor — it isn't meaningful until the
+// order has actually cleared manager approval, so it stays hidden through
+// DRAFT/AWAITING_APPROVAL rather than offering a download of numbers that
+// might still change before approval.
+const DOWNLOADABLE_STATUSES = new Set(["APPROVED", "SENT_TO_VENDOR", "PARTIALLY_RECEIVED", "RECEIVED"]);
+
 function ReceiveModal({ open, onClose, po, onDone }) {
   if (!po) return null;
 
@@ -130,14 +136,35 @@ function ReceiveForm({ po, onClose, onDone }) {
   );
 }
 
+// Editable draft of a PO's location/lines, kept separate from the loaded
+// `po` so edits don't show as "saved" until Save actually succeeds. Dollar
+// fields are stored as display strings (e.g. "19.99") the same way
+// /purchasing/new does, converted back to cents on save.
+function draftFromPo(po) {
+  return {
+    locationId: po.locationId,
+    lines: po.lines.map((l) => ({
+      id: l.id,
+      expectedQty: String(l.expectedQty ?? ""),
+      unitCostCents: l.unitCostCents != null ? (l.unitCostCents / 100).toFixed(2) : "",
+      expectedDate: l.expectedDate ? new Date(l.expectedDate).toISOString().slice(0, 10) : "",
+    })),
+  };
+}
+
 function PurchaseOrderDetailContent() {
   const { id } = useParams();
   const { hasPermission } = useAuth();
   const [po, setPo] = useState(null);
+  const [locations, setLocations] = useState([]);
   const [error, setError] = useState(null);
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [actionError, setActionError] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
 
   const load = useCallback(() => {
     api
@@ -149,6 +176,53 @@ function PurchaseOrderDetailContent() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    api.getCached("/inventory/locations").then((data) => setLocations(data.locations)).catch(() => setLocations([]));
+  }, []);
+
+  function startEditing() {
+    setSaveError(null);
+    setDraft(draftFromPo(po));
+    setEditing(true);
+  }
+
+  function cancelEditing() {
+    setEditing(false);
+    setDraft(null);
+    setSaveError(null);
+  }
+
+  function updateDraftLine(lineId, field, value) {
+    setDraft((prev) => ({
+      ...prev,
+      lines: prev.lines.map((l) => (l.id === lineId ? { ...l, [field]: value } : l)),
+    }));
+  }
+
+  async function handleSaveEdits(e) {
+    e.preventDefault();
+    setSaveError(null);
+    setSaving(true);
+    try {
+      await api.patch(`/purchasing/purchase-orders/${id}`, {
+        locationId: draft.locationId,
+        lines: draft.lines.map((l) => ({
+          id: l.id,
+          expectedQty: Number(l.expectedQty),
+          unitCostCents: Math.round(Number(l.unitCostCents) * 100),
+          expectedDate: l.expectedDate ? new Date(l.expectedDate).toISOString() : undefined,
+        })),
+      });
+      setEditing(false);
+      setDraft(null);
+      load();
+    } catch (err) {
+      setSaveError(err instanceof ApiClientError ? err.message : "Failed to save changes.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function handleSubmitForApproval() {
     setActionError(null);
@@ -223,8 +297,13 @@ function PurchaseOrderDetailContent() {
       {actionError && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>}
 
       <Card className="mb-6 flex flex-wrap gap-3">
-        {po.status === "DRAFT" && hasPermission("purchasing:write") && (
-          <Button onClick={handleSubmitForApproval}>Submit for Approval</Button>
+        {po.status === "DRAFT" && hasPermission("purchasing:write") && !editing && (
+          <>
+            <Button variant="outline" onClick={startEditing}>
+              Edit
+            </Button>
+            <Button onClick={handleSubmitForApproval}>Submit for Approval</Button>
+          </>
         )}
         {po.status === "AWAITING_APPROVAL" && hasPermission("purchasing:approve") && (
           <>
@@ -237,12 +316,97 @@ function PurchaseOrderDetailContent() {
         {["SENT_TO_VENDOR", "PARTIALLY_RECEIVED"].includes(po.status) && hasPermission("purchasing:receive") && (
           <Button onClick={() => setReceiveOpen(true)}>Receive Stock</Button>
         )}
-        <Button variant="outline" icon={Download} onClick={handleDownloadPdf} disabled={downloading}>
-          {downloading ? "Downloading…" : "Download PDF"}
-        </Button>
+        {DOWNLOADABLE_STATUSES.has(po.status) && (
+          <Button variant="outline" icon={Download} onClick={handleDownloadPdf} disabled={downloading}>
+            {downloading ? "Downloading…" : "Download PDF"}
+          </Button>
+        )}
       </Card>
 
-      <DataTable columns={columns} rows={po.lines} />
+      {editing ? (
+        <form onSubmit={handleSaveEdits} className="flex flex-col gap-4">
+          <Card className="flex flex-col gap-1.5 sm:max-w-xs">
+            <label className="text-sm font-medium text-brand-charcoal">Receiving location</label>
+            <select
+              required
+              value={draft.locationId}
+              onChange={(e) => setDraft((prev) => ({ ...prev, locationId: e.target.value }))}
+              className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+            >
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </Card>
+
+          <Card className="flex flex-col gap-4">
+            <h2 className="font-display text-base font-bold text-brand-charcoal">Line Items</h2>
+            {draft.lines.map((line) => {
+              const original = po.lines.find((l) => l.id === line.id);
+              return (
+                <div
+                  key={line.id}
+                  className="grid grid-cols-2 gap-3 rounded-lg border border-black/10 p-3 sm:grid-cols-4"
+                >
+                  <div className="col-span-2 flex flex-col gap-1 sm:col-span-1">
+                    <label className="text-xs font-medium text-brand-charcoal/70">SKU</label>
+                    <p className="truncate rounded-lg border border-transparent px-2.5 py-1.5 text-sm text-brand-charcoal">
+                      {original?.skuSnapshot}
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-brand-charcoal/70">Expected qty</label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      value={line.expectedQty}
+                      onChange={(e) => updateDraftLine(line.id, "expectedQty", e.target.value)}
+                      className="rounded-lg border border-black/15 px-2.5 py-1.5 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-brand-charcoal/70">Unit cost (USD)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      required
+                      value={line.unitCostCents}
+                      onChange={(e) => updateDraftLine(line.id, "unitCostCents", e.target.value)}
+                      className="rounded-lg border border-black/15 px-2.5 py-1.5 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-brand-charcoal/70">Expected date</label>
+                    <input
+                      type="date"
+                      value={line.expectedDate}
+                      onChange={(e) => updateDraftLine(line.id, "expectedDate", e.target.value)}
+                      className="rounded-lg border border-black/15 px-2.5 py-1.5 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </Card>
+
+          {saveError && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{saveError}</p>}
+
+          <div className="flex gap-3">
+            <Button type="submit" disabled={saving}>
+              {saving ? "Saving…" : "Save Changes"}
+            </Button>
+            <Button type="button" variant="outline" onClick={cancelEditing} disabled={saving}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <DataTable columns={columns} rows={po.lines} />
+      )}
 
       <ReceiveModal
         open={receiveOpen}

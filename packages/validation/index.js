@@ -332,6 +332,28 @@ const purchaseOrderApproveSchema = z.object({
   approve: z.boolean(),
 });
 
+// Only a DRAFT PO can be edited (enforced in the route, not here) — once it
+// moves to AWAITING_APPROVAL a line's qty/cost is part of what's being
+// approved, so editing it afterward would need a new approval cycle, not a
+// silent in-place update.
+const purchaseOrderUpdateSchema = z.object({
+  locationId: z.string().uuid().optional(),
+  notes: z.string().max(1000).optional().nullable(),
+  lines: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        expectedQty: z.number().int().positive(),
+        unitCostCents: z.number().int().nonnegative(),
+        taxCents: z.number().int().nonnegative().optional(),
+        freightCents: z.number().int().nonnegative().optional(),
+        expectedDate: z.string().datetime().optional().nullable(),
+      })
+    )
+    .min(1)
+    .optional(),
+});
+
 const goodsReceiptCreateSchema = z.object({
   locationId: z.string().uuid(),
   notes: z.string().max(1000).optional().nullable(),
@@ -534,6 +556,7 @@ module.exports = {
   supplierCreateSchema,
   supplierUpdateSchema,
   purchaseOrderCreateSchema,
+  purchaseOrderUpdateSchema,
   purchaseOrderApproveSchema,
   goodsReceiptCreateSchema,
   cartLineSchema,

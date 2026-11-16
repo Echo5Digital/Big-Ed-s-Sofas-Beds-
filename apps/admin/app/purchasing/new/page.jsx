@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Trash2, PlusCircle } from "lucide-react";
 import RequireAuth from "@/components/layout/RequireAuth";
 import PageHeader from "@/components/ui/PageHeader";
@@ -30,14 +30,18 @@ function lineFromInventoryHandoff(entry) {
 
 // One-time consume of the selection Inventory's "Create Purchase Order"
 // action handed off via sessionStorage — cleared immediately after reading
-// so a later direct visit to this page starts from a clean, empty form. This
-// is read during render (via useState's lazy initializer below), not an
-// effect, since it's initializing state from an external read rather than
-// subscribing to one over time.
-function consumeInventoryHandoff() {
+// so a later direct visit to this page starts from a clean, empty form.
+// Takes the already-committed searchParams rather than reading
+// window.location.search itself: Next's router can render this route's
+// component tree ahead of the URL actually committing, so a raw
+// window.location read would sometimes still see the *previous* page's query
+// string and silently skip the handoff. useSearchParams() reflects the
+// committed route on this component's very first render, so reading it here
+// in useState's lazy initializer (not an effect) is both correct and only
+// ever runs once per mount.
+function consumeInventoryHandoff(searchParams) {
   if (typeof window === "undefined") return null;
-  const params = new URLSearchParams(window.location.search);
-  if (params.get("fromInventory") !== "1") return null;
+  if (searchParams.get("fromInventory") !== "1") return null;
   const raw = sessionStorage.getItem(INVENTORY_TO_PO_STORAGE_KEY);
   sessionStorage.removeItem(INVENTORY_TO_PO_STORAGE_KEY);
   if (!raw) return null;
@@ -52,9 +56,10 @@ function consumeInventoryHandoff() {
 
 function NewPurchaseOrderContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [suppliers, setSuppliers] = useState([]);
   const [locations, setLocations] = useState([]);
-  const [handoff] = useState(consumeInventoryHandoff);
+  const [handoff] = useState(() => consumeInventoryHandoff(searchParams));
   const [supplierId, setSupplierId] = useState(() => handoff?.supplierId ?? "");
   const [locationId, setLocationId] = useState("");
   const [notes, setNotes] = useState("");
@@ -265,7 +270,10 @@ function NewPurchaseOrderContent() {
 export default function NewPurchaseOrderPage() {
   return (
     <RequireAuth permission="purchasing:write">
-      <NewPurchaseOrderContent />
+      {/* useSearchParams needs a Suspense boundary so the route can still be prerendered. */}
+      <Suspense fallback={null}>
+        <NewPurchaseOrderContent />
+      </Suspense>
     </RequireAuth>
   );
 }
