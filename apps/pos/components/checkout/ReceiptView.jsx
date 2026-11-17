@@ -32,7 +32,7 @@ function ReceiptPrintable({ sale, cashierName, cashierEmployeeId }) {
   const { order, payments, receipt, changeDueCents } = sale;
   const totalPaidCents = payments.reduce((sum, p) => sum + p.amountCents, 0);
   const isDepositOnly = payments.length === 1 && payments[0].method === "DEPOSIT";
-  const printedAt = new Date(order.createdAt ?? Date.now());
+  const printedAt = new Date(order.createdAt);
   const billingAddressLine = formatAddress(order.billingAddress);
   const shippingAddressLine = formatAddress(order.shippingAddress);
   const hasDistinctShipping = shippingAddressLine && shippingAddressLine !== billingAddressLine;

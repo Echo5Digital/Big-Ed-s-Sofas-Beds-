@@ -1,11 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { UserCheck, Plus, X, Search } from "lucide-react";
+import { UserCheck, Plus, X, Search, Check } from "lucide-react";
 import { api } from "@/lib/api/client";
-import { useAuth } from "@/lib/hooks/useAuth";
-
-const ROLE_LABEL = { SALESMAN: "Salesman", MANAGER: "Manager" };
 
 function roleForStaff(staffMember) {
   if (!staffMember) return "SALESMAN";
@@ -16,10 +13,14 @@ function roleForStaff(staffMember) {
 
 // One "Sold by" row: the cashier types a staff member's employee ID badge
 // number (e.g. "SLS001"); matching it against the already-fetched staff
-// roster auto-fills the name + role, same as scanning a badge. Falls back
-// to a disambiguation list only when the typed text matches more than one
-// person (e.g. an incomplete id) or no id is typed yet.
-function AttributionRow({ entry, staff, onChange, onRemove, showPercent, currentUserId }) {
+// roster links the sale to that user's id and role, same as scanning a
+// badge. This is purely an attribution link, not a staff directory — no
+// name is ever shown here (deliberate: the ID field is the only identity
+// surface). A resolved match is confirmed with a checkmark + green border
+// on the input itself, nothing else. Falls back to an ID-only
+// disambiguation list when the typed text matches more than one employee
+// ID prefix.
+function AttributionRow({ entry, staff, onChange, onRemove, showPercent }) {
   const [query, setQuery] = useState(entry.employeeId ?? "");
   const [notFound, setNotFound] = useState(false);
 
@@ -52,8 +53,19 @@ function AttributionRow({ entry, staff, onChange, onRemove, showPercent, current
             placeholder="Employee ID (e.g. SLS001)"
             value={query}
             onChange={(e) => handleQueryChange(e.target.value)}
-            className="w-full rounded-lg border border-black/15 py-2 pl-8 pr-2.5 text-sm uppercase focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
+            aria-label="Employee ID"
+            className={`w-full rounded-lg border py-2 pl-8 pr-8 text-sm uppercase focus:outline-none focus:ring-2 ${
+              resolved
+                ? "border-green-500 focus:border-green-500 focus:ring-green-500/20"
+                : "border-black/15 focus:border-brand-red focus:ring-brand-red/20"
+            }`}
           />
+          {resolved && (
+            <Check
+              className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-green-600"
+              aria-hidden="true"
+            />
+          )}
         </div>
 
         {showPercent && (
@@ -83,12 +95,7 @@ function AttributionRow({ entry, staff, onChange, onRemove, showPercent, current
         )}
       </div>
 
-      {resolved ? (
-        <p className="text-xs text-brand-charcoal/50">
-          {resolved.firstName} {resolved.lastName}
-          {resolved.id === currentUserId ? " (you)" : ""} · {ROLE_LABEL[entry.role] ?? entry.role}
-        </p>
-      ) : matches.length > 0 ? (
+      {matches.length > 0 ? (
         <ul className="flex flex-col gap-1 rounded-lg border border-black/10 bg-white p-1">
           {matches.map((s) => (
             <li key={s.id}>
@@ -98,9 +105,9 @@ function AttributionRow({ entry, staff, onChange, onRemove, showPercent, current
                   setQuery(s.employeeId);
                   onChange({ userId: s.id, employeeId: s.employeeId, role: roleForStaff(s) });
                 }}
-                className="w-full rounded-md px-2 py-1 text-left text-xs hover:bg-brand-cream/60"
+                className="w-full rounded-md px-2 py-1 text-left font-mono text-xs font-semibold hover:bg-brand-cream/60"
               >
-                <span className="font-mono font-semibold">{s.employeeId}</span> — {s.firstName} {s.lastName}
+                {s.employeeId}
               </button>
             </li>
           ))}
@@ -117,7 +124,6 @@ function AttributionRow({ entry, staff, onChange, onRemove, showPercent, current
 // property of the sale itself, independent of how it's eventually tendered,
 // so a cashier can set it up while still browsing the cart.
 export default function AttributionPanel({ attribution, onChange }) {
-  const { user: currentUser } = useAuth();
   const [staff, setStaff] = useState([]);
 
   useEffect(() => {
@@ -168,7 +174,6 @@ export default function AttributionPanel({ attribution, onChange }) {
             showPercent={attribution.length === 2}
             onChange={(nextEntry) => updateEntry(index, nextEntry)}
             onRemove={index === 1 ? handleRemoveSecond : undefined}
-            currentUserId={currentUser?.id}
           />
         ))}
 

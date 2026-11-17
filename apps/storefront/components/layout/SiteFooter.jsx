@@ -46,7 +46,7 @@ export default function SiteFooter({ categories }) {
   const footerQuickLinks = buildFooterCategoryLinks(categories);
 
   return (
-    <footer className="bg-brand-charcoal text-white">
+    <footer id="site-footer" className="bg-brand-charcoal text-white">
       <Container className="grid grid-cols-2 gap-x-6 gap-y-10 py-10 sm:gap-10 sm:py-12 lg:grid-cols-5">
         <div className="col-span-2 flex flex-col items-start gap-3 text-left lg:col-span-1">
           <Image

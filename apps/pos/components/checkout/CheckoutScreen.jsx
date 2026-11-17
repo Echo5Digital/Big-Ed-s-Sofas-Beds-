@@ -29,25 +29,20 @@ export default function CheckoutScreen() {
   const [costsByVariantId, setCostsByVariantId] = useState({});
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [requestedDeliveryAt, setRequestedDeliveryAt] = useState("");
-  const [salesAttribution, setSalesAttribution] = useState(
-    currentUser
-      ? [{ userId: currentUser.id, employeeId: currentUser.employeeId ?? "", role: "SALESMAN", percent: 100 }]
-      : []
-  );
+  const [salesAttribution, setSalesAttribution] = useState([]);
   const [shippingAddress, setShippingAddress] = useState(EMPTY_ADDRESS);
   const [billingAddress, setBillingAddress] = useState(EMPTY_ADDRESS);
   const [billingSameAsShipping, setBillingSameAsShipping] = useState(true);
 
   // AttributionPanel defaults to the logged-in cashier, but currentUser
-  // loads asynchronously (useAuth's /auth/me fetch) — seed the default
-  // attribution once it arrives if nothing has been chosen yet.
-  useEffect(() => {
-    if (currentUser && salesAttribution.length === 0) {
-      setSalesAttribution([
-        { userId: currentUser.id, employeeId: currentUser.employeeId ?? "", role: "SALESMAN", percent: 100 },
-      ]);
-    }
-  }, [currentUser, salesAttribution.length]);
+  // loads asynchronously (useAuth's /auth/me fetch), so salesAttribution
+  // starts empty and this fills in the default at render time once
+  // currentUser arrives — no effect/setState round-trip needed since
+  // nothing has been chosen yet in that window.
+  const effectiveAttribution =
+    salesAttribution.length === 0 && currentUser
+      ? [{ userId: currentUser.id, employeeId: currentUser.employeeId ?? "", role: "SALESMAN", percent: 100 }]
+      : salesAttribution;
 
   // Cost is fetched separately from the (unauthenticated, storefront-shared)
   // product search results — see GET /pos/cart-costs in pos.routes.js for
@@ -145,7 +140,7 @@ export default function CheckoutScreen() {
         discount,
         discountReasonCode,
         pinOverride,
-        salesAttribution,
+        salesAttribution: effectiveAttribution,
         requestedDeliveryAt: requestedDeliveryAt ? new Date(requestedDeliveryAt).toISOString() : undefined,
         billingAddress: resolvedBillingAddress,
         shippingAddress: resolvedBillingAddress && !billingSameAsShipping ? filledAddress(shippingAddress) : undefined,
@@ -161,11 +156,7 @@ export default function CheckoutScreen() {
       setShippingAddress(EMPTY_ADDRESS);
       setBillingAddress(EMPTY_ADDRESS);
       setBillingSameAsShipping(true);
-      setSalesAttribution(
-        currentUser
-          ? [{ userId: currentUser.id, employeeId: currentUser.employeeId ?? "", role: "SALESMAN", percent: 100 }]
-          : []
-      );
+      setSalesAttribution([]);
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "Unable to complete sale");
     } finally {
@@ -218,7 +209,7 @@ export default function CheckoutScreen() {
           onRemove={() => setSelectedCustomer(null)}
         />
 
-        <AttributionPanel attribution={salesAttribution} onChange={setSalesAttribution} />
+        <AttributionPanel attribution={effectiveAttribution} onChange={setSalesAttribution} />
 
         <DeliveryAddressPanel
           shippingAddress={shippingAddress}

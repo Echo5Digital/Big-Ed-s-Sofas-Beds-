@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { Phone } from "lucide-react";
 import { siteConfig } from "@/lib/mock-data/site-config";
 
@@ -23,8 +26,27 @@ function WhatsAppIcon(props) {
 // that bar is roughly 64px tall there (see its own h-16 spacer), so these
 // buttons sit above it with a small gap instead of underneath/behind it.
 export default function FloatingContactButtons() {
+  // Once the footer scrolls into view, these switch from fixed (pinned to
+  // the viewport) to absolute, positioned against the shared `relative`
+  // wrapper in app/layout.js that this component and SiteFooter are both
+  // direct children of — top-0 -translate-y-full then docks them just
+  // above the footer's top edge instead of floating on top of it.
+  const [dockedAtFooter, setDockedAtFooter] = useState(false);
+
+  useEffect(() => {
+    const footer = document.getElementById("site-footer");
+    if (!footer) return;
+    const observer = new IntersectionObserver(([entry]) => setDockedAtFooter(entry.isIntersecting));
+    observer.observe(footer);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <div className="fixed inset-x-0 bottom-20 z-40 flex justify-end gap-3 px-4 sm:bottom-4 sm:px-6 lg:px-10">
+    <div
+      className={`inset-x-0 z-40 flex justify-end gap-3 px-4 pb-4 sm:px-6 lg:px-10 ${
+        dockedAtFooter ? "absolute top-0 -translate-y-full" : "fixed bottom-20 sm:bottom-4"
+      }`}
+    >
       <a
         href={siteConfig.phoneHref}
         aria-label={`Call us at ${siteConfig.phone}`}

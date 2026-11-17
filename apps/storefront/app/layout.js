@@ -76,8 +76,10 @@ export default async function RootLayout({ children }) {
         <DemoCartProvider>
           <SiteHeader categories={categories} />
           <main className="flex-1">{children}</main>
-          <SiteFooter categories={categories} />
-          <FloatingContactButtons />
+          <div className="relative">
+            <FloatingContactButtons />
+            <SiteFooter categories={categories} />
+          </div>
         </DemoCartProvider>
       </body>
     </html>
