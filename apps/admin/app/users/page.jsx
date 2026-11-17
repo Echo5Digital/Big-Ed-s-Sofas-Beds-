@@ -175,6 +175,75 @@ function NewUserModal({ open, onClose, onDone }) {
   );
 }
 
+function PosPinSection({ user, onDone }) {
+  const [editing, setEditing] = useState(false);
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSave(e) {
+    e.preventDefault();
+    setError(null);
+
+    if (!/^\d{4,6}$/.test(pin)) {
+      setError("PIN must be 4-6 digits.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await api.patch(`/users/${user.id}/pin`, { pin });
+      setPin("");
+      setEditing(false);
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "Failed to update PIN.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="border-t border-black/10 pt-4">
+      <p className="text-sm font-medium text-brand-charcoal">
+        POS discount PIN:{" "}
+        <span className="font-normal text-brand-charcoal/60">
+          {user.posPinUpdatedAt ? `set — updated ${new Date(user.posPinUpdatedAt).toLocaleDateString()}` : "not set"}
+        </span>
+      </p>
+      <p className="mt-1 text-xs text-brand-charcoal/50">
+        Used to authorize a POS discount above 10% from the register screen. Separate from the login password.
+      </p>
+
+      {editing ? (
+        <form onSubmit={handleSave} className="mt-3 flex flex-col gap-2">
+          <input
+            type="password"
+            inputMode="numeric"
+            placeholder="4-6 digit PIN"
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+          />
+          {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" disabled={submitting}>
+              {submitting ? "Saving…" : "Save PIN"}
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => { setEditing(false); setPin(""); setError(null); }}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => setEditing(true)}>
+          Set/Reset PIN
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function EditUserModal({ user, isSelf, onClose, onDone }) {
   const [roleNames, setRoleNames] = useState(user?.roles ?? []);
   const [error, setError] = useState(null);
@@ -231,6 +300,8 @@ function EditUserModal({ user, isSelf, onClose, onDone }) {
             {submitting ? "Saving…" : "Save Roles"}
           </Button>
         </form>
+
+        <PosPinSection user={user} onDone={onDone} />
 
         <div className="border-t border-black/10 pt-4">
           {isSelf ? (
@@ -375,7 +446,7 @@ function UsersContent() {
         <>
           {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-          <DataTable columns={columns} rows={users} emptyMessage="No users yet." />
+          <DataTable columns={columns} rows={users} emptyMessage="No users yet." rowHref={(u) => `/users/${u.id}`} />
 
           <NewUserModal open={createOpen} onClose={() => setCreateOpen(false)} onDone={handleChanged} />
 

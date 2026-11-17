@@ -128,6 +128,30 @@ function ProductsContent() {
   }, [products, search, categoryId]);
 
   const columns = [
+    {
+      key: "reviews",
+      header: "",
+      render: (r) =>
+        // Reviews is a product-level action, but rows are per-variant — only
+        // render it once, on that product's first variant row, so a
+        // multi-variant product doesn't show it N times (same convention
+        // Edit/Delete in the actions column already follow).
+        r.product.variants[0]?.id === r.variant.id ? (
+          <Link
+            href={`/products/${r.product.id}?tab=reviews`}
+            aria-label={`View reviews for ${r.product.name}`}
+            title="Reviews"
+            className="relative inline-flex rounded-lg p-1.5 text-brand-charcoal/50 transition-colors hover:bg-brand-cream hover:text-brand-charcoal focus-visible:outline-2 focus-visible:outline-brand-red"
+          >
+            <MessageSquare className="size-4" aria-hidden="true" />
+            {r.product.pendingReviewCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex size-3.5 items-center justify-center rounded-full bg-brand-red text-[8px] font-bold text-white">
+                {r.product.pendingReviewCount > 9 ? "9+" : r.product.pendingReviewCount}
+              </span>
+            )}
+          </Link>
+        ) : null,
+    },
     { key: "sku", header: "SKU", render: (r) => r.variant.sku },
     {
       key: "name",
@@ -196,25 +220,9 @@ function ProductsContent() {
           <Link href={`/products/${r.product.id}`} className="font-semibold text-brand-red hover:text-brand-red-dark">
             Edit
           </Link>
-          {/* Rows are per-variant, but reviews/delete are product-level
-              actions — only render them once, on that product's first
-              variant row, so a multi-variant product doesn't show either
-              button N times. */}
-          {r.product.variants[0]?.id === r.variant.id && (
-            <Link
-              href={`/products/${r.product.id}?tab=reviews`}
-              aria-label={`View reviews for ${r.product.name}`}
-              title="Reviews"
-              className="relative rounded-lg p-1.5 text-brand-charcoal/50 transition-colors hover:bg-brand-cream hover:text-brand-charcoal focus-visible:outline-2 focus-visible:outline-brand-red"
-            >
-              <MessageSquare className="size-4" aria-hidden="true" />
-              {r.product.pendingReviewCount > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex size-3.5 items-center justify-center rounded-full bg-brand-red text-[8px] font-bold text-white">
-                  {r.product.pendingReviewCount > 9 ? "9+" : r.product.pendingReviewCount}
-                </span>
-              )}
-            </Link>
-          )}
+          {/* Delete is a product-level action — only render it once, on that
+              product's first variant row, so a multi-variant product doesn't
+              show the button N times. */}
           {r.product.variants[0]?.id === r.variant.id && (
             <button
               type="button"

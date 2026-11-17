@@ -251,6 +251,10 @@ const ADMIN_ORDER_DETAIL_INCLUDE = {
   deliveries: { orderBy: { createdAt: "asc" } },
   pickups: { orderBy: { createdAt: "asc" } },
   statusHistory: { orderBy: { createdAt: "asc" } },
+  shippingAddress: true,
+  billingAddress: true,
+  discountApprovedBy: { select: { id: true, firstName: true, lastName: true } },
+  salesAttributions: { include: { user: { select: { id: true, firstName: true, lastName: true } } } },
 };
 
 function serializeAdminOrderDetail(order, addressById) {
@@ -271,6 +275,19 @@ function serializeAdminOrderDetail(order, addressById) {
     assemblyNotes: order.assemblyNotes,
     scheduledDate: order.scheduledDate,
     deliveryAddress: addressById.get(order.deliveryAddressId) ?? null,
+    discountPercent: order.discountPercent,
+    discountApprovedBy: order.discountApprovedBy
+      ? { id: order.discountApprovedBy.id, firstName: order.discountApprovedBy.firstName, lastName: order.discountApprovedBy.lastName }
+      : null,
+    requestedDeliveryAt: order.requestedDeliveryAt,
+    shippingAddress: order.shippingAddress ?? null,
+    billingAddress: order.billingAddress ?? null,
+    salesAttributions: order.salesAttributions.map((a) => ({
+      userId: a.userId,
+      userName: `${a.user.firstName} ${a.user.lastName}`,
+      role: a.role,
+      splitPercent: a.splitPercent,
+    })),
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
     customer: order.customer

@@ -1,9 +1,17 @@
 const { prisma } = require("@big-eds/database");
 const { ConflictError, NotFoundError } = require("../lib/errors");
 const { createWithSequentialNumber } = require("../lib/sequentialNumber");
+const { verifyManagerPin } = require("../lib/posPin");
 const inventoryService = require("./inventory.service");
 const storeCreditService = require("./storeCredit.service");
 const posCustomersService = require("./posCustomers.service");
+
+// Discounts up to this percent of subtotal are a cashier's own call; above
+// it, a manager/admin must authorize via their POS PIN (see ../lib/posPin).
+// This applies regardless of which input mode (PERCENT or FLAT_CENTS) the
+// cashier used — a flat-dollar discount that happens to exceed this percent
+// of the subtotal still requires the override.
+const CASHIER_DISCOUNT_CEILING_PERCENT = 10;
 
 async function nextOrderNumber(tx) {
   const count = await tx.order.count();
@@ -140,8 +148,15 @@ async function ringSale({
   registerSessionId,
   lines,
   payments,
-  discountCents,
+  discount,
   discountReasonCode,
+  pinOverride,
+  salesAttribution,
+  fulfillmentMethod,
+  requestedDeliveryAt,
+  shippingAddress,
+  billingAddress,
+  billingSameAsShipping,
   customerId: inputCustomerId,
   customerInput,
   performedById,
@@ -170,6 +185,48 @@ async function ringSale({
   }
 
   const subtotalCents = lines.reduce((sum, l) => sum + variantById.get(l.variantId).priceCents * l.quantity, 0);
+
+  // Resolve the discount to a concrete cents figure server-side — never
+  // trust a client-sent cents value for PERCENT mode, recompute it fresh
+  // from the server-priced subtotal (same "never trust frontend-computed
+  // totals" rule already applied to payments below).
+  let discountCents = 0;
+  let discountPercent = null;
+  if (discount?.mode === "PERCENT") {
+    discountPercent = discount.percent;
+    discountCents = Math.round((subtotalCents * discount.percent) / 100);
+  } else if (discount?.mode === "FLAT_CENTS") {
+    discountCents = discount.amountCents;
+  }
+
+  // Unsupervised cashier ceiling: a discount whose effective rate exceeds
+  // this percent of subtotal needs a manager/admin's POS PIN, regardless of
+  // whether it was entered as a percent or a flat dollar amount — a flat
+  // discount that happens to be >10% of this particular subtotal must still
+  // trip the ceiling.
+  const effectivePercent = subtotalCents > 0 ? (discountCents / subtotalCents) * 100 : 0;
+  let discountApprovedById = null;
+  if (discountCents > 0 && effectivePercent > CASHIER_DISCOUNT_CEILING_PERCENT) {
+    if (!pinOverride?.approverPin) {
+      throw new ConflictError(
+        `Discounts over ${CASHIER_DISCOUNT_CEILING_PERCENT}% require a manager PIN override`,
+        { ceilingPercent: CASHIER_DISCOUNT_CEILING_PERCENT, effectivePercent }
+      );
+    }
+    discountApprovedById = await verifyManagerPin(pinOverride.approverPin);
+    if (!discountApprovedById) {
+      await prisma.auditLog.create({
+        data: {
+          userId: performedById,
+          action: "pos.sale.discount.pin_denied",
+          entityType: "User",
+          entityId: performedById,
+          metadata: { effectivePercent },
+        },
+      });
+      throw new ConflictError("Invalid manager PIN");
+    }
+  }
 
   if (discountCents > subtotalCents) {
     throw new ConflictError("Discount cannot exceed the order subtotal", { subtotalCents, discountCents });
@@ -247,8 +304,43 @@ async function ringSale({
     });
   }
 
+  // Defaults the sale's credit to the cashier themself when the frontend
+  // sends nothing — defense-in-depth, the frontend should always send at
+  // least one attribution entry. OrderSalesAttribution.userId is a required
+  // FK, so there's nothing to default to (and nothing to create) when this
+  // call has no real performer — same "unattributed system action" case
+  // AuditLog.userId already tolerates elsewhere in this service.
+  const resolvedAttribution = salesAttribution?.length
+    ? salesAttribution
+    : performedById
+      ? [{ userId: performedById, role: "SALESMAN", percent: 100 }]
+      : [];
+
   const order = await createWithSequentialNumber(() =>
     prisma.$transaction(async (tx) => {
+      // Resolve billing/shipping address snapshots inside the same
+      // transaction that creates the order — a half-written order with one
+      // address but not the other must never persist. These are always
+      // freestanding rows (customerId null), never the customer's saved
+      // address book, since a POS-entered delivery address isn't
+      // necessarily the customer's own (e.g. a gift delivery).
+      let shippingAddressId = null;
+      let billingAddressId = null;
+      if (fulfillmentMethod === "DELIVERY" && shippingAddress) {
+        const createdShipping = await tx.address.create({
+          data: { type: "SHIPPING", customerId: null, ...shippingAddress },
+        });
+        shippingAddressId = createdShipping.id;
+
+        const billingData = billingSameAsShipping ? shippingAddress : billingAddress;
+        if (billingData) {
+          const createdBilling = await tx.address.create({
+            data: { type: "BILLING", customerId: null, ...billingData },
+          });
+          billingAddressId = createdBilling.id;
+        }
+      }
+
       const orderNumber = await nextOrderNumber(tx);
       return tx.order.create({
         data: {
@@ -258,9 +350,14 @@ async function ringSale({
           status: "DRAFT",
           paymentStatus: "UNPAID",
           fulfillmentStatus: "UNALLOCATED",
-          fulfillmentMethod: "IN_STORE",
+          fulfillmentMethod,
           subtotalCents,
           discountCents: discountCents || 0,
+          discountPercent,
+          discountApprovedById,
+          requestedDeliveryAt: requestedDeliveryAt || null,
+          shippingAddressId,
+          billingAddressId,
           totalCents,
           lines: {
             create: lines.map((l) => {
@@ -275,8 +372,15 @@ async function ringSale({
               };
             }),
           },
+          salesAttributions: {
+            create: resolvedAttribution.map((a) => ({
+              userId: a.userId,
+              role: a.role,
+              splitPercent: a.percent,
+            })),
+          },
         },
-        include: { lines: true, customer: true },
+        include: { lines: true, customer: true, salesAttributions: true },
       });
     })
   );
@@ -382,14 +486,21 @@ async function ringSale({
       const paymentStatus =
         totalTenderedCents >= totalCents ? "PAID" : totalTenderedCents > 0 ? "PARTIALLY_PAID" : "UNPAID";
 
+      // Stock is already reserved+converted (sold) at this point for every
+      // fulfillment method — an IN_STORE sale is handed over immediately
+      // (READY), while PICKUP/DELIVERY still need to be physically handed
+      // off or delivered, so they stay RESERVED rather than falsely
+      // reporting READY before that happens.
+      const fulfillmentStatus = fulfillmentMethod === "IN_STORE" ? "READY" : "RESERVED";
+
       const confirmedOrder = await tx.order.update({
         where: { id: order.id },
         data: {
           status: "CONFIRMED",
-          fulfillmentStatus: "READY",
+          fulfillmentStatus,
           paymentStatus,
         },
-        include: { lines: true, customer: true, payments: true },
+        include: { lines: true, customer: true, payments: true, salesAttributions: true, shippingAddress: true, billingAddress: true },
       });
 
       const receiptNumber = await nextReceiptNumber(tx);
@@ -409,7 +520,14 @@ async function ringSale({
             entityType: "Order",
             entityId: order.id,
             reasonCode: discountReasonCode,
-            metadata: { discountCents, subtotalCents },
+            metadata: {
+              discountCents,
+              subtotalCents,
+              discountPercent,
+              discountMode: discount?.mode ?? null,
+              approvedByUserId: discountApprovedById,
+              approvedViaPin: Boolean(discountApprovedById),
+            },
           },
         });
       }

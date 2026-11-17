@@ -5,12 +5,60 @@ import { formatCents } from "@/lib/format";
 import Button from "../ui/Button";
 import ProductThumbnail from "../ui/ProductThumbnail";
 
-export default function CartPanel({ cart, onUpdateQuantity, onRemove, onTakePayment, subtotalCents }) {
+const FULFILLMENT_OPTIONS = [
+  { value: "IN_STORE", label: "In-store" },
+  { value: "PICKUP", label: "Pickup" },
+  { value: "DELIVERY", label: "Delivery" },
+];
+
+export default function CartPanel({
+  cart,
+  onUpdateQuantity,
+  onRemove,
+  onTakePayment,
+  subtotalCents,
+  fulfillmentMethod,
+  onFulfillmentMethodChange,
+  requestedDeliveryAt,
+  onRequestedDeliveryAtChange,
+}) {
   return (
     <div className="flex h-full flex-col">
       <h2 className="mb-3 font-display text-sm font-bold uppercase tracking-wide text-brand-charcoal/60">
         Order summary
       </h2>
+
+      <div className="mb-3 flex flex-col gap-2">
+        <div className="grid grid-cols-3 gap-1.5 rounded-full bg-black/5 p-1">
+          {FULFILLMENT_OPTIONS.map(({ value, label }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => onFulfillmentMethodChange(value)}
+              className={`rounded-full px-2 py-2 text-xs font-semibold transition-colors ${
+                fulfillmentMethod === value
+                  ? "bg-white text-brand-charcoal shadow-sm"
+                  : "text-brand-charcoal/50 hover:text-brand-charcoal"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label htmlFor="requestedDeliveryAt" className="text-xs font-medium text-brand-charcoal/60">
+            Delivery time said by customer (optional)
+          </label>
+          <input
+            id="requestedDeliveryAt"
+            type="datetime-local"
+            value={requestedDeliveryAt}
+            onChange={(e) => onRequestedDeliveryAtChange(e.target.value)}
+            className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
+          />
+        </div>
+      </div>
 
       {cart.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-1 text-center">

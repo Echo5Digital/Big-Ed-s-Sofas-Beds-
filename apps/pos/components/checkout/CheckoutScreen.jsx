@@ -4,16 +4,21 @@ import { useEffect, useState } from "react";
 import { LogOut, ShoppingCart, ChevronDown } from "lucide-react";
 import { api, ApiClientError } from "@/lib/api/client";
 import { useRegisterSession } from "@/lib/hooks/useRegisterSession";
+import { useAuth } from "@/lib/hooks/useAuth";
 import { formatCents } from "@/lib/format";
 import ProductSearch from "./ProductSearch";
 import CartPanel from "./CartPanel";
 import CustomerPanel from "./CustomerPanel";
+import AttributionPanel from "./AttributionPanel";
+import DeliveryAddressPanel from "./DeliveryAddressPanel";
+import { EMPTY_ADDRESS } from "./AddressFields";
 import TenderModal from "./TenderModal";
 import ReceiptView from "./ReceiptView";
 import CloseRegister from "../register/CloseRegister";
 
 export default function CheckoutScreen() {
   const { session } = useRegisterSession();
+  const { user: currentUser } = useAuth();
   const [cart, setCart] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [tenderOpen, setTenderOpen] = useState(false);
@@ -23,6 +28,23 @@ export default function CheckoutScreen() {
   const [completedSale, setCompletedSale] = useState(null);
   const [costsByVariantId, setCostsByVariantId] = useState({});
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [fulfillmentMethod, setFulfillmentMethod] = useState("IN_STORE");
+  const [requestedDeliveryAt, setRequestedDeliveryAt] = useState("");
+  const [salesAttribution, setSalesAttribution] = useState(
+    currentUser ? [{ userId: currentUser.id, role: "SALESMAN", percent: 100 }] : []
+  );
+  const [shippingAddress, setShippingAddress] = useState(EMPTY_ADDRESS);
+  const [billingAddress, setBillingAddress] = useState(EMPTY_ADDRESS);
+  const [billingSameAsShipping, setBillingSameAsShipping] = useState(true);
+
+  // AttributionPanel defaults to the logged-in cashier, but currentUser
+  // loads asynchronously (useAuth's /auth/me fetch) — seed the default
+  // attribution once it arrives if nothing has been chosen yet.
+  useEffect(() => {
+    if (currentUser && salesAttribution.length === 0) {
+      setSalesAttribution([{ userId: currentUser.id, role: "SALESMAN", percent: 100 }]);
+    }
+  }, [currentUser, salesAttribution.length]);
 
   // Cost is fetched separately from the (unauthenticated, storefront-shared)
   // product search results — see GET /pos/cart-costs in pos.routes.js for
@@ -99,7 +121,7 @@ export default function CheckoutScreen() {
   // warning and the authoritative block never disagree about what counts.
   const totalCostCents = cart.reduce((sum, l) => sum + (costsByVariantId[l.variantId] ?? 0) * l.quantity, 0);
 
-  async function handleConfirmPayment({ payments, discountCents, discountReasonCode }) {
+  async function handleConfirmPayment({ payments, discount, discountReasonCode, pinOverride }) {
     setError(null);
     setSubmitting(true);
     try {
@@ -107,8 +129,15 @@ export default function CheckoutScreen() {
         registerSessionId: session.id,
         lines: cart.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
         payments,
-        discountCents,
+        discount,
         discountReasonCode,
+        pinOverride,
+        salesAttribution,
+        fulfillmentMethod,
+        requestedDeliveryAt: requestedDeliveryAt ? new Date(requestedDeliveryAt).toISOString() : undefined,
+        shippingAddress: fulfillmentMethod === "DELIVERY" ? shippingAddress : undefined,
+        billingAddress: fulfillmentMethod === "DELIVERY" && !billingSameAsShipping ? billingAddress : undefined,
+        billingSameAsShipping: fulfillmentMethod === "DELIVERY" ? billingSameAsShipping : undefined,
         customerId: selectedCustomer?.id,
       });
       setCompletedSale(data);
@@ -116,6 +145,12 @@ export default function CheckoutScreen() {
       setCartOpen(false);
       setCart([]);
       setSelectedCustomer(null);
+      setFulfillmentMethod("IN_STORE");
+      setRequestedDeliveryAt("");
+      setShippingAddress(EMPTY_ADDRESS);
+      setBillingAddress(EMPTY_ADDRESS);
+      setBillingSameAsShipping(true);
+      setSalesAttribution(currentUser ? [{ userId: currentUser.id, role: "SALESMAN", percent: 100 }] : []);
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "Unable to complete sale");
     } finally {
@@ -168,12 +203,29 @@ export default function CheckoutScreen() {
           onRemove={() => setSelectedCustomer(null)}
         />
 
+        <AttributionPanel attribution={salesAttribution} onChange={setSalesAttribution} />
+
+        {fulfillmentMethod === "DELIVERY" && (
+          <DeliveryAddressPanel
+            shippingAddress={shippingAddress}
+            onShippingChange={setShippingAddress}
+            billingAddress={billingAddress}
+            onBillingChange={setBillingAddress}
+            billingSameAsShipping={billingSameAsShipping}
+            onBillingSameAsShippingChange={setBillingSameAsShipping}
+          />
+        )}
+
         <CartPanel
           cart={cart}
           onUpdateQuantity={handleUpdateQuantity}
           onRemove={handleRemove}
           onTakePayment={() => setTenderOpen(true)}
           subtotalCents={subtotalCents}
+          fulfillmentMethod={fulfillmentMethod}
+          onFulfillmentMethodChange={setFulfillmentMethod}
+          requestedDeliveryAt={requestedDeliveryAt}
+          onRequestedDeliveryAtChange={setRequestedDeliveryAt}
         />
 
         <button

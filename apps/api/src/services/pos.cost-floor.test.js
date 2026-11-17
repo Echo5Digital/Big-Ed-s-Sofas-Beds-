@@ -20,9 +20,27 @@ describe("pos.service — cost floor (Purchase Price feature)", () => {
   let product;
   let variant;
   let costedVariant;
+  let manager;
+  const MANAGER_PIN = "2468";
   const createdOrderIds = [];
 
   beforeAll(async () => {
+    const { hashPin } = require("../lib/posPin");
+    const managerRole = await prisma.role.findUniqueOrThrow({ where: { name: "MANAGER" } });
+    // These tests apply discounts well above the 10% unsupervised ceiling
+    // (they're deliberately testing the cost floor, not the ceiling), so
+    // they need a real manager PIN to get past the override check first.
+    manager = await prisma.user.create({
+      data: {
+        email: `cost-floor-manager-${Date.now()}@test.local`,
+        passwordHash: "unused",
+        firstName: "CostFloor",
+        lastName: "Manager",
+        posPinHash: await hashPin(MANAGER_PIN),
+        roles: { create: [{ roleId: managerRole.id }] },
+      },
+    });
+
     location = await prisma.location.create({
       data: { name: "Cost Floor Test Warehouse", type: "WAREHOUSE", isActive: true },
     });
@@ -53,6 +71,7 @@ describe("pos.service — cost floor (Purchase Price feature)", () => {
 
   afterAll(async () => {
     for (const orderId of createdOrderIds) {
+      await prisma.orderSalesAttribution.deleteMany({ where: { orderId } });
       await prisma.payment.deleteMany({ where: { orderId } });
       await prisma.orderLine.deleteMany({ where: { orderId } });
       await prisma.order.delete({ where: { id: orderId } }).catch(() => {});
@@ -67,6 +86,8 @@ describe("pos.service — cost floor (Purchase Price feature)", () => {
     await prisma.variant.deleteMany({ where: { id: { in: [variant.id, costedVariant.id] } } });
     await prisma.product.delete({ where: { id: product.id } });
     await prisma.location.delete({ where: { id: location.id } });
+    await prisma.userRole.deleteMany({ where: { userId: manager.id } });
+    await prisma.user.delete({ where: { id: manager.id } });
   });
 
   it("allows a discount that keeps the total at or above cost", async () => {
@@ -79,8 +100,10 @@ describe("pos.service — cost floor (Purchase Price feature)", () => {
       registerSessionId: session.id,
       lines: [{ variantId: costedVariant.id, quantity: 1 }],
       payments: [{ method: "CASH", amountCents: 35000 }],
-      discountCents: 15000,
+      discount: { mode: "FLAT_CENTS", amountCents: 15000 },
       discountReasonCode: "at_cost_test",
+      pinOverride: { approverPin: MANAGER_PIN }, // 30% of subtotal, above the 10% unsupervised ceiling
+      fulfillmentMethod: "IN_STORE",
       performedById: null,
     });
     createdOrderIds.push(result.order.id);
@@ -104,8 +127,10 @@ describe("pos.service — cost floor (Purchase Price feature)", () => {
         registerSessionId: session.id,
         lines: [{ variantId: costedVariant.id, quantity: 1 }],
         payments: [{ method: "CASH", amountCents: 25000 }],
-        discountCents: 25000,
+        discount: { mode: "FLAT_CENTS", amountCents: 25000 },
         discountReasonCode: "below_cost_test",
+        pinOverride: { approverPin: MANAGER_PIN }, // 50% of subtotal, above the 10% unsupervised ceiling
+        fulfillmentMethod: "IN_STORE",
         performedById: null,
       })
     ).rejects.toThrow(/below the cost of the items/);
@@ -130,8 +155,10 @@ describe("pos.service — cost floor (Purchase Price feature)", () => {
       registerSessionId: session.id,
       lines: [{ variantId: variant.id, quantity: 1 }],
       payments: [{ method: "CASH", amountCents: 1 }],
-      discountCents: 49999,
+      discount: { mode: "FLAT_CENTS", amountCents: 49999 },
       discountReasonCode: "unknown_cost_test",
+      pinOverride: { approverPin: MANAGER_PIN }, // ~100% of subtotal, above the 10% unsupervised ceiling
+      fulfillmentMethod: "IN_STORE",
       performedById: null,
     });
     createdOrderIds.push(result.order.id);

@@ -1,7 +1,12 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const { prisma } = require("@big-eds/database");
-const { userCreateSchema, userUpdateSchema, userRolesUpdateSchema } = require("@big-eds/validation");
+const {
+  userCreateSchema,
+  userUpdateSchema,
+  userRolesUpdateSchema,
+  userPinUpdateSchema,
+} = require("@big-eds/validation");
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
@@ -9,6 +14,7 @@ const { NotFoundError, ConflictError } = require("../lib/errors");
 const { listRegisteredCustomers, deleteRegisteredCustomer } = require("../services/customers.service");
 const { createWithSequentialNumber } = require("../lib/sequentialNumber");
 const { nextEmployeeId, prefixForRoles } = require("../lib/employeeId");
+const { hashPin } = require("../lib/posPin");
 
 const router = express.Router();
 
@@ -29,6 +35,7 @@ function serializeUser(user) {
     isActive: user.isActive,
     employeeId: user.employeeId,
     roles: user.roles.map((ur) => ur.role.name),
+    posPinUpdatedAt: user.posPinUpdatedAt ?? null,
     createdAt: user.createdAt,
   };
 }
@@ -214,6 +221,87 @@ router.patch(
     });
 
     res.json({ user: serializeUser(user) });
+  })
+);
+
+// Sets/resets a user's POS discount-override PIN — a separate credential
+// from their login password (see lib/posPin.js). No "confirm PIN" field:
+// same low-stakes-reset simplicity as the "Initial password" field on user
+// creation — an admin can just reset again if mistyped. Never echoes the
+// PIN or its hash back, and never logs the PIN itself in the audit trail.
+router.patch(
+  "/:id/pin",
+  validateBody(userPinUpdateSchema),
+  asyncHandler(async (req, res) => {
+    const target = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!target) throw new NotFoundError("User not found");
+
+    const posPinHash = await hashPin(req.body.pin);
+    await prisma.user.update({
+      where: { id: req.params.id },
+      data: { posPinHash, posPinUpdatedAt: new Date() },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: "user.pin.reset",
+        entityType: "User",
+        entityId: target.id,
+      },
+    });
+
+    res.json({ success: true });
+  })
+);
+
+// Sales credited to this user (as SALESMAN or MANAGER) — backs the admin
+// Users drill-down page.
+router.get(
+  "/:id/sales-attribution",
+  asyncHandler(async (req, res) => {
+    const attributions = await prisma.orderSalesAttribution.findMany({
+      where: { userId: req.params.id },
+      include: {
+        order: { select: { id: true, orderNumber: true, totalCents: true, createdAt: true, status: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    });
+    res.json({
+      attributions: attributions.map((a) => ({
+        orderId: a.order.id,
+        orderNumber: a.order.orderNumber,
+        totalCents: a.order.totalCents,
+        creditedAmountCents: Math.round((a.order.totalCents * a.splitPercent) / 100),
+        splitPercent: a.splitPercent,
+        role: a.role,
+        orderStatus: a.order.status,
+        createdAt: a.order.createdAt,
+      })),
+    });
+  })
+);
+
+// Discounts this user approved via a POS PIN override — backs the admin
+// Users drill-down page.
+router.get(
+  "/:id/discount-approvals",
+  asyncHandler(async (req, res) => {
+    const orders = await prisma.order.findMany({
+      where: { discountApprovedById: req.params.id },
+      select: {
+        id: true,
+        orderNumber: true,
+        discountCents: true,
+        discountPercent: true,
+        subtotalCents: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    });
+    res.json({ approvals: orders });
   })
 );
 

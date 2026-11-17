@@ -34,6 +34,14 @@ const userRolesUpdateSchema = z.object({
   roleNames: z.array(roleNameSchema).min(1, "Select at least one role"),
 });
 
+// POS discount-override PIN (separate credential from the login password) —
+// set/reset by an admin from the Users page. 4-6 digits, no confirmation
+// field (same low-stakes-reset simplicity as the "Initial password" field on
+// user creation — an admin can just reset again if mistyped).
+const userPinUpdateSchema = z.object({
+  pin: z.string().regex(/^\d{4,6}$/, "PIN must be 4-6 digits"),
+});
+
 // ---------------------------------------------------------------------------
 // Customer accounts (storefront sign-up / sign-in)
 // ---------------------------------------------------------------------------
@@ -450,13 +458,54 @@ const posPaymentEntrySchema = z.object({
   reference: z.string().max(120).optional().nullable(),
 });
 
+// A discount is entered as EITHER a percent of subtotal OR a flat cents
+// amount — never both — so the server always knows which mode the cashier
+// chose and can recompute discountCents fresh from it (never trusting a
+// client-sent cents figure for percent mode). See pos.service.js's ringSale.
+const discountInputSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("PERCENT"), percent: z.number().int().min(1).max(100) }),
+  z.object({ mode: z.literal("FLAT_CENTS"), amountCents: z.number().int().positive() }),
+]);
+
+// Shape-only validation for a manager/admin's POS PIN entered on the
+// cashier's screen to authorize a discount above the unsupervised ceiling.
+// Whether a PIN is actually *required* depends on the resolved discount
+// percent vs. the subtotal — a business rule resolved in ringSale, not here.
+const pinOverrideSchema = z.object({
+  approverPin: z.string().regex(/^\d{4,6}$/, "PIN must be 4-6 digits"),
+});
+
+// Credits 1-2 staff members for a sale. When two are given their percents
+// must sum to 100 (enforced below); a single entry is expected to be 100.
+const salesAttributionEntrySchema = z.object({
+  userId: z.string().uuid(),
+  role: z.enum(["SALESMAN", "MANAGER"]),
+  percent: z.number().int().min(1).max(100),
+});
+
+const posAddressInputSchema = z.object({
+  line1: z.string().trim().min(1).max(200),
+  line2: z.string().trim().max(200).optional().nullable(),
+  city: z.string().trim().min(1).max(120),
+  state: z.string().trim().min(1).max(60),
+  postalCode: z.string().trim().min(1).max(20),
+  country: z.string().trim().min(1).max(60).optional(),
+});
+
 const posSaleSchema = z
   .object({
     registerSessionId: z.string().uuid(),
     lines: z.array(cartLineSchema).min(1),
     payments: z.array(posPaymentEntrySchema).min(1),
-    discountCents: z.number().int().nonnegative().optional(),
+    discount: discountInputSchema.optional(),
     discountReasonCode: z.string().min(1).max(120).optional(),
+    pinOverride: pinOverrideSchema.optional(),
+    salesAttribution: z.array(salesAttributionEntrySchema).min(1).max(2).optional(),
+    fulfillmentMethod: z.enum(["PICKUP", "DELIVERY", "IN_STORE"]),
+    requestedDeliveryAt: z.coerce.date().optional().nullable(),
+    shippingAddress: posAddressInputSchema.optional().nullable(),
+    billingAddress: posAddressInputSchema.optional().nullable(),
+    billingSameAsShipping: z.boolean().optional(),
     // Attach an existing customer found via search — mutually exclusive with
     // `customer` below (service prefers customerId when both are present).
     customerId: z.string().uuid().optional(),
@@ -470,9 +519,24 @@ const posSaleSchema = z
       .optional()
       .nullable(),
   })
-  .refine((data) => !data.discountCents || Boolean(data.discountReasonCode), {
-    message: "discountReasonCode is required whenever discountCents is greater than zero",
+  .refine((data) => !data.discount || Boolean(data.discountReasonCode), {
+    message: "discountReasonCode is required whenever a discount is applied",
     path: ["discountReasonCode"],
+  })
+  .refine(
+    (data) =>
+      !data.salesAttribution ||
+      data.salesAttribution.length !== 2 ||
+      data.salesAttribution[0].percent + data.salesAttribution[1].percent === 100,
+    { message: "Split percentages must add up to 100", path: ["salesAttribution"] }
+  )
+  .refine(
+    (data) => !data.salesAttribution || data.salesAttribution.length !== 1 || data.salesAttribution[0].percent === 100,
+    { message: "A single attributed staff member must be credited 100%", path: ["salesAttribution"] }
+  )
+  .refine((data) => data.fulfillmentMethod !== "DELIVERY" || Boolean(data.shippingAddress), {
+    message: "shippingAddress is required when fulfillmentMethod is DELIVERY",
+    path: ["shippingAddress"],
   });
 
 const posRefundSchema = z.object({
@@ -546,6 +610,7 @@ module.exports = {
   userCreateSchema,
   userUpdateSchema,
   userRolesUpdateSchema,
+  userPinUpdateSchema,
   customerRegisterSchema,
   customerVerifyOtpSchema,
   customerResendOtpSchema,
@@ -578,6 +643,8 @@ module.exports = {
   registerReopenApproveSchema,
   registerReopenDenySchema,
   posPaymentEntrySchema,
+  salesAttributionEntrySchema,
+  posAddressInputSchema,
   posSaleSchema,
   posRefundSchema,
   posCustomerCreateSchema,

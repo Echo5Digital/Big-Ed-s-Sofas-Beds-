@@ -1,4 +1,5 @@
 const express = require("express");
+const rateLimit = require("express-rate-limit");
 const { prisma } = require("@big-eds/database");
 const {
   registerOpenSchema,
@@ -23,6 +24,19 @@ const router = express.Router();
 
 router.use(requireAuth);
 
+// A manager-PIN override is a credential-guessing surface (a 4-6 digit PIN
+// against a small known set of managers, see lib/posPin.js) — cap attempts
+// per cashier regardless of whether the rest of the request is otherwise
+// valid. Modeled on auth.routes.js's loginLimiter.
+const saleLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id ?? req.ip,
+  message: { error: { message: "Too many sale attempts. Try again later." } },
+});
+
 function serializeOrder(order) {
   return {
     id: order.id,
@@ -31,9 +45,19 @@ function serializeOrder(order) {
     status: order.status,
     paymentStatus: order.paymentStatus,
     fulfillmentStatus: order.fulfillmentStatus,
+    fulfillmentMethod: order.fulfillmentMethod,
     subtotalCents: order.subtotalCents,
     discountCents: order.discountCents,
+    discountPercent: order.discountPercent,
     totalCents: order.totalCents,
+    requestedDeliveryAt: order.requestedDeliveryAt,
+    shippingAddress: order.shippingAddress ?? null,
+    billingAddress: order.billingAddress ?? null,
+    salesAttributions: order.salesAttributions?.map((a) => ({
+      userId: a.userId,
+      role: a.role,
+      splitPercent: a.splitPercent,
+    })),
     customer: order.customer
       ? { id: order.customer.id, email: order.customer.email, firstName: order.customer.firstName, lastName: order.customer.lastName }
       : null,
@@ -218,9 +242,25 @@ router.post(
 router.post(
   "/sales",
   requirePermission("pos:sell"),
+  saleLimiter,
   validateBody(posSaleSchema),
   asyncHandler(async (req, res) => {
-    const { registerSessionId, lines, payments, discountCents, discountReasonCode, customerId, customer } = req.body;
+    const {
+      registerSessionId,
+      lines,
+      payments,
+      discount,
+      discountReasonCode,
+      pinOverride,
+      salesAttribution,
+      fulfillmentMethod,
+      requestedDeliveryAt,
+      shippingAddress,
+      billingAddress,
+      billingSameAsShipping,
+      customerId,
+      customer,
+    } = req.body;
 
     if (payments.some((p) => p.method === "CARD")) {
       return res.status(501).json({
@@ -235,8 +275,15 @@ router.post(
       registerSessionId,
       lines,
       payments,
-      discountCents,
+      discount,
       discountReasonCode,
+      pinOverride,
+      salesAttribution,
+      fulfillmentMethod,
+      requestedDeliveryAt,
+      shippingAddress,
+      billingAddress,
+      billingSameAsShipping,
       customerId,
       customerInput: customer,
       performedById: req.user.id,
@@ -247,6 +294,30 @@ router.post(
       payments: result.payments.map(serializePayment),
       receipt: result.receipt,
       changeDueCents: result.changeDueCents,
+    });
+  })
+);
+
+// Lightweight staff roster for the POS sales-attribution picker. POS users
+// only hold pos:* permissions, not users:manage, so the admin's GET /users
+// (gated on users:manage) would 403 a cashier — this exposes just what the
+// picker needs (no email, employeeId, or PIN data).
+router.get(
+  "/staff",
+  requirePermission("pos:sell"),
+  asyncHandler(async (req, res) => {
+    const users = await prisma.user.findMany({
+      where: { isActive: true },
+      include: { roles: { include: { role: true } } },
+      orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+    });
+    res.json({
+      staff: users.map((u) => ({
+        id: u.id,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        roles: u.roles.map((ur) => ur.role.name),
+      })),
     });
   })
 );

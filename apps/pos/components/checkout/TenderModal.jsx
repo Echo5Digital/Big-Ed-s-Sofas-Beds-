@@ -15,6 +15,12 @@ const TENDERS = [
   { key: "CARD", label: "Card (terminal)", icon: CreditCard },
 ];
 
+// Discounts above this percent of subtotal need a manager/admin PIN —
+// mirrors CASHIER_DISCOUNT_CEILING_PERCENT in apps/api/src/services/pos.service.js.
+// This is a client-side UX mirror only; the server always re-derives and
+// re-checks this independently and is the real guardrail.
+const CASHIER_DISCOUNT_CEILING_PERCENT = 10;
+
 export default function TenderModal({
   open,
   onClose,
@@ -29,8 +35,10 @@ export default function TenderModal({
   const [method, setMethod] = useState("CASH");
   const [amount, setAmount] = useState("");
   const [reference, setReference] = useState("");
-  const [discountAmount, setDiscountAmount] = useState("");
+  const [discountMode, setDiscountMode] = useState("PERCENT");
+  const [discountValue, setDiscountValue] = useState("");
   const [discountReasonCode, setDiscountReasonCode] = useState("");
+  const [approverPin, setApproverPin] = useState("");
   const [storeCreditBalanceCents, setStoreCreditBalanceCents] = useState(null);
 
   // Reset the form the moment `open` flips to false — covers both an
@@ -46,8 +54,10 @@ export default function TenderModal({
       setEntries([]);
       setAmount("");
       setReference("");
-      setDiscountAmount("");
+      setDiscountMode("PERCENT");
+      setDiscountValue("");
       setDiscountReasonCode("");
+      setApproverPin("");
       setMethod("CASH");
     }
   }
@@ -72,9 +82,14 @@ export default function TenderModal({
     };
   }, [open, customer?.id]);
 
-  const discountCents = Math.round(Number(discountAmount || 0) * 100);
+  const discountCents =
+    discountMode === "PERCENT"
+      ? Math.round((subtotalCents * Number(discountValue || 0)) / 100)
+      : Math.round(Number(discountValue || 0) * 100);
   const totalCents = Math.max(0, subtotalCents - discountCents);
   const belowCost = totalCostCents > 0 && totalCents < totalCostCents;
+  const effectiveDiscountPercent = subtotalCents > 0 ? (discountCents / subtotalCents) * 100 : 0;
+  const pinRequired = discountCents > 0 && effectiveDiscountPercent > CASHIER_DISCOUNT_CEILING_PERCENT;
 
   const amountAddedCents = entries.reduce((sum, e) => sum + e.amountCents, 0);
   const remainingBalanceCents = Math.max(0, totalCents - amountAddedCents);
@@ -112,15 +127,34 @@ export default function TenderModal({
     if (entries.length === 0) return false;
     if (discountCents > subtotalCents) return false;
     if (discountCents > 0 && !discountReasonCode.trim()) return false;
+    if (pinRequired && !/^\d{4,6}$/.test(approverPin)) return false;
     if (belowCost) return false;
     return totalTenderedCents >= totalCents || hasDeposit;
-  }, [entries.length, discountCents, subtotalCents, discountReasonCode, belowCost, totalTenderedCents, totalCents, hasDeposit]);
+  }, [
+    entries.length,
+    discountCents,
+    subtotalCents,
+    discountReasonCode,
+    pinRequired,
+    approverPin,
+    belowCost,
+    totalTenderedCents,
+    totalCents,
+    hasDeposit,
+  ]);
 
   function handleConfirm() {
+    const discountValueNumber = Number(discountValue || 0);
     onConfirm({
       payments: entries,
-      discountCents: discountCents > 0 ? discountCents : undefined,
+      discount:
+        discountCents > 0
+          ? discountMode === "PERCENT"
+            ? { mode: "PERCENT", percent: discountValueNumber }
+            : { mode: "FLAT_CENTS", amountCents: discountCents }
+          : undefined,
       discountReasonCode: discountCents > 0 ? discountReasonCode.trim() : undefined,
+      pinOverride: pinRequired ? { approverPin } : undefined,
     });
   }
 
@@ -128,19 +162,39 @@ export default function TenderModal({
     <Modal open={open} onClose={handleClose} title="Take payment">
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="discountAmount" className="text-sm font-medium text-brand-charcoal">
-            Discount ($, optional)
+          <label htmlFor="discountValue" className="text-sm font-medium text-brand-charcoal">
+            Discount (optional)
           </label>
-          <input
-            id="discountAmount"
-            type="number"
-            min="0"
-            step="0.01"
-            inputMode="decimal"
-            value={discountAmount}
-            onChange={(e) => setDiscountAmount(e.target.value)}
-            className="rounded-lg border border-black/15 px-3 py-3 text-base transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
-          />
+          <div className="flex gap-2">
+            <div className="flex rounded-lg border border-black/15 p-0.5">
+              {[
+                { key: "PERCENT", label: "%" },
+                { key: "FLAT_CENTS", label: "$" },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setDiscountMode(key)}
+                  className={`w-9 rounded-md py-2.5 text-sm font-semibold transition-colors ${
+                    discountMode === key ? "bg-brand-red text-white" : "text-brand-charcoal/60 hover:bg-black/5"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <input
+              id="discountValue"
+              type="number"
+              min="0"
+              step={discountMode === "PERCENT" ? "1" : "0.01"}
+              max={discountMode === "PERCENT" ? "100" : undefined}
+              inputMode="decimal"
+              value={discountValue}
+              onChange={(e) => setDiscountValue(e.target.value)}
+              className="flex-1 rounded-lg border border-black/15 px-3 py-3 text-base transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
+            />
+          </div>
           {discountCents > 0 && (
             <input
               type="text"
@@ -149,6 +203,21 @@ export default function TenderModal({
               onChange={(e) => setDiscountReasonCode(e.target.value)}
               className="rounded-lg border border-black/15 px-3 py-3 text-base transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
             />
+          )}
+          {pinRequired && (
+            <>
+              <p className="rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+                Discounts over {CASHIER_DISCOUNT_CEILING_PERCENT}% need a manager or admin&apos;s PIN to approve.
+              </p>
+              <input
+                type="password"
+                inputMode="numeric"
+                placeholder="Manager PIN"
+                value={approverPin}
+                onChange={(e) => setApproverPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                className="rounded-lg border border-black/15 px-3 py-3 text-base tracking-widest transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
+              />
+            </>
           )}
         </div>
 

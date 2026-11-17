@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Package,
+  MessageSquare,
   Boxes,
   ClipboardList,
   Users,
@@ -45,7 +46,14 @@ const NAV_ITEMS = [
 ];
 
 function NavLink({ item, pathname, onClick, count }) {
-  const Icon = item.icon;
+  // A product with a 1-3 star review awaiting moderation (see
+  // ProductReviewsTab.jsx) swaps Products' normal Package icon for a review
+  // icon with the pending count fused directly onto it — not a separate
+  // floating pill next to the label — so the icon itself reads as "reviews
+  // need attention" at a glance. Reverts to the plain Package icon (no
+  // badge at all) once nothing is pending.
+  const hasAlert = count > 0;
+  const Icon = hasAlert ? MessageSquare : item.icon;
   const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
 
   return (
@@ -56,17 +64,15 @@ function NavLink({ item, pathname, onClick, count }) {
         active ? "bg-brand-gold text-brand-charcoal" : "text-white/80 hover:bg-white/10 hover:text-white"
       }`}
     >
-      <Icon className="size-4.5 shrink-0" aria-hidden="true" />
+      <span className="relative inline-flex shrink-0">
+        <Icon className="size-4.5" aria-hidden="true" />
+        {hasAlert && (
+          <span className="absolute -right-1.5 -top-1.5 flex size-3.5 items-center justify-center rounded-full bg-brand-red text-[9px] font-bold leading-none text-white">
+            {count > 9 ? "9+" : count}
+          </span>
+        )}
+      </span>
       <span className="flex-1">{item.label}</span>
-      {/* Same red-pill alert as NotificationBell's badge — a product with a
-          1-3 star review awaiting moderation (see ProductReviewsTab.jsx)
-          surfaces here too, not just on that product's own row/tab, so it's
-          visible even before an admin opens Products at all. */}
-      {count > 0 && (
-        <span className="flex size-4.5 shrink-0 items-center justify-center rounded-full bg-brand-red text-[10px] font-bold text-white">
-          {count > 9 ? "9+" : count}
-        </span>
-      )}
     </Link>
   );
 }

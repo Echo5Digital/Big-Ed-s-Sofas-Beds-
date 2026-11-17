@@ -77,6 +77,45 @@ describe("users.routes — role replacement", () => {
   });
 });
 
+describe("users.routes — POS PIN reset", () => {
+  const { hashPin } = require("../lib/posPin");
+  let user;
+
+  beforeAll(async () => {
+    const cashierRole = await prisma.role.findUniqueOrThrow({ where: { name: "CASHIER" } });
+    const passwordHash = await bcrypt.hash("TestPassword123!", 10);
+    user = await prisma.user.create({
+      data: {
+        email: `users-pin-test-${Date.now()}@example.com`,
+        passwordHash,
+        firstName: "Pin",
+        lastName: "RouteTest",
+        roles: { create: { roleId: cashierRole.id } },
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await prisma.userRole.deleteMany({ where: { userId: user.id } });
+    await prisma.user.delete({ where: { id: user.id } });
+  });
+
+  // Exercises exactly what the PATCH /:id/pin handler does (hash + update +
+  // stamp posPinUpdatedAt), since this codebase's test files call service/
+  // Prisma logic directly rather than spinning up an HTTP harness.
+  it("hashes and stores a PIN, stamping posPinUpdatedAt, never storing the raw PIN", async () => {
+    const posPinHash = await hashPin("5678");
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: { posPinHash, posPinUpdatedAt: new Date() },
+    });
+
+    expect(updated.posPinHash).not.toBe("5678");
+    expect(updated.posPinHash).toMatch(/^\$2[aby]\$/); // bcrypt hash prefix
+    expect(updated.posPinUpdatedAt).not.toBeNull();
+  });
+});
+
 describe("users.routes — last-admin lockout guard", () => {
   it("counting other admins excludes the current user correctly", async () => {
     const adminRole = await prisma.role.findUniqueOrThrow({ where: { name: "ADMIN" } });

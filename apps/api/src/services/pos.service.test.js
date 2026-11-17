@@ -50,11 +50,19 @@ describe("pos.service", () => {
     await prisma.register.delete({ where: { id: register.id } });
 
     const orders = await prisma.order.findMany({ where: { lines: { some: { variantId: variant.id } } } });
+    const addressIdsToClean = orders.flatMap((o) => [o.shippingAddressId, o.billingAddressId]).filter(Boolean);
     for (const order of orders) {
       await prisma.payment.deleteMany({ where: { orderId: order.id } });
       await prisma.refund.deleteMany({ where: { orderId: order.id } });
       await prisma.orderLine.deleteMany({ where: { orderId: order.id } });
+      await prisma.orderSalesAttribution.deleteMany({ where: { orderId: order.id } });
+      // Clear the address FKs before deleting so the SetNull isn't racing the
+      // order delete itself, then delete the now-orphaned snapshot rows.
+      await prisma.order.update({ where: { id: order.id }, data: { shippingAddressId: null, billingAddressId: null } });
       await prisma.order.delete({ where: { id: order.id } });
+    }
+    if (addressIdsToClean.length) {
+      await prisma.address.deleteMany({ where: { id: { in: addressIdsToClean } } });
     }
     await prisma.stockMovement.deleteMany({ where: { variantId: variant.id } });
     await prisma.reservation.deleteMany({ where: { variantId: variant.id } });
@@ -66,7 +74,10 @@ describe("pos.service", () => {
     await prisma.$disconnect();
 
     void sessions;
-  });
+    // 60s timeout: the sequential per-order cleanup loop above runs against
+    // the real (remote) dev database, and this file's order count has grown
+    // enough to exceed Vitest's default 30s hook timeout.
+  }, 60000);
 
   async function seedStock(quantity) {
     await prisma.stockBalance.upsert({
@@ -117,7 +128,7 @@ describe("pos.service", () => {
     await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 100000 });
   });
 
-  it("applies a discount with a reason code and charges the discounted total", async () => {
+  it("applies a flat-cents discount with a reason code and charges the discounted total", async () => {
     await seedStock(5);
     const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
 
@@ -125,8 +136,9 @@ describe("pos.service", () => {
       registerSessionId: session.id,
       lines: [{ variantId: variant.id, quantity: 1 }],
       payments: [{ method: "CASH", amountCents: 45000 }],
-      discountCents: 5000,
+      discount: { mode: "FLAT_CENTS", amountCents: 5000 },
       discountReasonCode: "manager_price_match",
+      fulfillmentMethod: "IN_STORE",
       performedById: null,
     });
 
@@ -139,6 +151,31 @@ describe("pos.service", () => {
     });
     expect(auditEntry).not.toBeNull();
     expect(auditEntry.reasonCode).toBe("manager_price_match");
+    expect(auditEntry.metadata.discountMode).toBe("FLAT_CENTS");
+    expect(auditEntry.metadata.approvedViaPin).toBe(false);
+
+    await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 45000 });
+  });
+
+  it("applies a percent-mode discount, resolving discountCents server-side from the subtotal", async () => {
+    await seedStock(5);
+    const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+    // 50000 subtotal, 10% = 5000 discount -> 45000 total. Under the 10%
+    // ceiling, so no PIN needed.
+    const result = await posService.ringSale({
+      registerSessionId: session.id,
+      lines: [{ variantId: variant.id, quantity: 1 }],
+      payments: [{ method: "CASH", amountCents: 45000 }],
+      discount: { mode: "PERCENT", percent: 10 },
+      discountReasonCode: "loyalty_discount",
+      fulfillmentMethod: "IN_STORE",
+      performedById: null,
+    });
+
+    expect(result.order.discountCents).toBe(5000);
+    expect(result.order.discountPercent).toBe(10);
+    expect(result.order.totalCents).toBe(45000);
 
     await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 45000 });
   });
@@ -149,9 +186,290 @@ describe("pos.service", () => {
       registerSessionId: register.id,
       lines: [{ variantId: variant.id, quantity: 1 }],
       payments: [{ method: "CASH", amountCents: 45000 }],
-      discountCents: 5000,
+      discount: { mode: "FLAT_CENTS", amountCents: 5000 },
+      fulfillmentMethod: "IN_STORE",
     });
     expect(result.success).toBe(false);
+  });
+
+  describe("discount PIN override", () => {
+    let manager;
+    let cashierWithPin;
+    const MANAGER_PIN = "1234";
+    const CASHIER_PIN = "9876"; // distinct from the manager's, so matching it proves the cashier's own hash was tried and still rejected
+
+    beforeAll(async () => {
+      const { hashPin } = require("../lib/posPin");
+      const managerRole = await prisma.role.findUnique({ where: { name: "MANAGER" } });
+      const cashierRole = await prisma.role.findUnique({ where: { name: "CASHIER" } });
+
+      manager = await prisma.user.create({
+        data: {
+          email: `pos-pin-manager-${Date.now()}@test.local`,
+          passwordHash: "unused",
+          firstName: "Pin",
+          lastName: "Manager",
+          posPinHash: await hashPin(MANAGER_PIN),
+          roles: { create: [{ roleId: managerRole.id }] },
+        },
+      });
+      cashierWithPin = await prisma.user.create({
+        data: {
+          email: `pos-pin-cashier-${Date.now()}@test.local`,
+          passwordHash: "unused",
+          firstName: "Pin",
+          lastName: "Cashier",
+          posPinHash: await hashPin(CASHIER_PIN),
+          roles: { create: [{ roleId: cashierRole.id }] },
+        },
+      });
+    });
+
+    afterAll(async () => {
+      await prisma.orderSalesAttribution.deleteMany({ where: { userId: { in: [manager.id, cashierWithPin.id] } } });
+      await prisma.userRole.deleteMany({ where: { userId: { in: [manager.id, cashierWithPin.id] } } });
+      await prisma.order.updateMany({
+        where: { discountApprovedById: { in: [manager.id, cashierWithPin.id] } },
+        data: { discountApprovedById: null },
+      });
+      await prisma.auditLog.deleteMany({ where: { userId: { in: [manager.id, cashierWithPin.id] } } });
+      await prisma.user.delete({ where: { id: manager.id } });
+      await prisma.user.delete({ where: { id: cashierWithPin.id } });
+    });
+
+    it("rejects a discount over 10% of subtotal with no PIN override", async () => {
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      await expect(
+        posService.ringSale({
+          registerSessionId: session.id,
+          lines: [{ variantId: variant.id, quantity: 1 }],
+          payments: [{ method: "CASH", amountCents: 35000 }],
+          discount: { mode: "PERCENT", percent: 30 },
+          discountReasonCode: "too_big",
+          fulfillmentMethod: "IN_STORE",
+          performedById: null,
+        })
+      ).rejects.toThrow(/require a manager PIN override/);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
+    });
+
+    it("accepts a discount over 10% when a real manager's PIN is supplied", async () => {
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      const result = await posService.ringSale({
+        registerSessionId: session.id,
+        lines: [{ variantId: variant.id, quantity: 1 }],
+        payments: [{ method: "CASH", amountCents: 35000 }],
+        discount: { mode: "PERCENT", percent: 30 },
+        discountReasonCode: "manager_approved",
+        pinOverride: { approverPin: MANAGER_PIN },
+        fulfillmentMethod: "IN_STORE",
+        performedById: null,
+      });
+
+      expect(result.order.discountApprovedById).toBe(manager.id);
+
+      const auditEntry = await prisma.auditLog.findFirst({
+        where: { entityId: result.order.id, action: "pos.sale.discount" },
+      });
+      expect(auditEntry.metadata.approvedByUserId).toBe(manager.id);
+      expect(auditEntry.metadata.approvedViaPin).toBe(true);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 35000 });
+    });
+
+    it("rejects a wrong PIN and writes a pin_denied audit entry", async () => {
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      await expect(
+        posService.ringSale({
+          registerSessionId: session.id,
+          lines: [{ variantId: variant.id, quantity: 1 }],
+          payments: [{ method: "CASH", amountCents: 35000 }],
+          discount: { mode: "PERCENT", percent: 30 },
+          discountReasonCode: "wrong_pin_attempt",
+          pinOverride: { approverPin: "999999" },
+          fulfillmentMethod: "IN_STORE",
+          performedById: manager.id,
+        })
+      ).rejects.toThrow(/Invalid manager PIN/);
+
+      const deniedEntry = await prisma.auditLog.findFirst({
+        where: { userId: manager.id, action: "pos.sale.discount.pin_denied" },
+        orderBy: { createdAt: "desc" },
+      });
+      expect(deniedEntry).not.toBeNull();
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
+    });
+
+    it("does not authorize an override using a PIN belonging to a user without approve-reopen permission", async () => {
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      // cashierWithPin's PIN digits deliberately match the manager's, but a
+      // cashier doesn't hold pos:register:approve-reopen — the PIN owner's
+      // permission must be checked, not just that *some* PIN hash matched.
+      await expect(
+        posService.ringSale({
+          registerSessionId: session.id,
+          lines: [{ variantId: variant.id, quantity: 1 }],
+          payments: [{ method: "CASH", amountCents: 35000 }],
+          discount: { mode: "PERCENT", percent: 30 },
+          discountReasonCode: "cashier_pin_attempt",
+          pinOverride: { approverPin: CASHIER_PIN },
+          fulfillmentMethod: "IN_STORE",
+          performedById: cashierWithPin.id,
+        })
+      ).rejects.toThrow(/Invalid manager PIN/);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
+    });
+
+    it("still enforces the cost floor against the server-resolved percent-based discount", async () => {
+      // variant priceCents 50000, costCents unset (null) by default in this
+      // fixture — bump cost to a known value for this test only.
+      await prisma.variant.update({ where: { id: variant.id }, data: { costCents: 48000 } });
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      // 20% of 50000 = 10000 discount -> 40000 total, below the 48000 cost —
+      // must be rejected even though the client never sent a cents figure.
+      await expect(
+        posService.ringSale({
+          registerSessionId: session.id,
+          lines: [{ variantId: variant.id, quantity: 1 }],
+          payments: [{ method: "CASH", amountCents: 40000 }],
+          discount: { mode: "PERCENT", percent: 20 },
+          discountReasonCode: "manager_approved",
+          pinOverride: { approverPin: MANAGER_PIN },
+          fulfillmentMethod: "IN_STORE",
+          performedById: null,
+        })
+      ).rejects.toThrow(/below the cost of the items/);
+
+      await prisma.variant.update({ where: { id: variant.id }, data: { costCents: null } });
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
+    });
+  });
+
+  describe("sales attribution", () => {
+    it("defaults to crediting the cashier 100% when no attribution is provided", async () => {
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+      const cashier = await prisma.user.create({
+        data: { email: `pos-attr-default-${Date.now()}@test.local`, passwordHash: "unused", firstName: "Attr", lastName: "Default" },
+      });
+
+      const result = await posService.ringSale({
+        registerSessionId: session.id,
+        lines: [{ variantId: variant.id, quantity: 1 }],
+        payments: [{ method: "CASH", amountCents: 50000 }],
+        fulfillmentMethod: "IN_STORE",
+        performedById: cashier.id,
+      });
+
+      const attributions = await prisma.orderSalesAttribution.findMany({ where: { orderId: result.order.id } });
+      expect(attributions).toHaveLength(1);
+      expect(attributions[0].userId).toBe(cashier.id);
+      expect(attributions[0].role).toBe("SALESMAN");
+      expect(attributions[0].splitPercent).toBe(100);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 50000 });
+      await prisma.orderSalesAttribution.deleteMany({ where: { orderId: result.order.id } });
+      await prisma.user.delete({ where: { id: cashier.id } });
+    });
+
+    it("persists a two-person split with distinct roles", async () => {
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+      const salesman = await prisma.user.create({
+        data: { email: `pos-attr-sales-${Date.now()}@test.local`, passwordHash: "unused", firstName: "Attr", lastName: "Salesman" },
+      });
+      const manager2 = await prisma.user.create({
+        data: { email: `pos-attr-mgr-${Date.now()}@test.local`, passwordHash: "unused", firstName: "Attr", lastName: "Manager" },
+      });
+
+      const result = await posService.ringSale({
+        registerSessionId: session.id,
+        lines: [{ variantId: variant.id, quantity: 1 }],
+        payments: [{ method: "CASH", amountCents: 50000 }],
+        salesAttribution: [
+          { userId: salesman.id, role: "SALESMAN", percent: 60 },
+          { userId: manager2.id, role: "MANAGER", percent: 40 },
+        ],
+        fulfillmentMethod: "IN_STORE",
+        performedById: salesman.id,
+      });
+
+      const attributions = await prisma.orderSalesAttribution.findMany({
+        where: { orderId: result.order.id },
+        orderBy: { splitPercent: "desc" },
+      });
+      expect(attributions).toHaveLength(2);
+      expect(attributions[0]).toMatchObject({ userId: salesman.id, role: "SALESMAN", splitPercent: 60 });
+      expect(attributions[1]).toMatchObject({ userId: manager2.id, role: "MANAGER", splitPercent: 40 });
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 50000 });
+      await prisma.orderSalesAttribution.deleteMany({ where: { orderId: result.order.id } });
+      await prisma.user.delete({ where: { id: salesman.id } });
+      await prisma.user.delete({ where: { id: manager2.id } });
+    });
+  });
+
+  describe("fulfillment method and address snapshot", () => {
+    it("persists the requested fulfillmentMethod instead of hardcoding IN_STORE", async () => {
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      const result = await posService.ringSale({
+        registerSessionId: session.id,
+        lines: [{ variantId: variant.id, quantity: 1 }],
+        payments: [{ method: "CASH", amountCents: 50000 }],
+        fulfillmentMethod: "PICKUP",
+        performedById: null,
+      });
+
+      expect(result.order.fulfillmentMethod).toBe("PICKUP");
+      expect(result.order.fulfillmentStatus).toBe("RESERVED");
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 50000 });
+    });
+
+    it("creates freestanding billing/shipping Address snapshots for a delivery sale with billingSameAsShipping", async () => {
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      const shippingAddress = { line1: "1 Test St", city: "Testville", state: "TX", postalCode: "75001" };
+
+      const result = await posService.ringSale({
+        registerSessionId: session.id,
+        lines: [{ variantId: variant.id, quantity: 1 }],
+        payments: [{ method: "CASH", amountCents: 50000 }],
+        fulfillmentMethod: "DELIVERY",
+        shippingAddress,
+        billingSameAsShipping: true,
+        performedById: null,
+      });
+
+      const order = await prisma.order.findUnique({
+        where: { id: result.order.id },
+        include: { shippingAddress: true, billingAddress: true },
+      });
+      expect(order.shippingAddress).not.toBeNull();
+      expect(order.billingAddress).not.toBeNull();
+      expect(order.shippingAddress.id).not.toBe(order.billingAddress.id);
+      expect(order.shippingAddress.customerId).toBeNull();
+      expect(order.billingAddress.line1).toBe(shippingAddress.line1);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 50000 });
+      // Address cleanup for this order happens in the file's main afterAll.
+    });
   });
 
   it("rejects CARD tender without writing any order or stock change", async () => {

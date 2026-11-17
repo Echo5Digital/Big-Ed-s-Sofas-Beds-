@@ -24,33 +24,42 @@ enum RoleName {
 }
 
 model User {
-  id                     String              @id @default(uuid())
-  email                  String              @unique
+  id                     String                  @id @default(uuid())
+  email                  String                  @unique
   passwordHash           String
   firstName              String
   lastName               String
-  isActive               Boolean             @default(true)
+  isActive               Boolean                 @default(true)
   // Human-readable badge number for attributing activities on receipts/audit
   // trails (MGR001, SLS001, CSH001 — see apps/api/src/lib/employeeId.js).
   // Null for Admin-only users: Admin was never part of this numbering. Picked
   // from the user's highest-priority role (Manager > Salesman > Cashier) and
   // regenerated whenever that set of roles changes, so it always matches the
   // role currently driving it rather than freezing at creation time.
-  employeeId             String?             @unique
+  employeeId             String?                 @unique
+  // POS discount-override PIN — a separate credential from passwordHash,
+  // only ever set for managers/admins who need to authorize a cashier's
+  // >10% discount from the register screen without logging the cashier out.
+  // Hashed the same way as passwordHash (bcrypt); never returned by any API
+  // response. Nullable: most staff never set one.
+  posPinHash             String?
+  posPinUpdatedAt        DateTime?
   roles                  UserRole[]
   auditLogs              AuditLog[]
-  purchaseOrdersCreated  PurchaseOrder[]     @relation("POCreatedBy")
-  purchaseOrdersApproved PurchaseOrder[]     @relation("POApprovedBy")
+  purchaseOrdersCreated  PurchaseOrder[]         @relation("POCreatedBy")
+  purchaseOrdersApproved PurchaseOrder[]         @relation("POApprovedBy")
   goodsReceipts          GoodsReceipt[]
   stockMovements         StockMovement[]
-  registerSessionsOpened RegisterSession[]   @relation("RegisterSessionOpenedBy")
-  reopensRequested       RegisterSession[]   @relation("RegisterSessionReopenRequestedBy")
-  reopensApproved        RegisterSession[]   @relation("RegisterSessionReopenApprovedBy")
+  registerSessionsOpened RegisterSession[]       @relation("RegisterSessionOpenedBy")
+  reopensRequested       RegisterSession[]       @relation("RegisterSessionReopenRequestedBy")
+  reopensApproved        RegisterSession[]       @relation("RegisterSessionReopenApprovedBy")
   paymentsRung           Payment[]
   storeCreditEntries     StoreCredit[]
   returnsProcessed       ReturnTransaction[]
-  createdAt              DateTime            @default(now())
-  updatedAt              DateTime            @updatedAt
+  salesAttributions      OrderSalesAttribution[] @relation("OrderSalesAttributions")
+  discountApprovalsGiven Order[]                 @relation("OrderDiscountApprovedBy")
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
 
   @@index([email])
 }
@@ -558,18 +567,25 @@ enum AddressType {
 }
 
 model Address {
-  id         String      @id @default(uuid())
-  customerId String
-  customer   Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  type       AddressType
-  line1      String
-  line2      String?
-  city       String
-  state      String
-  postalCode String
-  country    String      @default("US")
-  isDefault  Boolean     @default(false)
-  createdAt  DateTime    @default(now())
+  id               String      @id @default(uuid())
+  // Optional: a POS sale's billing/shipping address is captured as a
+  // freestanding snapshot row (customerId null) — it is what the customer
+  // said at checkout, not necessarily their saved address book entry (e.g.
+  // a gift delivery), and must never silently become their default saved
+  // address. See Order.billingAddressId / Order.shippingAddressId.
+  customerId       String?
+  customer         Customer?   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  type             AddressType
+  line1            String
+  line2            String?
+  city             String
+  state            String
+  postalCode       String
+  country          String      @default("US")
+  isDefault        Boolean     @default(false)
+  createdAt        DateTime    @default(now())
+  billingForOrder  Order[]     @relation("OrderBillingAddress")
+  shippingForOrder Order[]     @relation("OrderShippingAddress")
 
   @@index([customerId])
 }
@@ -610,37 +626,61 @@ enum FulfillmentMethod {
 }
 
 model Order {
-  id                 String              @id @default(uuid())
-  orderNumber        String              @unique // human-friendly sequential display number
-  channel            OrderChannel
-  customerId         String?
-  customer           Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  status             OrderStatus         @default(DRAFT)
-  paymentStatus      PaymentStatus       @default(UNPAID)
-  fulfillmentStatus  FulfillmentStatus   @default(UNALLOCATED)
-  fulfillmentMethod  FulfillmentMethod?
-  subtotalCents      Int                 @default(0)
-  taxCents           Int                 @default(0)
-  deliveryFeeCents   Int                 @default(0)
-  discountCents      Int                 @default(0)
-  totalCents         Int                 @default(0)
-  deliveryAddressId  String?
-  deliveryNotes      String?
-  assemblyNotes      String?
-  scheduledDate      DateTime?
-  lines              OrderLine[]
-  payments           Payment[]
-  refunds            Refund[]
-  reservations       Reservation[]
-  deliveries         Delivery[]
-  pickups            Pickup[]
-  statusHistory      StatusHistory[]
-  receipts           Receipt[]
-  returnTransactions ReturnTransaction[] @relation("ReturnTransactionOrder")
-  exchangeOfReturns  ReturnTransaction[] @relation("ReturnTransactionExchangeOrder")
-  storeCreditEntries StoreCredit[]
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  id                   String                  @id @default(uuid())
+  orderNumber          String                  @unique // human-friendly sequential display number
+  channel              OrderChannel
+  customerId           String?
+  customer             Customer?               @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  status               OrderStatus             @default(DRAFT)
+  paymentStatus        PaymentStatus           @default(UNPAID)
+  fulfillmentStatus    FulfillmentStatus       @default(UNALLOCATED)
+  fulfillmentMethod    FulfillmentMethod?
+  subtotalCents        Int                     @default(0)
+  taxCents             Int                     @default(0)
+  deliveryFeeCents     Int                     @default(0)
+  discountCents        Int                     @default(0)
+  totalCents           Int                     @default(0)
+  deliveryAddressId    String?
+  deliveryNotes        String?
+  assemblyNotes        String?
+  scheduledDate        DateTime?
+  // Percent-mode discount metadata only — discountCents (above) is always
+  // the resolved, server-computed source of truth for money actually
+  // applied, regardless of whether the cashier chose percent or flat-dollar
+  // mode. Null when flat-dollar mode was used.
+  discountPercent      Int?
+  // Set only when the discount exceeded the unsupervised cashier ceiling
+  // (10%) and a manager/admin authorized it via their POS PIN. Duplicates
+  // what the AuditLog "pos.sale.discount" entry already records in detail —
+  // kept here too as a direct, indexed column so "which orders did manager
+  // X approve" doesn't require scanning/parsing AuditLog.metadata JSON.
+  discountApprovedById String?
+  discountApprovedBy   User?                   @relation("OrderDiscountApprovedBy", fields: [discountApprovedById], references: [id], onDelete: SetNull)
+  // What the customer verbally said they want for delivery timing — a
+  // free-form cashier-entered note of intent, distinct from scheduledDate
+  // (which Delivery/Pickup's own fulfillment-console workflow owns).
+  requestedDeliveryAt  DateTime?
+  // POS-captured billing/shipping address snapshots for a delivery sale —
+  // freestanding Address rows (customerId null), never the customer's saved
+  // address book. See Address.customerId comment.
+  billingAddressId     String?
+  billingAddress       Address?                @relation("OrderBillingAddress", fields: [billingAddressId], references: [id], onDelete: SetNull)
+  shippingAddressId    String?
+  shippingAddress      Address?                @relation("OrderShippingAddress", fields: [shippingAddressId], references: [id], onDelete: SetNull)
+  lines                OrderLine[]
+  payments             Payment[]
+  refunds              Refund[]
+  reservations         Reservation[]
+  deliveries           Delivery[]
+  pickups              Pickup[]
+  statusHistory        StatusHistory[]
+  receipts             Receipt[]
+  returnTransactions   ReturnTransaction[]     @relation("ReturnTransactionOrder")
+  exchangeOfReturns    ReturnTransaction[]     @relation("ReturnTransactionExchangeOrder")
+  storeCreditEntries   StoreCredit[]
+  salesAttributions    OrderSalesAttribution[]
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
 
   @@index([customerId])
   @@index([status])
@@ -648,6 +688,33 @@ model Order {
   @@index([fulfillmentStatus])
   @@index([orderNumber])
   @@index([createdAt])
+  @@index([discountApprovedById])
+}
+
+// Credits 1-2 staff members (salesman and/or manager) for a sale, with an
+// optional split percent between them — backs the admin Users drill-down
+// ("sales credited to this person"). userId is Restrict (not SetNull)
+// because this app never hard-deletes User rows (only deactivates via
+// isActive) and attribution history is the entire point of this model; a
+// deactivated user must keep their historical credit intact.
+enum SalesAttributionRole {
+  SALESMAN
+  MANAGER
+}
+
+model OrderSalesAttribution {
+  id           String               @id @default(uuid())
+  orderId      String
+  order        Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User                 @relation("OrderSalesAttributions", fields: [userId], references: [id], onDelete: Restrict)
+  role         SalesAttributionRole
+  splitPercent Int
+  createdAt    DateTime             @default(now())
+
+  @@unique([orderId, userId])
+  @@index([orderId])
+  @@index([userId])
 }
 
 // Historical snapshot of price/tax/discount at time of sale — never recompute
