@@ -323,8 +323,6 @@ router.get(
       include: {
         supplier: true,
         lines: { include: { variant: { include: { product: true } } } },
-        createdBy: { select: { firstName: true, lastName: true } },
-        approvedBy: { select: { firstName: true, lastName: true } },
       },
     });
     if (!po) throw new NotFoundError("Purchase order not found");
@@ -339,8 +337,7 @@ router.get(
     doc.moveDown(0.5);
     doc.fontSize(10).fillColor("#555").text(`Status: ${po.status.replaceAll("_", " ")}`);
     doc.text(`Supplier: ${po.supplier.name}`);
-    if (po.createdBy) doc.text(`Created by: ${po.createdBy.firstName} ${po.createdBy.lastName}`);
-    if (po.approvedBy) doc.text(`Approved by: ${po.approvedBy.firstName} ${po.approvedBy.lastName}`);
+    doc.text("Created by: Big Ed's Sofas & Beds");
     doc.text(`Created: ${po.createdAt.toLocaleDateString()}`);
     if (po.notes) doc.text(`Notes: ${po.notes}`);
     doc.fillColor("#000");
