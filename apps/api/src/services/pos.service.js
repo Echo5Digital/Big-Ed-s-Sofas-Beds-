@@ -323,21 +323,22 @@ async function ringSale({
       // address but not the other must never persist. These are always
       // freestanding rows (customerId null), never the customer's saved
       // address book, since a POS-entered delivery address isn't
-      // necessarily the customer's own (e.g. a gift delivery).
+      // necessarily the customer's own (e.g. a gift delivery). Billing is
+      // captured first in the UI; "same as billing" copies it into shipping.
       let shippingAddressId = null;
       let billingAddressId = null;
-      if (fulfillmentMethod === "DELIVERY" && shippingAddress) {
-        const createdShipping = await tx.address.create({
-          data: { type: "SHIPPING", customerId: null, ...shippingAddress },
+      if (fulfillmentMethod === "DELIVERY" && billingAddress) {
+        const createdBilling = await tx.address.create({
+          data: { type: "BILLING", customerId: null, ...billingAddress },
         });
-        shippingAddressId = createdShipping.id;
+        billingAddressId = createdBilling.id;
 
-        const billingData = billingSameAsShipping ? shippingAddress : billingAddress;
-        if (billingData) {
-          const createdBilling = await tx.address.create({
-            data: { type: "BILLING", customerId: null, ...billingData },
+        const shippingData = billingSameAsShipping ? billingAddress : shippingAddress;
+        if (shippingData) {
+          const createdShipping = await tx.address.create({
+            data: { type: "SHIPPING", customerId: null, ...shippingData },
           });
-          billingAddressId = createdBilling.id;
+          shippingAddressId = createdShipping.id;
         }
       }
 

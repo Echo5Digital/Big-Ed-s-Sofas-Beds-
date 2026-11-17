@@ -31,7 +31,9 @@ export default function CheckoutScreen() {
   const [fulfillmentMethod, setFulfillmentMethod] = useState("IN_STORE");
   const [requestedDeliveryAt, setRequestedDeliveryAt] = useState("");
   const [salesAttribution, setSalesAttribution] = useState(
-    currentUser ? [{ userId: currentUser.id, role: "SALESMAN", percent: 100 }] : []
+    currentUser
+      ? [{ userId: currentUser.id, employeeId: currentUser.employeeId ?? "", role: "SALESMAN", percent: 100 }]
+      : []
   );
   const [shippingAddress, setShippingAddress] = useState(EMPTY_ADDRESS);
   const [billingAddress, setBillingAddress] = useState(EMPTY_ADDRESS);
@@ -42,7 +44,9 @@ export default function CheckoutScreen() {
   // attribution once it arrives if nothing has been chosen yet.
   useEffect(() => {
     if (currentUser && salesAttribution.length === 0) {
-      setSalesAttribution([{ userId: currentUser.id, role: "SALESMAN", percent: 100 }]);
+      setSalesAttribution([
+        { userId: currentUser.id, employeeId: currentUser.employeeId ?? "", role: "SALESMAN", percent: 100 },
+      ]);
     }
   }, [currentUser, salesAttribution.length]);
 
@@ -135,8 +139,8 @@ export default function CheckoutScreen() {
         salesAttribution,
         fulfillmentMethod,
         requestedDeliveryAt: requestedDeliveryAt ? new Date(requestedDeliveryAt).toISOString() : undefined,
-        shippingAddress: fulfillmentMethod === "DELIVERY" ? shippingAddress : undefined,
-        billingAddress: fulfillmentMethod === "DELIVERY" && !billingSameAsShipping ? billingAddress : undefined,
+        billingAddress: fulfillmentMethod === "DELIVERY" ? billingAddress : undefined,
+        shippingAddress: fulfillmentMethod === "DELIVERY" && !billingSameAsShipping ? shippingAddress : undefined,
         billingSameAsShipping: fulfillmentMethod === "DELIVERY" ? billingSameAsShipping : undefined,
         customerId: selectedCustomer?.id,
       });
@@ -150,7 +154,11 @@ export default function CheckoutScreen() {
       setShippingAddress(EMPTY_ADDRESS);
       setBillingAddress(EMPTY_ADDRESS);
       setBillingSameAsShipping(true);
-      setSalesAttribution(currentUser ? [{ userId: currentUser.id, role: "SALESMAN", percent: 100 }] : []);
+      setSalesAttribution(
+        currentUser
+          ? [{ userId: currentUser.id, employeeId: currentUser.employeeId ?? "", role: "SALESMAN", percent: 100 }]
+          : []
+      );
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "Unable to complete sale");
     } finally {
@@ -184,7 +192,7 @@ export default function CheckoutScreen() {
       </button>
 
       <div
-        className={`fixed inset-x-0 bottom-0 z-40 flex max-h-[85vh] w-full flex-col rounded-t-2xl border-t border-black/10 bg-brand-cream p-4 shadow-xl transition-transform duration-200 sm:p-6 lg:static lg:z-auto lg:inset-auto lg:max-h-none lg:w-96 lg:translate-y-0 lg:rounded-none lg:border-l lg:border-t-0 lg:shadow-none ${
+        className={`fixed inset-x-0 bottom-0 z-40 flex max-h-[85vh] w-full flex-col rounded-t-2xl border-t border-black/10 bg-brand-cream p-4 shadow-xl transition-transform duration-200 sm:p-6 lg:static lg:z-auto lg:inset-auto lg:max-h-none lg:w-120 lg:translate-y-0 lg:rounded-none lg:border-l lg:border-t-0 lg:shadow-none ${
           cartOpen ? "translate-y-0" : "translate-y-full lg:translate-y-0"
         }`}
       >
@@ -221,7 +229,6 @@ export default function CheckoutScreen() {
           onUpdateQuantity={handleUpdateQuantity}
           onRemove={handleRemove}
           onTakePayment={() => setTenderOpen(true)}
-          subtotalCents={subtotalCents}
           fulfillmentMethod={fulfillmentMethod}
           onFulfillmentMethodChange={setFulfillmentMethod}
           requestedDeliveryAt={requestedDeliveryAt}

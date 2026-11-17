@@ -534,9 +534,9 @@ const posSaleSchema = z
     (data) => !data.salesAttribution || data.salesAttribution.length !== 1 || data.salesAttribution[0].percent === 100,
     { message: "A single attributed staff member must be credited 100%", path: ["salesAttribution"] }
   )
-  .refine((data) => data.fulfillmentMethod !== "DELIVERY" || Boolean(data.shippingAddress), {
-    message: "shippingAddress is required when fulfillmentMethod is DELIVERY",
-    path: ["shippingAddress"],
+  .refine((data) => data.fulfillmentMethod !== "DELIVERY" || Boolean(data.billingAddress), {
+    message: "billingAddress is required when fulfillmentMethod is DELIVERY",
+    path: ["billingAddress"],
   });
 
 const posRefundSchema = z.object({

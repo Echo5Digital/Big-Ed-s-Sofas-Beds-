@@ -5,7 +5,9 @@ import AddressFields from "./AddressFields";
 
 // Only rendered when fulfillmentMethod === "DELIVERY" (CheckoutScreen
 // handles that condition) — in-store pickup/carry-out sales have nothing to
-// ship, so this step is skipped entirely for them.
+// ship, so this step is skipped entirely for them. Billing is captured
+// first, then shipping — with a "shipping same as billing" shortcut, since
+// the billing address is usually the one already on file / on the card.
 export default function DeliveryAddressPanel({
   shippingAddress,
   onShippingChange,
@@ -22,7 +24,8 @@ export default function DeliveryAddressPanel({
       </p>
 
       <div className="flex flex-col gap-3">
-        <AddressFields value={shippingAddress} onChange={onShippingChange} />
+        <p className="text-xs font-medium text-brand-charcoal/40">Billing address</p>
+        <AddressFields value={billingAddress} onChange={onBillingChange} />
 
         <label className="flex items-center gap-2 text-sm font-medium text-brand-charcoal">
           <input
@@ -31,13 +34,13 @@ export default function DeliveryAddressPanel({
             onChange={(e) => onBillingSameAsShippingChange(e.target.checked)}
             className="size-4 accent-brand-red"
           />
-          Billing address same as shipping
+          Shipping address same as billing
         </label>
 
         {!billingSameAsShipping && (
           <>
-            <p className="text-xs font-medium text-brand-charcoal/40">Billing address</p>
-            <AddressFields value={billingAddress} onChange={onBillingChange} />
+            <p className="text-xs font-medium text-brand-charcoal/40">Shipping address</p>
+            <AddressFields value={shippingAddress} onChange={onShippingChange} />
           </>
         )}
       </div>

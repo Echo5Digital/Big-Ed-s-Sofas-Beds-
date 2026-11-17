@@ -445,14 +445,15 @@ describe("pos.service", () => {
       await seedStock(5);
       const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
 
-      const shippingAddress = { line1: "1 Test St", city: "Testville", state: "TX", postalCode: "75001" };
+      // Billing is captured first; "same as billing" copies it into shipping.
+      const billingAddress = { line1: "1 Test St", city: "Testville", state: "TX", postalCode: "75001" };
 
       const result = await posService.ringSale({
         registerSessionId: session.id,
         lines: [{ variantId: variant.id, quantity: 1 }],
         payments: [{ method: "CASH", amountCents: 50000 }],
         fulfillmentMethod: "DELIVERY",
-        shippingAddress,
+        billingAddress,
         billingSameAsShipping: true,
         performedById: null,
       });
@@ -465,7 +466,7 @@ describe("pos.service", () => {
       expect(order.billingAddress).not.toBeNull();
       expect(order.shippingAddress.id).not.toBe(order.billingAddress.id);
       expect(order.shippingAddress.customerId).toBeNull();
-      expect(order.billingAddress.line1).toBe(shippingAddress.line1);
+      expect(order.shippingAddress.line1).toBe(billingAddress.line1);
 
       await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 50000 });
       // Address cleanup for this order happens in the file's main afterAll.

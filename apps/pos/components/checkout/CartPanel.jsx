@@ -16,7 +16,6 @@ export default function CartPanel({
   onUpdateQuantity,
   onRemove,
   onTakePayment,
-  subtotalCents,
   fulfillmentMethod,
   onFulfillmentMethodChange,
   requestedDeliveryAt,
@@ -123,25 +122,7 @@ export default function CartPanel({
       )}
 
       <div className="mt-4 border-t border-black/10 pt-4">
-        <div className="flex items-center justify-between text-sm text-brand-charcoal/70">
-          <span>Subtotal</span>
-          <span className="font-semibold tabular-nums text-brand-charcoal">{formatCents(subtotalCents)}</span>
-        </div>
-        <div className="mt-1 flex items-center justify-between text-sm text-brand-charcoal/45">
-          <span>Tax</span>
-          <span>Calculated at tender</span>
-        </div>
-        <div className="mt-2 flex items-center justify-between border-t border-black/10 pt-2 text-base">
-          <span className="font-semibold text-brand-charcoal">Total due</span>
-          <span className="font-display text-lg font-bold tabular-nums text-brand-red">{formatCents(subtotalCents)}</span>
-        </div>
-
-        <Button
-          size="lg"
-          disabled={cart.length === 0}
-          onClick={onTakePayment}
-          className="mt-4 w-full"
-        >
+        <Button size="lg" disabled={cart.length === 0} onClick={onTakePayment} className="w-full">
           Take payment
         </Button>
       </div>

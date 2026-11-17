@@ -23,6 +23,17 @@ router.use(requirePermission("users:manage"));
 
 const ROLE_INCLUDE = { roles: { include: { role: true } } };
 
+// A SUPER_ADMIN account is invisible to every other user on this router,
+// including other admins — only the Super Admin viewing their own row can
+// see or act on it. Used both to filter the list (GET /) and to guard every
+// by-id route (PATCH /:id, /:id/roles, /:id/pin) against an admin who
+// already knows/guessed the id. Always a NotFoundError, never Forbidden —
+// a 403 would itself leak that the account exists.
+function isHiddenFromCaller(targetUser, req) {
+  if (req.params.id === req.user.id) return false;
+  return targetUser.roles.some((ur) => ur.role.name === "SUPER_ADMIN");
+}
+
 // Mirrors auth.routes.js's toPublicUser shape (roles as name strings) plus
 // isActive/createdAt, which that function omits since /auth/me never needs
 // them. Never includes passwordHash.
@@ -59,6 +70,11 @@ router.get(
   "/",
   asyncHandler(async (req, res) => {
     const users = await prisma.user.findMany({
+      // Every non-Super-Admin user, plus the caller's own row if *they*
+      // are the Super Admin — so Sony sees Sony, but no one else ever does.
+      where: {
+        OR: [{ roles: { none: { role: { name: "SUPER_ADMIN" } } } }, { id: req.user.id }],
+      },
       include: ROLE_INCLUDE,
       orderBy: [{ isActive: "desc" }, { firstName: "asc" }, { lastName: "asc" }],
     });
@@ -144,8 +160,8 @@ router.patch(
   "/:id",
   validateBody(userUpdateSchema),
   asyncHandler(async (req, res) => {
-    const target = await prisma.user.findUnique({ where: { id: req.params.id } });
-    if (!target) throw new NotFoundError("User not found");
+    const target = await prisma.user.findUnique({ where: { id: req.params.id }, include: ROLE_INCLUDE });
+    if (!target || isHiddenFromCaller(target, req)) throw new NotFoundError("User not found");
 
     // A user deactivating their own only account would otherwise lock
     // themselves out with no other admin able to sign in and undo it.
@@ -178,8 +194,8 @@ router.patch(
   "/:id/roles",
   validateBody(userRolesUpdateSchema),
   asyncHandler(async (req, res) => {
-    const target = await prisma.user.findUnique({ where: { id: req.params.id } });
-    if (!target) throw new NotFoundError("User not found");
+    const target = await prisma.user.findUnique({ where: { id: req.params.id }, include: ROLE_INCLUDE });
+    if (!target || isHiddenFromCaller(target, req)) throw new NotFoundError("User not found");
 
     const { roleNames } = req.body;
 
@@ -233,8 +249,8 @@ router.patch(
   "/:id/pin",
   validateBody(userPinUpdateSchema),
   asyncHandler(async (req, res) => {
-    const target = await prisma.user.findUnique({ where: { id: req.params.id } });
-    if (!target) throw new NotFoundError("User not found");
+    const target = await prisma.user.findUnique({ where: { id: req.params.id }, include: ROLE_INCLUDE });
+    if (!target || isHiddenFromCaller(target, req)) throw new NotFoundError("User not found");
 
     const posPinHash = await hashPin(req.body.pin);
     await prisma.user.update({
@@ -260,6 +276,9 @@ router.patch(
 router.get(
   "/:id/sales-attribution",
   asyncHandler(async (req, res) => {
+    const target = await prisma.user.findUnique({ where: { id: req.params.id }, include: ROLE_INCLUDE });
+    if (!target || isHiddenFromCaller(target, req)) throw new NotFoundError("User not found");
+
     const attributions = await prisma.orderSalesAttribution.findMany({
       where: { userId: req.params.id },
       include: {
@@ -288,6 +307,9 @@ router.get(
 router.get(
   "/:id/discount-approvals",
   asyncHandler(async (req, res) => {
+    const target = await prisma.user.findUnique({ where: { id: req.params.id }, include: ROLE_INCLUDE });
+    if (!target || isHiddenFromCaller(target, req)) throw new NotFoundError("User not found");
+
     const orders = await prisma.order.findMany({
       where: { discountApprovedById: req.params.id },
       select: {

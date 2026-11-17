@@ -301,7 +301,8 @@ router.post(
 // Lightweight staff roster for the POS sales-attribution picker. POS users
 // only hold pos:* permissions, not users:manage, so the admin's GET /users
 // (gated on users:manage) would 403 a cashier — this exposes just what the
-// picker needs (no email, employeeId, or PIN data).
+// picker needs, including employeeId (so a cashier can look a staff member
+// up by badge number), but never email or PIN data.
 router.get(
   "/staff",
   requirePermission("pos:sell"),
@@ -314,6 +315,7 @@ router.get(
     res.json({
       staff: users.map((u) => ({
         id: u.id,
+        employeeId: u.employeeId,
         firstName: u.firstName,
         lastName: u.lastName,
         roles: u.roles.map((ur) => ur.role.name),

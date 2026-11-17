@@ -17,6 +17,11 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 enum RoleName {
+  // Every permission ADMIN has, plus invisible to every other user on the
+  // admin Users page (see apps/api/src/routes/users.routes.js) — not an
+  // ADMIN flag, a distinct tier so the hiding rule is keyed off role, not a
+  // per-row special case.
+  SUPER_ADMIN
   ADMIN
   MANAGER
   SALESMAN

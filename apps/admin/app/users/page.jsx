@@ -12,9 +12,16 @@ import CustomersTab from "@/components/users/CustomersTab";
 import { api, ApiClientError } from "@/lib/api/client";
 import { useAuth } from "@/lib/hooks/useAuth";
 
+// SUPER_ADMIN is deliberately absent — it's never assignable from this UI,
+// so no admin (even one with users:manage) can grant themselves or anyone
+// else that tier. It's only ever set directly in the database.
 const ROLE_OPTIONS = ["ADMIN", "MANAGER", "SALESMAN", "CASHIER"];
 
 const ROLE_TONE = {
+  // Not in ROLE_OPTIONS above, but still needs a tone for when a Super
+  // Admin's own row renders its own badge (the API lets that one row
+  // through to its own caller — see users.routes.js's isHiddenFromCaller).
+  SUPER_ADMIN: "danger",
   ADMIN: "danger",
   MANAGER: "info",
   SALESMAN: "default",

@@ -25,6 +25,7 @@ const PERMISSIONS = [
 ];
 
 const ROLE_PERMISSIONS = {
+  SUPER_ADMIN: PERMISSIONS.map((p) => p.key),
   ADMIN: PERMISSIONS.map((p) => p.key),
   MANAGER: [
     "catalog:read",
@@ -71,7 +72,7 @@ async function main() {
   }
 
   const roles = {};
-  for (const roleName of ["ADMIN", "MANAGER", "SALESMAN", "CASHIER"]) {
+  for (const roleName of ["SUPER_ADMIN", "ADMIN", "MANAGER", "SALESMAN", "CASHIER"]) {
     roles[roleName] = await prisma.role.upsert({
       where: { name: roleName },
       update: {},

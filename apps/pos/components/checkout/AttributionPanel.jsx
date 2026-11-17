@@ -1,11 +1,116 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { UserCheck, Plus, X } from "lucide-react";
+import { UserCheck, Plus, X, Search } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { useAuth } from "@/lib/hooks/useAuth";
 
 const ROLE_LABEL = { SALESMAN: "Salesman", MANAGER: "Manager" };
+
+function roleForStaff(staffMember) {
+  if (!staffMember) return "SALESMAN";
+  if (staffMember.roles.includes("MANAGER")) return "MANAGER";
+  if (staffMember.roles.includes("SALESMAN")) return "SALESMAN";
+  return staffMember.roles[0] ?? "SALESMAN";
+}
+
+// One "Sold by" row: the cashier types a staff member's employee ID badge
+// number (e.g. "SLS001"); matching it against the already-fetched staff
+// roster auto-fills the name + role, same as scanning a badge. Falls back
+// to a disambiguation list only when the typed text matches more than one
+// person (e.g. an incomplete id) or no id is typed yet.
+function AttributionRow({ entry, staff, onChange, onRemove, showPercent, currentUserId }) {
+  const [query, setQuery] = useState(entry.employeeId ?? "");
+  const [notFound, setNotFound] = useState(false);
+
+  const resolved = staff.find((s) => s.id === entry.userId);
+
+  function handleQueryChange(value) {
+    setQuery(value);
+    setNotFound(false);
+    if (!value.trim()) return;
+    const match = staff.find((s) => s.employeeId && s.employeeId.toLowerCase() === value.trim().toLowerCase());
+    if (match) {
+      onChange({ userId: match.id, employeeId: match.employeeId, role: roleForStaff(match) });
+    } else {
+      setNotFound(true);
+    }
+  }
+
+  const matches =
+    query.trim() && !resolved
+      ? staff.filter((s) => s.employeeId?.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 5)
+      : [];
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-brand-charcoal/35" aria-hidden="true" />
+          <input
+            type="text"
+            placeholder="Employee ID (e.g. SLS001)"
+            value={query}
+            onChange={(e) => handleQueryChange(e.target.value)}
+            className="w-full rounded-lg border border-black/15 py-2 pl-8 pr-2.5 text-sm uppercase focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
+          />
+        </div>
+
+        {showPercent && (
+          <>
+            <input
+              type="number"
+              min="1"
+              max="100"
+              inputMode="numeric"
+              value={entry.percent}
+              onChange={(e) => onChange({ ...entry, percent: Number(e.target.value) })}
+              className="w-16 rounded-lg border border-black/15 px-2 py-2 text-sm tabular-nums focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
+            />
+            <span className="text-sm text-brand-charcoal/50">%</span>
+          </>
+        )}
+
+        {onRemove && (
+          <button
+            type="button"
+            aria-label="Remove staff member"
+            onClick={onRemove}
+            className="flex size-7 shrink-0 items-center justify-center rounded-full text-brand-charcoal/40 hover:bg-red-50 hover:text-red-600"
+          >
+            <X className="size-3.5" aria-hidden="true" />
+          </button>
+        )}
+      </div>
+
+      {resolved ? (
+        <p className="text-xs text-brand-charcoal/50">
+          {resolved.firstName} {resolved.lastName}
+          {resolved.id === currentUserId ? " (you)" : ""} · {ROLE_LABEL[entry.role] ?? entry.role}
+        </p>
+      ) : matches.length > 0 ? (
+        <ul className="flex flex-col gap-1 rounded-lg border border-black/10 bg-white p-1">
+          {matches.map((s) => (
+            <li key={s.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery(s.employeeId);
+                  onChange({ userId: s.id, employeeId: s.employeeId, role: roleForStaff(s) });
+                }}
+                className="w-full rounded-md px-2 py-1 text-left text-xs hover:bg-brand-cream/60"
+              >
+                <span className="font-mono font-semibold">{s.employeeId}</span> — {s.firstName} {s.lastName}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : notFound ? (
+        <p className="text-xs font-medium text-red-600">No staff member with that employee ID.</p>
+      ) : null}
+    </div>
+  );
+}
 
 // Who gets credit for this sale — 1-2 staff members, defaulting to the
 // logged-in cashier at 100%. Lives outside TenderModal: attribution is a
@@ -14,7 +119,6 @@ const ROLE_LABEL = { SALESMAN: "Salesman", MANAGER: "Manager" };
 export default function AttributionPanel({ attribution, onChange }) {
   const { user: currentUser } = useAuth();
   const [staff, setStaff] = useState([]);
-  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -32,20 +136,13 @@ export default function AttributionPanel({ attribution, onChange }) {
     };
   }, []);
 
-  function updateEntry(index, patch) {
-    const next = attribution.map((entry, i) => (i === index ? { ...entry, ...patch } : entry));
+  function updateEntry(index, nextEntry) {
+    const next = attribution.map((entry, i) => (i === index ? nextEntry : entry));
     onChange(next);
   }
 
   function handleAddSecond() {
-    const firstId = attribution[0]?.userId;
-    const second = staff.find((s) => s.id !== firstId);
-    if (!second) return;
-    onChange([
-      { ...attribution[0], percent: 50 },
-      { userId: second.id, role: "SALESMAN", percent: 50 },
-    ]);
-    setAdding(false);
+    onChange([{ ...attribution[0], percent: 50 }, { userId: "", employeeId: "", role: "SALESMAN", percent: 50 }]);
   }
 
   function handleRemoveSecond() {
@@ -55,12 +152,6 @@ export default function AttributionPanel({ attribution, onChange }) {
   const splitTotal = attribution.reduce((sum, e) => sum + (Number(e.percent) || 0), 0);
   const splitInvalid = attribution.length === 2 && splitTotal !== 100;
 
-  function staffName(userId) {
-    if (userId === currentUser?.id) return `${currentUser.firstName} ${currentUser.lastName} (you)`;
-    const match = staff.find((s) => s.id === userId);
-    return match ? `${match.firstName} ${match.lastName}` : "Unknown";
-  }
-
   return (
     <div className="mb-3 rounded-lg bg-brand-cream/70 p-3">
       <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-brand-charcoal/50">
@@ -68,69 +159,24 @@ export default function AttributionPanel({ attribution, onChange }) {
         Sold by
       </p>
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-3">
         {attribution.map((entry, index) => (
-          <div key={index} className="flex flex-wrap items-center gap-2">
-            <select
-              value={entry.userId}
-              onChange={(e) => updateEntry(index, { userId: e.target.value })}
-              className="min-w-0 flex-1 rounded-lg border border-black/15 px-2.5 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
-            >
-              {!staff.some((s) => s.id === entry.userId) && <option value={entry.userId}>{staffName(entry.userId)}</option>}
-              {staff.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.firstName} {s.lastName}
-                  {s.id === currentUser?.id ? " (you)" : ""}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={entry.role}
-              onChange={(e) => updateEntry(index, { role: e.target.value })}
-              className="rounded-lg border border-black/15 px-2.5 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
-            >
-              {Object.entries(ROLE_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-
-            {attribution.length === 2 && (
-              <>
-                <input
-                  type="number"
-                  min="1"
-                  max="100"
-                  inputMode="numeric"
-                  value={entry.percent}
-                  onChange={(e) => updateEntry(index, { percent: Number(e.target.value) })}
-                  className="w-16 rounded-lg border border-black/15 px-2 py-2 text-sm tabular-nums focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
-                />
-                <span className="text-sm text-brand-charcoal/50">%</span>
-              </>
-            )}
-
-            {index === 1 && (
-              <button
-                type="button"
-                aria-label="Remove second staff member"
-                onClick={handleRemoveSecond}
-                className="flex size-7 shrink-0 items-center justify-center rounded-full text-brand-charcoal/40 hover:bg-red-50 hover:text-red-600"
-              >
-                <X className="size-3.5" aria-hidden="true" />
-              </button>
-            )}
-          </div>
+          <AttributionRow
+            key={index}
+            entry={entry}
+            staff={staff}
+            showPercent={attribution.length === 2}
+            onChange={(nextEntry) => updateEntry(index, nextEntry)}
+            onRemove={index === 1 ? handleRemoveSecond : undefined}
+            currentUserId={currentUser?.id}
+          />
         ))}
 
         {attribution.length === 1 && (
           <button
             type="button"
             onClick={handleAddSecond}
-            disabled={staff.length <= 1}
-            className="flex items-center gap-1.5 self-start text-xs font-semibold text-brand-charcoal/60 hover:text-brand-red disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-1.5 self-start text-xs font-semibold text-brand-charcoal/60 hover:text-brand-red"
           >
             <Plus className="size-3.5" aria-hidden="true" />
             Add second staff member

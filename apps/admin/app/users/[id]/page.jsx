@@ -102,7 +102,18 @@ function UserDrilldownContent() {
           user && (
             <div className="flex flex-wrap gap-1.5">
               {user.roles.map((role) => (
-                <Badge key={role} tone={role === "ADMIN" ? "danger" : role === "MANAGER" ? "info" : role === "CASHIER" ? "success" : "default"}>
+                <Badge
+                  key={role}
+                  tone={
+                    role === "SUPER_ADMIN" || role === "ADMIN"
+                      ? "danger"
+                      : role === "MANAGER"
+                        ? "info"
+                        : role === "CASHIER"
+                          ? "success"
+                          : "default"
+                  }
+                >
                   {role}
                 </Badge>
               ))}
