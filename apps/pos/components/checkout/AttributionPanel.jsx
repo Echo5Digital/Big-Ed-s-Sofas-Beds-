@@ -29,11 +29,19 @@ function AttributionRow({ entry, staff, onChange, onRemove, showPercent }) {
   function handleQueryChange(value) {
     setQuery(value);
     setNotFound(false);
-    if (!value.trim()) return;
+    // Any edit invalidates whatever was previously resolved — otherwise a
+    // stale userId from an earlier match can stay attached to the entry
+    // while the visible text no longer matches anyone, showing a resolved
+    // green checkmark and a "not found" error at the same time.
+    if (!value.trim()) {
+      onChange({ ...entry, userId: "", employeeId: "" });
+      return;
+    }
     const match = staff.find((s) => s.employeeId && s.employeeId.toLowerCase() === value.trim().toLowerCase());
     if (match) {
       onChange({ userId: match.id, employeeId: match.employeeId, role: roleForStaff(match) });
     } else {
+      onChange({ ...entry, userId: "", employeeId: value });
       setNotFound(true);
     }
   }
@@ -119,12 +127,17 @@ function AttributionRow({ entry, staff, onChange, onRemove, showPercent }) {
   );
 }
 
-// Who gets credit for this sale — 1-2 staff members, defaulting to the
-// logged-in cashier at 100%. Lives outside TenderModal: attribution is a
-// property of the sale itself, independent of how it's eventually tendered,
-// so a cashier can set it up while still browsing the cart.
+const EMPTY_ENTRY = { userId: "", employeeId: "", role: "SALESMAN", percent: 100 };
+
+// Who gets credit for this sale — 1-2 staff members. Starts empty (no
+// default attribution to the logged-in cashier or anyone else): the
+// cashier must explicitly type/search an employee ID to link a sale to a
+// staff member. Lives outside TenderModal: attribution is a property of
+// the sale itself, independent of how it's eventually tendered, so a
+// cashier can set it up while still browsing the cart.
 export default function AttributionPanel({ attribution, onChange }) {
   const [staff, setStaff] = useState([]);
+  const rows = attribution.length > 0 ? attribution : [EMPTY_ENTRY];
 
   useEffect(() => {
     let cancelled = false;
@@ -134,8 +147,7 @@ export default function AttributionPanel({ attribution, onChange }) {
         if (!cancelled) setStaff(data.staff);
       })
       .catch(() => {
-        // Non-fatal: the picker just shows no staff options beyond the
-        // default self-attribution already set by the parent.
+        // Non-fatal: the picker just shows no staff options to match against.
       });
     return () => {
       cancelled = true;
@@ -143,20 +155,20 @@ export default function AttributionPanel({ attribution, onChange }) {
   }, []);
 
   function updateEntry(index, nextEntry) {
-    const next = attribution.map((entry, i) => (i === index ? nextEntry : entry));
+    const next = rows.map((entry, i) => (i === index ? nextEntry : entry));
     onChange(next);
   }
 
   function handleAddSecond() {
-    onChange([{ ...attribution[0], percent: 50 }, { userId: "", employeeId: "", role: "SALESMAN", percent: 50 }]);
+    onChange([{ ...rows[0], percent: 50 }, { userId: "", employeeId: "", role: "SALESMAN", percent: 50 }]);
   }
 
   function handleRemoveSecond() {
-    onChange([{ ...attribution[0], percent: 100 }]);
+    onChange([{ ...rows[0], percent: 100 }]);
   }
 
-  const splitTotal = attribution.reduce((sum, e) => sum + (Number(e.percent) || 0), 0);
-  const splitInvalid = attribution.length === 2 && splitTotal !== 100;
+  const splitTotal = rows.reduce((sum, e) => sum + (Number(e.percent) || 0), 0);
+  const splitInvalid = rows.length === 2 && splitTotal !== 100;
 
   return (
     <div className="mb-3 rounded-lg bg-brand-cream/70 p-3">
@@ -166,18 +178,18 @@ export default function AttributionPanel({ attribution, onChange }) {
       </p>
 
       <div className="flex flex-col gap-3">
-        {attribution.map((entry, index) => (
+        {rows.map((entry, index) => (
           <AttributionRow
             key={index}
             entry={entry}
             staff={staff}
-            showPercent={attribution.length === 2}
+            showPercent={rows.length === 2}
             onChange={(nextEntry) => updateEntry(index, nextEntry)}
             onRemove={index === 1 ? handleRemoveSecond : undefined}
           />
         ))}
 
-        {attribution.length === 1 && (
+        {rows.length === 1 && (
           <button
             type="button"
             onClick={handleAddSecond}

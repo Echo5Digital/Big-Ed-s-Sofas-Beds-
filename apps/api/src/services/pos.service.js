@@ -499,7 +499,14 @@ async function ringSale({
           fulfillmentStatus,
           paymentStatus,
         },
-        include: { lines: true, customer: true, payments: true, salesAttributions: true, shippingAddress: true, billingAddress: true },
+        include: {
+          lines: true,
+          customer: true,
+          payments: true,
+          salesAttributions: { include: { user: { select: { firstName: true, lastName: true } } } },
+          shippingAddress: true,
+          billingAddress: true,
+        },
       });
 
       const receiptNumber = await nextReceiptNumber(tx);

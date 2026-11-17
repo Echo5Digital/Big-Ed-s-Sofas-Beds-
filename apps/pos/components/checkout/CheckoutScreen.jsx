@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { LogOut, ShoppingCart, ChevronDown } from "lucide-react";
 import { api, ApiClientError } from "@/lib/api/client";
 import { useRegisterSession } from "@/lib/hooks/useRegisterSession";
-import { useAuth } from "@/lib/hooks/useAuth";
 import { formatCents } from "@/lib/format";
 import ProductSearch from "./ProductSearch";
 import CartPanel from "./CartPanel";
@@ -18,7 +17,6 @@ import CloseRegister from "../register/CloseRegister";
 
 export default function CheckoutScreen() {
   const { session } = useRegisterSession();
-  const { user: currentUser } = useAuth();
   const [cart, setCart] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [tenderOpen, setTenderOpen] = useState(false);
@@ -33,16 +31,6 @@ export default function CheckoutScreen() {
   const [shippingAddress, setShippingAddress] = useState(EMPTY_ADDRESS);
   const [billingAddress, setBillingAddress] = useState(EMPTY_ADDRESS);
   const [billingSameAsShipping, setBillingSameAsShipping] = useState(true);
-
-  // AttributionPanel defaults to the logged-in cashier, but currentUser
-  // loads asynchronously (useAuth's /auth/me fetch), so salesAttribution
-  // starts empty and this fills in the default at render time once
-  // currentUser arrives — no effect/setState round-trip needed since
-  // nothing has been chosen yet in that window.
-  const effectiveAttribution =
-    salesAttribution.length === 0 && currentUser
-      ? [{ userId: currentUser.id, employeeId: currentUser.employeeId ?? "", role: "SALESMAN", percent: 100 }]
-      : salesAttribution;
 
   // Cost is fetched separately from the (unauthenticated, storefront-shared)
   // product search results — see GET /pos/cart-costs in pos.routes.js for
@@ -133,6 +121,13 @@ export default function CheckoutScreen() {
     setSubmitting(true);
     try {
       const resolvedBillingAddress = filledAddress(billingAddress);
+      // Only a fully-resolved attribution (every entry matched to a real
+      // staff member) is sent — a lone unresolved entry is dropped
+      // entirely, and a two-person split with one unresolved side is
+      // dropped as a whole rather than silently becoming 100% credit to
+      // whichever side did resolve.
+      const resolvedAttribution =
+        salesAttribution.length > 0 && salesAttribution.every((entry) => entry.userId) ? salesAttribution : [];
       const data = await api.post("/pos/sales", {
         registerSessionId: session.id,
         lines: cart.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
@@ -140,7 +135,7 @@ export default function CheckoutScreen() {
         discount,
         discountReasonCode,
         pinOverride,
-        salesAttribution: effectiveAttribution,
+        salesAttribution: resolvedAttribution.length > 0 ? resolvedAttribution : undefined,
         requestedDeliveryAt: requestedDeliveryAt ? new Date(requestedDeliveryAt).toISOString() : undefined,
         billingAddress: resolvedBillingAddress,
         shippingAddress: resolvedBillingAddress && !billingSameAsShipping ? filledAddress(shippingAddress) : undefined,
@@ -209,7 +204,7 @@ export default function CheckoutScreen() {
           onRemove={() => setSelectedCustomer(null)}
         />
 
-        <AttributionPanel attribution={effectiveAttribution} onChange={setSalesAttribution} />
+        <AttributionPanel attribution={salesAttribution} onChange={setSalesAttribution} />
 
         <DeliveryAddressPanel
           shippingAddress={shippingAddress}

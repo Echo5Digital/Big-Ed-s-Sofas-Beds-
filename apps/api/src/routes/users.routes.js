@@ -245,12 +245,26 @@ router.patch(
 // same low-stakes-reset simplicity as the "Initial password" field on user
 // creation — an admin can just reset again if mistyped. Never echoes the
 // PIN or its hash back, and never logs the PIN itself in the audit trail.
+// A PIN only ever means something for whoever verifyManagerPin (posPin.js)
+// is willing to accept it from — gated on the same pos:register:approve-
+// reopen permission, not a hardcoded role list, so this stays correct if
+// that permission's role grants ever change.
 router.patch(
   "/:id/pin",
   validateBody(userPinUpdateSchema),
   asyncHandler(async (req, res) => {
-    const target = await prisma.user.findUnique({ where: { id: req.params.id }, include: ROLE_INCLUDE });
+    const target = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      include: { roles: { include: { role: { include: { permissions: { include: { permission: true } } } } } } },
+    });
     if (!target || isHiddenFromCaller(target, req)) throw new NotFoundError("User not found");
+
+    const canApprove = target.roles.some((ur) =>
+      ur.role.permissions.some((rp) => rp.permission.key === "pos:register:approve-reopen")
+    );
+    if (!canApprove) {
+      throw new ConflictError("A POS discount PIN can only be set for Manager or Admin accounts");
+    }
 
     const posPinHash = await hashPin(req.body.pin);
     await prisma.user.update({

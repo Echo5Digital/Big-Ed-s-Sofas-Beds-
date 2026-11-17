@@ -17,6 +17,13 @@ import { useAuth } from "@/lib/hooks/useAuth";
 // else that tier. It's only ever set directly in the database.
 const ROLE_OPTIONS = ["ADMIN", "MANAGER", "SALESMAN", "CASHIER"];
 
+// Mirrors the pos:register:approve-reopen permission grants (see
+// apps/api/src/lib/posPin.js's verifyManagerPin and the matching guard on
+// PATCH /:id/pin) — only these roles can ever authorize a POS discount
+// override, so a PIN is meaningless for anyone else and the section is
+// hidden rather than offered and then rejected by the API.
+const PIN_ELIGIBLE_ROLES = ["ADMIN", "MANAGER", "SUPER_ADMIN"];
+
 const ROLE_TONE = {
   // Not in ROLE_OPTIONS above, but still needs a tone for when a Super
   // Admin's own row renders its own badge (the API lets that one row
@@ -308,7 +315,7 @@ function EditUserModal({ user, isSelf, onClose, onDone }) {
           </Button>
         </form>
 
-        <PosPinSection user={user} onDone={onDone} />
+        {user.roles.some((role) => PIN_ELIGIBLE_ROLES.includes(role)) && <PosPinSection user={user} onDone={onDone} />}
 
         <div className="border-t border-black/10 pt-4">
           {isSelf ? (

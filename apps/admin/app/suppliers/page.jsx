@@ -132,8 +132,8 @@ function SuppliersContent() {
     {
       key: "isActive",
       header: "Status",
-      // The button shows the supplier's current state ("Activated" /
-      // "Deactivated") and a click flips it. Read-only staff see the same
+      // The button shows the supplier's current state ("Active" /
+      // "Deactive") and a click flips it. Read-only staff see the same
       // wording as plain text.
       render: (s) =>
         canWrite ? (
@@ -145,12 +145,12 @@ function SuppliersContent() {
             disabled={togglingId === s.id}
             onClick={() => toggleActive(s)}
           >
-            {s.isActive ? "Activated" : "Deactivated"}
+            {s.isActive ? "Active" : "Deactive"}
           </Button>
         ) : s.isActive ? (
-          "Activated"
+          "Active"
         ) : (
-          "Deactivated"
+          "Deactive"
         ),
     },
   ];

@@ -4,7 +4,6 @@ import { createPortal } from "react-dom";
 import { CheckCircle2, Printer } from "lucide-react";
 import { formatCents } from "@/lib/format";
 import { storeInfo } from "@/lib/storeInfo";
-import { useAuth } from "@/lib/hooks/useAuth";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
 
@@ -27,16 +26,18 @@ function formatAddress(address) {
     .join(", ");
 }
 
-function ReceiptPrintable({ sale, cashierName, cashierEmployeeId }) {
+function ReceiptPrintable({ sale }) {
   if (typeof document === "undefined") return null;
   const { order, payments, receipt, changeDueCents } = sale;
   const totalPaidCents = payments.reduce((sum, p) => sum + p.amountCents, 0);
   const isDepositOnly = payments.length === 1 && payments[0].method === "DEPOSIT";
   const printedAt = new Date(order.createdAt);
   const billingAddressLine = formatAddress(order.billingAddress);
-  const shippingAddressLine = formatAddress(order.shippingAddress);
-  const hasDistinctShipping = shippingAddressLine && shippingAddressLine !== billingAddressLine;
+  const deliveryAddressLine = formatAddress(order.shippingAddress);
+  const hasDistinctDelivery = deliveryAddressLine && deliveryAddressLine !== billingAddressLine;
   const primaryTenderLabel = TENDER_LABELS[payments[0]?.method] ?? payments[0]?.method ?? "";
+  const customerName = order.customer ? `${order.customer.firstName} ${order.customer.lastName}` : null;
+  const soldByNames = order.salesAttributions?.map((a) => a.name).filter(Boolean) ?? [];
 
   return createPortal(
     <div id="receipt-print-root" className="hidden">
@@ -73,16 +74,17 @@ function ReceiptPrintable({ sale, cashierName, cashierEmployeeId }) {
 
         <div className="border-t-2 border-brand-charcoal" />
 
-        {billingAddressLine && (
+        {(customerName || billingAddressLine) && (
           <div className="grid grid-cols-2 gap-6 py-4">
             <div>
               <p className="mb-1 text-xs font-bold uppercase tracking-wide text-brand-charcoal/50">Billing Address</p>
-              <p className="text-xs text-brand-charcoal/80">{billingAddressLine}</p>
+              {customerName && <p className="text-xs font-semibold text-brand-charcoal">{customerName}</p>}
+              {billingAddressLine && <p className="text-xs text-brand-charcoal/80">{billingAddressLine}</p>}
             </div>
-            {hasDistinctShipping && (
+            {hasDistinctDelivery && (
               <div>
-                <p className="mb-1 text-xs font-bold uppercase tracking-wide text-brand-charcoal/50">Shipping Address</p>
-                <p className="text-xs text-brand-charcoal/80">{shippingAddressLine}</p>
+                <p className="mb-1 text-xs font-bold uppercase tracking-wide text-brand-charcoal/50">Delivery Address</p>
+                <p className="text-xs text-brand-charcoal/80">{deliveryAddressLine}</p>
               </div>
             )}
           </div>
@@ -164,10 +166,9 @@ function ReceiptPrintable({ sale, cashierName, cashierEmployeeId }) {
           </div>
         </div>
 
-        <p className="pt-4 text-center text-[10px] text-brand-charcoal/40">
-          Cashier: {cashierName}
-          {cashierEmployeeId ? ` (${cashierEmployeeId})` : ""}
-        </p>
+        {soldByNames.length > 0 && (
+          <p className="pt-4 text-center text-[10px] text-brand-charcoal/40">Sold by: {soldByNames.join(", ")}</p>
+        )}
       </div>
     </div>,
     document.body
@@ -175,10 +176,6 @@ function ReceiptPrintable({ sale, cashierName, cashierEmployeeId }) {
 }
 
 export default function ReceiptView({ open, onClose, sale }) {
-  const { user } = useAuth();
-  const cashierName = user ? `${user.firstName} ${user.lastName}` : "—";
-  const cashierEmployeeId = user?.employeeId ?? null;
-
   if (!sale) return null;
   const { order, payments, receipt, changeDueCents } = sale;
   const totalPaidCents = payments.reduce((sum, p) => sum + p.amountCents, 0);
@@ -260,7 +257,7 @@ export default function ReceiptView({ open, onClose, sale }) {
         </div>
       </Modal>
 
-      <ReceiptPrintable sale={sale} cashierName={cashierName} cashierEmployeeId={cashierEmployeeId} />
+      <ReceiptPrintable sale={sale} />
     </>
   );
 }

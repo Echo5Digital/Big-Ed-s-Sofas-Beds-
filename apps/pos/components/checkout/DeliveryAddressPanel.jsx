@@ -35,12 +35,12 @@ export default function DeliveryAddressPanel({
             onChange={(e) => onBillingSameAsShippingChange(e.target.checked)}
             className="size-4 accent-brand-red"
           />
-          Shipping address same as billing
+          Delivery address same as billing
         </label>
 
         {!billingSameAsShipping && (
           <>
-            <p className="text-xs font-medium text-brand-charcoal/40">Shipping address</p>
+            <p className="text-xs font-medium text-brand-charcoal/40">Delivery address</p>
             <AddressFields value={shippingAddress} onChange={onShippingChange} />
           </>
         )}

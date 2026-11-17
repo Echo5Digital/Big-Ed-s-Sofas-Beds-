@@ -53,10 +53,15 @@ function serializeOrder(order) {
     requestedDeliveryAt: order.requestedDeliveryAt,
     shippingAddress: order.shippingAddress ?? null,
     billingAddress: order.billingAddress ?? null,
+    // name is only included here (unlike the AttributionPanel picker, which
+    // deliberately never shows a name while the cashier is selecting one)
+    // because the printed receipt is a customer-facing business record that
+    // should credit the salesperson by name, same as "Cashier: <name>" did.
     salesAttributions: order.salesAttributions?.map((a) => ({
       userId: a.userId,
       role: a.role,
       splitPercent: a.splitPercent,
+      name: a.user ? `${a.user.firstName} ${a.user.lastName}` : null,
     })),
     customer: order.customer
       ? { id: order.customer.id, email: order.customer.email, firstName: order.customer.firstName, lastName: order.customer.lastName }
@@ -300,13 +305,15 @@ router.post(
 // only hold pos:* permissions, not users:manage, so the admin's GET /users
 // (gated on users:manage) would 403 a cashier — this exposes just what the
 // picker needs, including employeeId (so a cashier can look a staff member
-// up by badge number), but never email or PIN data.
+// up by badge number), but never email or PIN data. Scoped to SALESMAN/
+// MANAGER only — sales attribution credits whoever made the sale, which is
+// never an Admin or Cashier role (matches SalesAttributionRole's own enum).
 router.get(
   "/staff",
   requirePermission("pos:sell"),
   asyncHandler(async (req, res) => {
     const users = await prisma.user.findMany({
-      where: { isActive: true },
+      where: { isActive: true, roles: { some: { role: { name: { in: ["SALESMAN", "MANAGER"] } } } } },
       include: { roles: { include: { role: true } } },
       orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
     });

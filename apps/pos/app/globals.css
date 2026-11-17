@@ -79,4 +79,14 @@ body {
     display: block !important;
     position: static !important;
   }
+
+  /* Trims the page to the content's own margins so the browser's print
+     chrome (title/date/time header, URL/page-number footer — controlled by
+     the browser's own "Headers and footers" print-dialog setting, not
+     CSS) has less blank margin to sit in. Cashiers still need to uncheck
+     that print-dialog option themselves for a fully clean receipt — no CSS
+     rule can force it off from the page side. */
+  @page {
+    margin: 0.25in;
+  }
 }

@@ -114,6 +114,44 @@ describe("users.routes — POS PIN reset", () => {
     expect(updated.posPinHash).toMatch(/^\$2[aby]\$/); // bcrypt hash prefix
     expect(updated.posPinUpdatedAt).not.toBeNull();
   });
+
+  // The route rejects setting a PIN at all unless the target holds the same
+  // pos:register:approve-reopen permission verifyManagerPin (posPin.js)
+  // checks when accepting a PIN as valid — a PIN set on a Cashier/Salesman
+  // would otherwise silently do nothing (nobody ever treats it as valid),
+  // which is worse than rejecting the write up front. Mirrors the exact
+  // query shape in users.routes.js's PATCH /:id/pin handler.
+  async function canApproveDiscounts(userId) {
+    const target = await prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      include: { roles: { include: { role: { include: { permissions: { include: { permission: true } } } } } } },
+    });
+    return target.roles.some((ur) => ur.role.permissions.some((rp) => rp.permission.key === "pos:register:approve-reopen"));
+  }
+
+  it("a Cashier does not hold the discount-approval permission a PIN would need", async () => {
+    expect(await canApproveDiscounts(user.id)).toBe(false);
+  });
+
+  it("a Manager holds the discount-approval permission a PIN requires", async () => {
+    const managerRole = await prisma.role.findUniqueOrThrow({ where: { name: "MANAGER" } });
+    const passwordHash = await bcrypt.hash("TestPassword123!", 10);
+    const manager = await prisma.user.create({
+      data: {
+        email: `users-pin-manager-test-${Date.now()}@example.com`,
+        passwordHash,
+        firstName: "PinManager",
+        lastName: "RouteTest",
+        roles: { create: { roleId: managerRole.id } },
+      },
+    });
+    try {
+      expect(await canApproveDiscounts(manager.id)).toBe(true);
+    } finally {
+      await prisma.userRole.deleteMany({ where: { userId: manager.id } });
+      await prisma.user.delete({ where: { id: manager.id } });
+    }
+  });
 });
 
 describe("users.routes — last-admin lockout guard", () => {
