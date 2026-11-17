@@ -25,13 +25,14 @@ describe("posCustomers.service", () => {
     expect(row.emailVerifiedAt).toBeNull();
 
     const byName = await posCustomersService.searchCustomersForPos({ q: `Guestline${stamp}` });
-    expect(byName.some((c) => c.id === customer.id)).toBe(true);
+    expect(byName.customers.some((c) => c.id === customer.id)).toBe(true);
+    expect(byName.total).toBeGreaterThanOrEqual(1);
 
     const byPhone = await posCustomersService.searchCustomersForPos({ q: customer.phone });
-    expect(byPhone.some((c) => c.id === customer.id)).toBe(true);
+    expect(byPhone.customers.some((c) => c.id === customer.id)).toBe(true);
 
     const byEmail = await posCustomersService.searchCustomersForPos({ q: customer.email });
-    expect(byEmail.some((c) => c.id === customer.id)).toBe(true);
+    expect(byEmail.customers.some((c) => c.id === customer.id)).toBe(true);
   });
 
   it("creates a customer without an email (optional field)", async () => {

@@ -125,7 +125,7 @@ export default function SiteHeader({ categories }) {
 
         <div className="ml-auto hidden shrink-0 flex-col items-end gap-2 lg:flex">
           <div className="flex items-center gap-1.5">
-            <div className="hidden 2xl:block 2xl:w-64">
+            <div className="w-48 xl:w-64">
               <SearchBox />
             </div>
             <Link

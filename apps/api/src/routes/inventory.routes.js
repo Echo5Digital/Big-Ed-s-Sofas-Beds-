@@ -7,6 +7,7 @@ const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
 const { NotFoundError, ConflictError } = require("../lib/errors");
 const inventoryService = require("../services/inventory.service");
+const { escapeLikeWildcards } = require("../lib/searchText");
 
 const router = express.Router();
 
@@ -25,7 +26,7 @@ router.get(
   "/balances",
   requirePermission("inventory:read"),
   asyncHandler(async (req, res) => {
-    const { locationId, lowStockOnly, supplierId } = req.query;
+    const { locationId, lowStockOnly, supplierId, q } = req.query;
 
     await inventoryService.expireStaleReservations();
 
@@ -39,6 +40,14 @@ router.get(
       where: {
         ...(locationId ? { locationId: String(locationId) } : {}),
         ...(supplierId ? { variant: { product: { supplierId: String(supplierId) } } } : {}),
+        ...(q
+          ? {
+              OR: [
+                { variant: { sku: { contains: escapeLikeWildcards(String(q)), mode: "insensitive" } } },
+                { variant: { product: { name: { contains: escapeLikeWildcards(String(q)), mode: "insensitive" } } } },
+              ],
+            }
+          : {}),
       },
       include: {
         variant: { include: { product: { include: { supplier: true } } } },

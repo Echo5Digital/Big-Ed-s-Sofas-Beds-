@@ -8,6 +8,7 @@ const { requireAuth, requirePermission } = require("../middleware/auth");
 const { NotFoundError, ValidationError, ConflictError } = require("../lib/errors");
 const cloudinary = require("../lib/cloudinary");
 const inventoryService = require("../services/inventory.service");
+const { escapeLikeWildcards } = require("../lib/searchText");
 
 const router = express.Router();
 
@@ -461,8 +462,13 @@ router.get(
           ? [
               {
                 OR: [
-                  { name: { contains: String(q), mode: "insensitive" } },
-                  { description: { contains: String(q), mode: "insensitive" } },
+                  { name: { contains: escapeLikeWildcards(String(q)), mode: "insensitive" } },
+                  { description: { contains: escapeLikeWildcards(String(q)), mode: "insensitive" } },
+                  // Matches a scanned barcode/SKU too — the storefront search box
+                  // and the POS product search both hit this same endpoint, and
+                  // a cashier scanning an item expects the SKU itself to match,
+                  // not just the product name/description happening to contain it.
+                  { variants: { some: { sku: { contains: escapeLikeWildcards(String(q)), mode: "insensitive" } } } },
                 ],
               },
             ]
@@ -962,18 +968,20 @@ router.get(
   requireAuth,
   requirePermission("catalog:read"),
   asyncHandler(async (req, res) => {
-    const { q } = req.query;
+    const { q, limit } = req.query;
     // ?q is additive — omitting it keeps this endpoint's existing behavior
     // (the full catalog, unfiltered) exactly as before, since the edit page
     // already depends on that to find one product client-side by id. Used by
-    // the Linked Products picker (apps/admin/components/products/
-    // LinkedProductPicker.jsx) to search by name OR any variant's SKU without
-    // fetching the whole catalog — matches "add SKU" in the picker's search box.
+    // both the Linked Products picker (apps/admin/components/products/
+    // LinkedProductPicker.jsx, a small type-ahead dropdown that wants a tight
+    // cap) and the Products list page's own search box (which wants more
+    // than 20 results for a common term) — ?limit lets each caller choose,
+    // defaulting to the picker's original 20 when omitted.
     const where = q
       ? {
           OR: [
-            { name: { contains: String(q), mode: "insensitive" } },
-            { variants: { some: { sku: { contains: String(q), mode: "insensitive" } } } },
+            { name: { contains: escapeLikeWildcards(String(q)), mode: "insensitive" } },
+            { variants: { some: { sku: { contains: escapeLikeWildcards(String(q)), mode: "insensitive" } } } },
           ],
         }
       : undefined;
@@ -990,7 +998,7 @@ router.get(
       orderBy: { createdAt: "desc" },
       // Only caps the search path — the unfiltered (no ?q) call the edit page
       // relies on to load the full catalog is untouched.
-      take: q ? 20 : undefined,
+      take: q ? Math.min(200, Number(limit) || 20) : undefined,
     });
     // Independent of "catalog:read" (required just to hit this route at all,
     // via requirePermission above) — a role can list/edit products without

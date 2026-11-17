@@ -125,23 +125,35 @@ export default function CustomerPanel({ customer, onSelect, onRemove }) {
   const [newCustomerOpen, setNewCustomerOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
   const requestIdRef = useRef(0);
 
   const search = useCallback(async (q) => {
+    // Bump the request id even on the empty-query short-circuit — otherwise
+    // a still-in-flight request for a previous non-empty query can resolve
+    // after the box is cleared and repopulate `results` with stale matches
+    // the box no longer reflects.
+    const requestId = ++requestIdRef.current;
     if (!q.trim()) {
       setResults([]);
+      setTotal(0);
+      setError(false);
       return;
     }
-    const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
       const data = await api.get(`/pos/customers/search?q=${encodeURIComponent(q)}`);
       if (requestId !== requestIdRef.current) return;
       setResults(data.customers);
+      setTotal(data.total ?? data.customers.length);
+      setError(false);
     } catch {
       if (requestId !== requestIdRef.current) return;
       setResults([]);
+      setTotal(0);
+      setError(true);
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
     }
@@ -157,6 +169,7 @@ export default function CustomerPanel({ customer, onSelect, onRemove }) {
     setSearchOpen(false);
     setQuery("");
     setResults([]);
+    setTotal(0);
   }
 
   function handleCreated(c) {
@@ -207,8 +220,18 @@ export default function CustomerPanel({ customer, onSelect, onRemove }) {
             className="rounded-lg border border-black/15 px-3 py-3 text-base focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
           />
           {loading && <p className="text-sm text-brand-charcoal/50">Searching…</p>}
-          {!loading && query.trim() && results.length === 0 && (
+          {!loading && error && (
+            <p role="alert" className="text-sm text-red-600">
+              Search failed. Check your connection and try again.
+            </p>
+          )}
+          {!loading && !error && query.trim() && results.length === 0 && (
             <p className="text-sm text-brand-charcoal/50">No matching customers.</p>
+          )}
+          {!loading && !error && results.length > 0 && total > results.length && (
+            <p className="text-xs font-medium text-brand-charcoal/45">
+              Showing {results.length} of {total} matches — add more detail (e.g. phone or last name) to narrow it down.
+            </p>
           )}
           <ul className="flex max-h-72 flex-col gap-1.5 overflow-y-auto">
             {results.map((c) => (

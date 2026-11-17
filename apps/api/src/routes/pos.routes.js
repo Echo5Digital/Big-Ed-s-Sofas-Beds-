@@ -338,8 +338,8 @@ router.get(
   "/customers/search",
   requirePermission("pos:sell"),
   asyncHandler(async (req, res) => {
-    const customers = await posCustomersService.searchCustomersForPos({ q: req.query.q });
-    res.json({ customers });
+    const { customers, total } = await posCustomersService.searchCustomersForPos({ q: req.query.q });
+    res.json({ customers, total });
   })
 );
 

@@ -8,9 +8,9 @@ export const siteConfig = {
   tagline: "Big Comfort. Bigger Savings.",
   logo: {
     src: "/images/brand/big-eds-logo.webp",
-    width: 1921,
-    height: 817,
-    alt: "Big Ed's Sofas & Beds — Quality Furniture, Comfort for Life",
+    width: 1536,
+    height: 1024,
+    alt: "Big Ed's Sofas & Beds — Comfort for a Better Tomorrow",
   },
   phone: "(863) 555-0123",
   phoneHref: "tel:+18635550123",

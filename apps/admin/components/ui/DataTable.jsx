@@ -70,6 +70,25 @@ export default function DataTable({
     if (from && to && to.scrollLeft !== from.scrollLeft) to.scrollLeft = from.scrollLeft;
   }
 
+  // `rows === null` is this codebase's established convention for "still
+  // loading" (every page initializes its rows state with useState(null) and
+  // only sets it once a fetch resolves) — distinct from `rows === []`,
+  // "loaded, genuinely nothing matched". Previously both rendered the exact
+  // same static emptyMessage box, so a slow first load looked identical to
+  // "nothing here" instead of "this is working."
+  if (rows === null) {
+    return (
+      <div className="rounded-xl border border-black/10 bg-white p-4">
+        <div className="flex flex-col gap-2" aria-hidden="true">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-10 animate-pulse rounded-lg bg-black/5" />
+          ))}
+        </div>
+        <span className="sr-only">Loading…</span>
+      </div>
+    );
+  }
+
   if (!hasRows) {
     return (
       <div className="rounded-xl border border-dashed border-black/15 bg-white p-8 text-center text-sm text-brand-charcoal/50">

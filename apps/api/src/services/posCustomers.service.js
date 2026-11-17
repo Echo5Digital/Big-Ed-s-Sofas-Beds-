@@ -1,4 +1,5 @@
 const { prisma } = require("@big-eds/database");
+const { escapeLikeWildcards } = require("../lib/searchText");
 
 const MAX_SEARCH_TERMS = 5;
 const MAX_RESULTS = 25;
@@ -12,7 +13,7 @@ const MAX_RESULTS = 25;
 // "jane 555" finds Jane even though her name and phone live in different
 // columns.
 function fieldsMatching(term) {
-  const contains = { contains: term, mode: "insensitive" };
+  const contains = { contains: escapeLikeWildcards(term), mode: "insensitive" };
   return { OR: [{ email: contains }, { firstName: contains }, { lastName: contains }, { phone: contains }] };
 }
 
@@ -36,12 +37,16 @@ function serialize(customer) {
 }
 
 async function searchCustomersForPos({ q }) {
-  const customers = await prisma.customer.findMany({
-    where: buildWhere(q),
-    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-    take: MAX_RESULTS,
-  });
-  return customers.map(serialize);
+  const where = buildWhere(q);
+  const [customers, total] = await Promise.all([
+    prisma.customer.findMany({
+      where,
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      take: MAX_RESULTS,
+    }),
+    prisma.customer.count({ where }),
+  ]);
+  return { customers: customers.map(serialize), total };
 }
 
 // Shared by the explicit "create customer" endpoint and ringSale()'s inline

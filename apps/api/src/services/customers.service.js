@@ -1,5 +1,6 @@
 const { prisma } = require("@big-eds/database");
 const { NotFoundError } = require("../lib/errors");
+const { escapeLikeWildcards } = require("../lib/searchText");
 
 // A "registered" customer is one who created a storefront account and proved
 // they own the email with the one-time code (see customerAuth.service.js).
@@ -12,7 +13,7 @@ const DEFAULT_PAGE_SIZE = 25;
 const MAX_SEARCH_TERMS = 5;
 
 function fieldsMatching(term) {
-  const contains = { contains: term, mode: "insensitive" };
+  const contains = { contains: escapeLikeWildcards(term), mode: "insensitive" };
   return { OR: [{ email: contains }, { firstName: contains }, { lastName: contains }] };
 }
 

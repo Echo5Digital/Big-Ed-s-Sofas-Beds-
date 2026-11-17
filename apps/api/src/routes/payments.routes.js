@@ -3,6 +3,7 @@ const { prisma } = require("@big-eds/database");
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { requireAuth, requirePermission } = require("../middleware/auth");
 const { NotFoundError } = require("../lib/errors");
+const { escapeLikeWildcards } = require("../lib/searchText");
 
 const router = express.Router();
 
@@ -158,7 +159,7 @@ router.get(
 router.get(
   "/",
   asyncHandler(async (req, res) => {
-    const { method, status, source, from, to, q } = req.query;
+    const { method, status, source, from, to, q, page = "1", pageSize = "200" } = req.query;
 
     const orderWhere = {
       ...(source === "ONLINE" ? { channel: "ONLINE" } : {}),
@@ -166,8 +167,8 @@ router.get(
       ...(q
         ? {
             OR: [
-              { orderNumber: { contains: String(q), mode: "insensitive" } },
-              { customer: { email: { contains: String(q), mode: "insensitive" } } },
+              { orderNumber: { contains: escapeLikeWildcards(String(q)), mode: "insensitive" } },
+              { customer: { email: { contains: escapeLikeWildcards(String(q)), mode: "insensitive" } } },
             ],
           }
         : {}),
@@ -187,14 +188,24 @@ router.get(
         : {}),
     };
 
-    const payments = await prisma.payment.findMany({
-      where,
-      include: paymentInclude,
-      orderBy: { createdAt: "desc" },
-      take: 200,
-    });
+    const take = Math.min(200, Number(pageSize) || 200);
+    const skip = (Math.max(1, Number(page) || 1) - 1) * take;
 
-    res.json({ payments: payments.map(serializePayment) });
+    const [payments, total] = await Promise.all([
+      prisma.payment.findMany({
+        where,
+        include: paymentInclude,
+        orderBy: { createdAt: "desc" },
+        take,
+        skip,
+      }),
+      prisma.payment.count({ where }),
+    ]);
+
+    res.json({
+      payments: payments.map(serializePayment),
+      pagination: { page: Number(page) || 1, pageSize: take, total },
+    });
   })
 );
 

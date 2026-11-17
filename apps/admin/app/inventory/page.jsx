@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeftRight, PackagePlus, Search, SlidersHorizontal } from "lucide-react";
 import RequireAuth from "@/components/layout/RequireAuth";
@@ -259,6 +259,19 @@ function InventoryContent() {
   const [balances, setBalances] = useState(null);
   const [locations, setLocations] = useState([]);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const requestIdRef = useRef(0);
+
+  // 300ms debounce before the search term actually drives a request —
+  // matches the pattern already used elsewhere in this app (e.g.
+  // CustomersTab.jsx). Previously this page fetched every StockBalance row
+  // (one per variant PER location — 1400+ rows for a 700-product catalog
+  // across 2 locations) on every visit and filtered client-side; now the
+  // search term is sent to the server instead.
+  useEffect(() => {
+    const timeout = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(timeout);
+  }, [search]);
 
   // The URL is the source of truth for this filter so it can be deep-linked —
   // the dashboard's "Requires Attention → View all" opens
@@ -294,12 +307,23 @@ function InventoryContent() {
     const params = new URLSearchParams();
     if (lowStockOnly) params.set("lowStockOnly", "true");
     if (lowStockOnly && supplierFilter) params.set("supplierId", supplierFilter);
+    if (debouncedSearch) params.set("q", debouncedSearch);
     const query = params.toString();
+    const requestId = ++requestIdRef.current;
     api
       .get(`/inventory/balances${query ? `?${query}` : ""}`)
-      .then((data) => setBalances(data.balances))
-      .catch((err) => setError(err instanceof ApiClientError ? err.message : "Failed to load inventory."));
-  }, [lowStockOnly, supplierFilter]);
+      .then((data) => {
+        // Guards against a slow earlier search's response landing after a
+        // faster later one's and overwriting it with stale/mismatched rows.
+        if (requestId !== requestIdRef.current) return;
+        setBalances(data.balances);
+        setError(null);
+      })
+      .catch((err) => {
+        if (requestId !== requestIdRef.current) return;
+        setError(err instanceof ApiClientError ? err.message : "Failed to load inventory.");
+      });
+  }, [lowStockOnly, supplierFilter, debouncedSearch]);
 
   useEffect(() => {
     load();
@@ -348,14 +372,9 @@ function InventoryContent() {
     return Array.from(byVariant.values());
   }, [balances]);
 
-  const filteredBalances = useMemo(() => {
-    if (!groupedBalances) return groupedBalances;
-    const query = search.trim().toLowerCase();
-    if (!query) return groupedBalances;
-    return groupedBalances.filter(
-      (b) => b.sku.toLowerCase().includes(query) || b.productName.toLowerCase().includes(query)
-    );
-  }, [groupedBalances, search]);
+  // Search is now server-side (see `load` above) — groupedBalances already
+  // reflects the current search term, nothing further to filter client-side.
+  const filteredBalances = groupedBalances;
 
   // Suppliers actually present among the currently-loaded low-stock rows —
   // narrower and more useful than the full supplier list, which would mostly

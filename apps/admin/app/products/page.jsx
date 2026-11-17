@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, MessageSquare, PlusCircle, Search, Trash2 } from "lucide-react";
 import RequireAuth from "@/components/layout/RequireAuth";
@@ -14,19 +14,47 @@ import { formatCentsAsCurrency } from "@/lib/formatCurrency";
 
 const STATUS_TONE = { ACTIVE: "success", DRAFT: "default", ARCHIVED: "warning" };
 
+const SEARCH_DEBOUNCE_MS = 300;
+
 function ProductsContent() {
   const [products, setProducts] = useState(null);
   const [categories, setCategories] = useState([]);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const requestIdRef = useRef(0);
 
+  // Server-side search against GET /catalog/admin/products?q=... — this
+  // endpoint already supported `q` (matching name OR any variant SKU) for
+  // the Linked Products picker, but this page used to ignore it entirely
+  // and download the full catalog (700+ products, every variant/image/
+  // stock balance) on every visit just to filter it client-side in a
+  // useMemo. Debounced + request-id guarded so a slow response to an
+  // earlier keystroke can't land after and overwrite a newer one's results.
   useEffect(() => {
-    api
-      .get("/catalog/admin/products")
-      .then((data) => setProducts(data.products))
-      .catch((err) => setError(err instanceof ApiClientError ? err.message : "Failed to load products."));
-  }, []);
+    const trimmed = search.trim();
+    const requestId = ++requestIdRef.current;
+    const timeout = setTimeout(() => {
+      const params = new URLSearchParams();
+      if (trimmed) {
+        params.set("q", trimmed);
+        params.set("limit", "200");
+      }
+      const query = params.toString();
+      api
+        .get(`/catalog/admin/products${query ? `?${query}` : ""}`)
+        .then((data) => {
+          if (requestId !== requestIdRef.current) return;
+          setProducts(data.products);
+          setError(null);
+        })
+        .catch((err) => {
+          if (requestId !== requestIdRef.current) return;
+          setError(err instanceof ApiClientError ? err.message : "Failed to load products.");
+        });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timeout);
+  }, [search]);
 
   useEffect(() => {
     api
@@ -115,17 +143,14 @@ function ProductsContent() {
       }))
     );
 
-    const query = search.trim().toLowerCase();
-    return allRows.filter((r) => {
-      const matchesSearch =
-        !query || r.variant.sku.toLowerCase().includes(query) || r.product.name.toLowerCase().includes(query);
-      const matchesCategory =
-        !categoryId ||
-        r.product.category?.id === categoryId ||
-        r.product.categories.some((c) => c.id === categoryId);
-      return matchesSearch && matchesCategory;
-    });
-  }, [products, search, categoryId]);
+    // Search is now server-side (GET /catalog/admin/products?q=...) — this
+    // only applies the category filter on top of whatever the server
+    // already returned for the current search text.
+    if (!categoryId) return allRows;
+    return allRows.filter(
+      (r) => r.product.category?.id === categoryId || r.product.categories.some((c) => c.id === categoryId)
+    );
+  }, [products, categoryId]);
 
   const columns = [
     {
@@ -290,6 +315,12 @@ function ProductsContent() {
           ))}
         </select>
       </div>
+
+      {search.trim() && products !== null && products.length >= 200 && (
+        <p className="mb-3 text-xs font-medium text-brand-charcoal/50">
+          Showing the first 200 matches — add more detail to your search to narrow it down further.
+        </p>
+      )}
 
       <DataTable
         columns={columns}

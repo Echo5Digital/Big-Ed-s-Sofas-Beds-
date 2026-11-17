@@ -41,6 +41,8 @@ export default function ProductSearch({ onAdd }) {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
+  const [error, setError] = useState(false);
+  const [notFoundSku, setNotFoundSku] = useState(null);
   const requestIdRef = useRef(0);
 
   const search = useCallback(async (q) => {
@@ -55,10 +57,12 @@ export default function ProductSearch({ onAdd }) {
       setTotal(data.pagination.total);
       setPage(1);
       setHighlighted(0);
+      setError(false);
     } catch {
       if (requestId !== requestIdRef.current) return;
       setResults([]);
       setTotal(0);
+      setError(true);
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
     }
@@ -95,22 +99,57 @@ export default function ProductSearch({ onAdd }) {
     if (nearBottom && results.length < total) loadMore();
   }
 
-  function handleKeyDown(e) {
-    // Barcode scanners type the SKU then send Enter — jump straight to an
-    // exact SKU match instead of waiting on the debounce.
+  // Barcode scanners type the SKU then send Enter, almost always faster than
+  // the 250ms debounce — so `results` at keydown time is often still from
+  // before the scan, or a partial mid-scan substring, not the scanned SKU
+  // itself. Falling back to "add whichever row is highlighted" in that case
+  // is how a failed/unrecognized scan used to silently ring up the wrong
+  // item. Now: an exact SKU match in the already-loaded results still adds
+  // instantly; otherwise we run one direct lookup for that exact text before
+  // giving up, and only ever fall back to the highlighted row when the
+  // query box is empty (a cashier arrowing through typed-search results,
+  // not a barcode scan) — never as a guess for unrecognized scanned text.
+  async function handleKeyDown(e) {
     if (e.key === "Enter") {
-      const exact = results.find((r) => r.sku.toLowerCase() === query.trim().toLowerCase());
+      const trimmed = query.trim();
+      if (!trimmed) return;
+
+      const exact = results.find((r) => r.sku.toLowerCase() === trimmed.toLowerCase());
       if (exact) {
         onAdd(exact);
         setQuery("");
         setResults([]);
+        setNotFoundSku(null);
         return;
       }
-      // No barcode match — add whichever result is keyboard-highlighted so
-      // a cashier can search then add without reaching for the mouse.
-      const current = results[highlighted];
-      if (current && current.totalAvailable > 0) {
-        onAdd(current);
+
+      const requestId = ++requestIdRef.current;
+      setLoading(true);
+      try {
+        const data = await api.get(`/catalog/products?fields=minimal&page=1&pageSize=5&q=${encodeURIComponent(trimmed)}`);
+        if (requestId !== requestIdRef.current) return;
+        const rows = flattenVariants(data.products);
+        const directExact = rows.find((r) => r.sku.toLowerCase() === trimmed.toLowerCase());
+        if (directExact) {
+          onAdd(directExact);
+          setQuery("");
+          setResults([]);
+          setTotal(0);
+          setNotFoundSku(null);
+        } else {
+          // No exact SKU anywhere — show what's known and let the cashier
+          // decide, rather than silently adding an unrelated highlighted row.
+          setResults(rows);
+          setTotal(data.pagination.total);
+          setHighlighted(0);
+          setNotFoundSku(trimmed);
+        }
+        setError(false);
+      } catch {
+        if (requestId !== requestIdRef.current) return;
+        setError(true);
+      } finally {
+        if (requestId === requestIdRef.current) setLoading(false);
       }
       return;
     }
@@ -131,14 +170,23 @@ export default function ProductSearch({ onAdd }) {
           type="text"
           placeholder="Scan barcode or search products…"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setNotFoundSku(null);
+          }}
           onKeyDown={handleKeyDown}
           autoFocus
           className="w-full rounded-xl border border-black/15 bg-white py-3.5 pl-10 pr-3 text-base shadow-sm transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
         />
       </div>
 
-      {!loading && results.length > 0 && (
+      {notFoundSku && (
+        <p role="alert" className="px-1 text-xs font-medium text-amber-700">
+          No exact match for &ldquo;{notFoundSku}&rdquo; — showing closest results below.
+        </p>
+      )}
+
+      {!loading && !error && results.length > 0 && (
         <p className="px-1 text-xs font-medium text-brand-charcoal/45">
           Showing {results.length} of {total} {total === 1 ? "product" : "products"}
         </p>
@@ -153,7 +201,14 @@ export default function ProductSearch({ onAdd }) {
           </div>
         )}
 
-        {!loading && results.length === 0 && (
+        {!loading && error && (
+          <div className="flex flex-col items-center gap-1 px-1 py-10 text-center">
+            <p className="text-sm font-medium text-red-600">Search failed</p>
+            <p className="text-xs text-brand-charcoal/50">Check your connection and try again.</p>
+          </div>
+        )}
+
+        {!loading && !error && results.length === 0 && (
           <div className="flex flex-col items-center gap-1 px-1 py-10 text-center">
             <p className="text-sm font-medium text-brand-charcoal/60">No products found</p>
             <p className="text-xs text-brand-charcoal/40">Try a different name or scan the item&apos;s barcode.</p>

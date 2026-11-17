@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DollarSign,
   CalendarDays,
@@ -180,7 +180,9 @@ function DetailRow({ label, value, hint, mono }) {
 function PaymentsContent() {
   const [stats, setStats] = useState(null);
   const [payments, setPayments] = useState(null);
+  const [pagination, setPagination] = useState(null);
   const [error, setError] = useState(null);
+  const [loadingPayments, setLoadingPayments] = useState(false);
   const [method, setMethod] = useState("");
   const [status, setStatus] = useState("");
   const [source, setSource] = useState("");
@@ -191,6 +193,7 @@ function PaymentsContent() {
   const [selectedId, setSelectedId] = useState(null);
   // "" means no month filter (all payments, same as before this was added).
   const [month, setMonth] = useState("");
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQ(q.trim()), 300);
@@ -216,10 +219,29 @@ function PaymentsContent() {
       params.set("to", to);
     }
     const query = params.toString();
+    const requestId = ++requestIdRef.current;
+    setLoadingPayments(true);
     api
       .get(`/payments${query ? `?${query}` : ""}`)
-      .then((data) => setPayments(data.payments))
-      .catch((err) => setError(err instanceof ApiClientError ? err.message : "Failed to load payments."));
+      .then((data) => {
+        // Guards against a slow earlier request's response landing after a
+        // faster later one's and overwriting it with stale/mismatched rows —
+        // without this, editing the search text again before the first
+        // request finished could leave the table showing results for a
+        // query that's no longer in the box.
+        if (requestId !== requestIdRef.current) return;
+        setPayments(data.payments);
+        setPagination(data.pagination ?? null);
+        setError(null);
+      })
+      .catch((err) => {
+        if (requestId !== requestIdRef.current) return;
+        setError(err instanceof ApiClientError ? err.message : "Failed to load payments.");
+      })
+      .finally(() => {
+        if (requestId !== requestIdRef.current) return;
+        setLoadingPayments(false);
+      });
   }, [method, status, source, debouncedQ, month]);
 
   useEffect(() => {
@@ -304,6 +326,16 @@ function PaymentsContent() {
           />
         </label>
       </Card>
+
+      {loadingPayments && (
+        <p className="mb-3 text-xs font-medium text-brand-charcoal/45">Searching…</p>
+      )}
+
+      {!loadingPayments && pagination && pagination.total > pagination.pageSize && (
+        <p className="mb-3 text-xs font-medium text-brand-charcoal/45">
+          Showing {pagination.pageSize} of {pagination.total} matching payments — narrow your filters to see the rest.
+        </p>
+      )}
 
       <DataTable
         columns={columns}
