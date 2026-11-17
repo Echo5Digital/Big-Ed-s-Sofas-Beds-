@@ -103,7 +103,6 @@ describe("pos.service — cost floor (Purchase Price feature)", () => {
       discount: { mode: "FLAT_CENTS", amountCents: 15000 },
       discountReasonCode: "at_cost_test",
       pinOverride: { approverPin: MANAGER_PIN }, // 30% of subtotal, above the 10% unsupervised ceiling
-      fulfillmentMethod: "IN_STORE",
       performedById: null,
     });
     createdOrderIds.push(result.order.id);
@@ -130,7 +129,6 @@ describe("pos.service — cost floor (Purchase Price feature)", () => {
         discount: { mode: "FLAT_CENTS", amountCents: 25000 },
         discountReasonCode: "below_cost_test",
         pinOverride: { approverPin: MANAGER_PIN }, // 50% of subtotal, above the 10% unsupervised ceiling
-        fulfillmentMethod: "IN_STORE",
         performedById: null,
       })
     ).rejects.toThrow(/below the cost of the items/);
@@ -158,7 +156,6 @@ describe("pos.service — cost floor (Purchase Price feature)", () => {
       discount: { mode: "FLAT_CENTS", amountCents: 49999 },
       discountReasonCode: "unknown_cost_test",
       pinOverride: { approverPin: MANAGER_PIN }, // ~100% of subtotal, above the 10% unsupervised ceiling
-      fulfillmentMethod: "IN_STORE",
       performedById: null,
     });
     createdOrderIds.push(result.order.id);

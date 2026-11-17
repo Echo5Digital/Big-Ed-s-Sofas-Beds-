@@ -152,7 +152,6 @@ async function ringSale({
   discountReasonCode,
   pinOverride,
   salesAttribution,
-  fulfillmentMethod,
   requestedDeliveryAt,
   shippingAddress,
   billingAddress,
@@ -322,12 +321,14 @@ async function ringSale({
       // transaction that creates the order — a half-written order with one
       // address but not the other must never persist. These are always
       // freestanding rows (customerId null), never the customer's saved
-      // address book, since a POS-entered delivery address isn't
-      // necessarily the customer's own (e.g. a gift delivery). Billing is
-      // captured first in the UI; "same as billing" copies it into shipping.
+      // address book, since a POS-captured address isn't necessarily the
+      // customer's own (e.g. a gift). Purely informational — capturing one
+      // doesn't depend on (or imply) any particular fulfillment method.
+      // Billing is captured first in the UI; "same as billing" copies it
+      // into shipping.
       let shippingAddressId = null;
       let billingAddressId = null;
-      if (fulfillmentMethod === "DELIVERY" && billingAddress) {
+      if (billingAddress) {
         const createdBilling = await tx.address.create({
           data: { type: "BILLING", customerId: null, ...billingAddress },
         });
@@ -351,7 +352,7 @@ async function ringSale({
           status: "DRAFT",
           paymentStatus: "UNPAID",
           fulfillmentStatus: "UNALLOCATED",
-          fulfillmentMethod,
+          fulfillmentMethod: "IN_STORE",
           subtotalCents,
           discountCents: discountCents || 0,
           discountPercent,
@@ -487,12 +488,9 @@ async function ringSale({
       const paymentStatus =
         totalTenderedCents >= totalCents ? "PAID" : totalTenderedCents > 0 ? "PARTIALLY_PAID" : "UNPAID";
 
-      // Stock is already reserved+converted (sold) at this point for every
-      // fulfillment method — an IN_STORE sale is handed over immediately
-      // (READY), while PICKUP/DELIVERY still need to be physically handed
-      // off or delivered, so they stay RESERVED rather than falsely
-      // reporting READY before that happens.
-      const fulfillmentStatus = fulfillmentMethod === "IN_STORE" ? "READY" : "RESERVED";
+      // Every POS sale is IN_STORE and stock is already reserved+converted
+      // (sold) at this point, so it's handed over immediately.
+      const fulfillmentStatus = "READY";
 
       const confirmedOrder = await tx.order.update({
         where: { id: order.id },

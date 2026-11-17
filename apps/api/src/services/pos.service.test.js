@@ -138,7 +138,6 @@ describe("pos.service", () => {
       payments: [{ method: "CASH", amountCents: 45000 }],
       discount: { mode: "FLAT_CENTS", amountCents: 5000 },
       discountReasonCode: "manager_price_match",
-      fulfillmentMethod: "IN_STORE",
       performedById: null,
     });
 
@@ -169,7 +168,6 @@ describe("pos.service", () => {
       payments: [{ method: "CASH", amountCents: 45000 }],
       discount: { mode: "PERCENT", percent: 10 },
       discountReasonCode: "loyalty_discount",
-      fulfillmentMethod: "IN_STORE",
       performedById: null,
     });
 
@@ -187,7 +185,6 @@ describe("pos.service", () => {
       lines: [{ variantId: variant.id, quantity: 1 }],
       payments: [{ method: "CASH", amountCents: 45000 }],
       discount: { mode: "FLAT_CENTS", amountCents: 5000 },
-      fulfillmentMethod: "IN_STORE",
     });
     expect(result.success).toBe(false);
   });
@@ -248,8 +245,7 @@ describe("pos.service", () => {
           payments: [{ method: "CASH", amountCents: 35000 }],
           discount: { mode: "PERCENT", percent: 30 },
           discountReasonCode: "too_big",
-          fulfillmentMethod: "IN_STORE",
-          performedById: null,
+              performedById: null,
         })
       ).rejects.toThrow(/require a manager PIN override/);
 
@@ -267,8 +263,7 @@ describe("pos.service", () => {
         discount: { mode: "PERCENT", percent: 30 },
         discountReasonCode: "manager_approved",
         pinOverride: { approverPin: MANAGER_PIN },
-        fulfillmentMethod: "IN_STORE",
-        performedById: null,
+          performedById: null,
       });
 
       expect(result.order.discountApprovedById).toBe(manager.id);
@@ -294,8 +289,7 @@ describe("pos.service", () => {
           discount: { mode: "PERCENT", percent: 30 },
           discountReasonCode: "wrong_pin_attempt",
           pinOverride: { approverPin: "999999" },
-          fulfillmentMethod: "IN_STORE",
-          performedById: manager.id,
+              performedById: manager.id,
         })
       ).rejects.toThrow(/Invalid manager PIN/);
 
@@ -323,8 +317,7 @@ describe("pos.service", () => {
           discount: { mode: "PERCENT", percent: 30 },
           discountReasonCode: "cashier_pin_attempt",
           pinOverride: { approverPin: CASHIER_PIN },
-          fulfillmentMethod: "IN_STORE",
-          performedById: cashierWithPin.id,
+              performedById: cashierWithPin.id,
         })
       ).rejects.toThrow(/Invalid manager PIN/);
 
@@ -348,8 +341,7 @@ describe("pos.service", () => {
           discount: { mode: "PERCENT", percent: 20 },
           discountReasonCode: "manager_approved",
           pinOverride: { approverPin: MANAGER_PIN },
-          fulfillmentMethod: "IN_STORE",
-          performedById: null,
+              performedById: null,
         })
       ).rejects.toThrow(/below the cost of the items/);
 
@@ -370,8 +362,7 @@ describe("pos.service", () => {
         registerSessionId: session.id,
         lines: [{ variantId: variant.id, quantity: 1 }],
         payments: [{ method: "CASH", amountCents: 50000 }],
-        fulfillmentMethod: "IN_STORE",
-        performedById: cashier.id,
+          performedById: cashier.id,
       });
 
       const attributions = await prisma.orderSalesAttribution.findMany({ where: { orderId: result.order.id } });
@@ -403,8 +394,7 @@ describe("pos.service", () => {
           { userId: salesman.id, role: "SALESMAN", percent: 60 },
           { userId: manager2.id, role: "MANAGER", percent: 40 },
         ],
-        fulfillmentMethod: "IN_STORE",
-        performedById: salesman.id,
+          performedById: salesman.id,
       });
 
       const attributions = await prisma.orderSalesAttribution.findMany({
@@ -422,8 +412,8 @@ describe("pos.service", () => {
     });
   });
 
-  describe("fulfillment method and address snapshot", () => {
-    it("persists the requested fulfillmentMethod instead of hardcoding IN_STORE", async () => {
+  describe("address snapshot", () => {
+    it("always rings up a sale as IN_STORE regardless of address capture", async () => {
       await seedStock(5);
       const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
 
@@ -431,17 +421,16 @@ describe("pos.service", () => {
         registerSessionId: session.id,
         lines: [{ variantId: variant.id, quantity: 1 }],
         payments: [{ method: "CASH", amountCents: 50000 }],
-        fulfillmentMethod: "PICKUP",
         performedById: null,
       });
 
-      expect(result.order.fulfillmentMethod).toBe("PICKUP");
-      expect(result.order.fulfillmentStatus).toBe("RESERVED");
+      expect(result.order.fulfillmentMethod).toBe("IN_STORE");
+      expect(result.order.fulfillmentStatus).toBe("READY");
 
       await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 50000 });
     });
 
-    it("creates freestanding billing/shipping Address snapshots for a delivery sale with billingSameAsShipping", async () => {
+    it("creates freestanding billing/shipping Address snapshots when a billing address is captured, with billingSameAsShipping", async () => {
       await seedStock(5);
       const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
 
@@ -452,7 +441,6 @@ describe("pos.service", () => {
         registerSessionId: session.id,
         lines: [{ variantId: variant.id, quantity: 1 }],
         payments: [{ method: "CASH", amountCents: 50000 }],
-        fulfillmentMethod: "DELIVERY",
         billingAddress,
         billingSameAsShipping: true,
         performedById: null,

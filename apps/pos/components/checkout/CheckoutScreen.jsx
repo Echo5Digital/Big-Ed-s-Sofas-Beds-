@@ -28,7 +28,6 @@ export default function CheckoutScreen() {
   const [completedSale, setCompletedSale] = useState(null);
   const [costsByVariantId, setCostsByVariantId] = useState({});
   const [selectedCustomer, setSelectedCustomer] = useState(null);
-  const [fulfillmentMethod, setFulfillmentMethod] = useState("IN_STORE");
   const [requestedDeliveryAt, setRequestedDeliveryAt] = useState("");
   const [salesAttribution, setSalesAttribution] = useState(
     currentUser
@@ -125,10 +124,20 @@ export default function CheckoutScreen() {
   // warning and the authoritative block never disagree about what counts.
   const totalCostCents = cart.reduce((sum, l) => sum + (costsByVariantId[l.variantId] ?? 0) * l.quantity, 0);
 
+  // Address capture is optional — only send it when the cashier actually
+  // typed something in, never the blank EMPTY_ADDRESS object (which would
+  // fail posAddressInputSchema's required-field validation if sent as-is).
+  function filledAddress(address) {
+    return address.line1.trim() && address.city.trim() && address.state.trim() && address.postalCode.trim()
+      ? address
+      : undefined;
+  }
+
   async function handleConfirmPayment({ payments, discount, discountReasonCode, pinOverride }) {
     setError(null);
     setSubmitting(true);
     try {
+      const resolvedBillingAddress = filledAddress(billingAddress);
       const data = await api.post("/pos/sales", {
         registerSessionId: session.id,
         lines: cart.map((l) => ({ variantId: l.variantId, quantity: l.quantity })),
@@ -137,11 +146,10 @@ export default function CheckoutScreen() {
         discountReasonCode,
         pinOverride,
         salesAttribution,
-        fulfillmentMethod,
         requestedDeliveryAt: requestedDeliveryAt ? new Date(requestedDeliveryAt).toISOString() : undefined,
-        billingAddress: fulfillmentMethod === "DELIVERY" ? billingAddress : undefined,
-        shippingAddress: fulfillmentMethod === "DELIVERY" && !billingSameAsShipping ? shippingAddress : undefined,
-        billingSameAsShipping: fulfillmentMethod === "DELIVERY" ? billingSameAsShipping : undefined,
+        billingAddress: resolvedBillingAddress,
+        shippingAddress: resolvedBillingAddress && !billingSameAsShipping ? filledAddress(shippingAddress) : undefined,
+        billingSameAsShipping: resolvedBillingAddress ? billingSameAsShipping : undefined,
         customerId: selectedCustomer?.id,
       });
       setCompletedSale(data);
@@ -149,7 +157,6 @@ export default function CheckoutScreen() {
       setCartOpen(false);
       setCart([]);
       setSelectedCustomer(null);
-      setFulfillmentMethod("IN_STORE");
       setRequestedDeliveryAt("");
       setShippingAddress(EMPTY_ADDRESS);
       setBillingAddress(EMPTY_ADDRESS);
@@ -213,24 +220,20 @@ export default function CheckoutScreen() {
 
         <AttributionPanel attribution={salesAttribution} onChange={setSalesAttribution} />
 
-        {fulfillmentMethod === "DELIVERY" && (
-          <DeliveryAddressPanel
-            shippingAddress={shippingAddress}
-            onShippingChange={setShippingAddress}
-            billingAddress={billingAddress}
-            onBillingChange={setBillingAddress}
-            billingSameAsShipping={billingSameAsShipping}
-            onBillingSameAsShippingChange={setBillingSameAsShipping}
-          />
-        )}
+        <DeliveryAddressPanel
+          shippingAddress={shippingAddress}
+          onShippingChange={setShippingAddress}
+          billingAddress={billingAddress}
+          onBillingChange={setBillingAddress}
+          billingSameAsShipping={billingSameAsShipping}
+          onBillingSameAsShippingChange={setBillingSameAsShipping}
+        />
 
         <CartPanel
           cart={cart}
           onUpdateQuantity={handleUpdateQuantity}
           onRemove={handleRemove}
           onTakePayment={() => setTenderOpen(true)}
-          fulfillmentMethod={fulfillmentMethod}
-          onFulfillmentMethodChange={setFulfillmentMethod}
           requestedDeliveryAt={requestedDeliveryAt}
           onRequestedDeliveryAtChange={setRequestedDeliveryAt}
         />

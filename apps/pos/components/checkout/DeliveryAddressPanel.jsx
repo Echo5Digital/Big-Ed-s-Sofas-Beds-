@@ -1,13 +1,14 @@
 "use client";
 
-import { Truck } from "lucide-react";
+import { MapPin } from "lucide-react";
 import AddressFields from "./AddressFields";
 
-// Only rendered when fulfillmentMethod === "DELIVERY" (CheckoutScreen
-// handles that condition) — in-store pickup/carry-out sales have nothing to
-// ship, so this step is skipped entirely for them. Billing is captured
-// first, then shipping — with a "shipping same as billing" shortcut, since
-// the billing address is usually the one already on file / on the card.
+// Always visible on the checkout sidebar — address capture is purely
+// informational (for the receipt), independent of fulfillment method.
+// Billing is captured first, then shipping — with a "shipping same as
+// billing" shortcut, since the billing address is usually the one already
+// on file / on the card. Both are optional; the server only creates
+// Address snapshot rows when a billing address was actually filled in.
 export default function DeliveryAddressPanel({
   shippingAddress,
   onShippingChange,
@@ -19,8 +20,8 @@ export default function DeliveryAddressPanel({
   return (
     <div className="mb-3 rounded-lg bg-brand-cream/70 p-3">
       <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-brand-charcoal/50">
-        <Truck className="size-3.5" aria-hidden="true" />
-        Delivery address
+        <MapPin className="size-3.5" aria-hidden="true" />
+        Customer address
       </p>
 
       <div className="flex flex-col gap-3">

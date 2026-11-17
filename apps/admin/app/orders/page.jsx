@@ -20,6 +20,11 @@ const FULFILLMENT_TONE = {
 
 const ORDER_STATUSES = ["DRAFT", "CONFIRMED", "CANCELED", "CLOSED"];
 const FULFILLMENT_STATUSES = ["UNALLOCATED", "RESERVED", "READY", "PICKED_UP", "DELIVERED"];
+const CHANNEL_TABS = [
+  { value: "", label: "All" },
+  { value: "POS", label: "POS" },
+  { value: "ONLINE", label: "Online" },
+];
 
 function SelectFilter({ label, value, onChange, options }) {
   return (
@@ -46,17 +51,19 @@ function OrdersContent() {
   const [error, setError] = useState(null);
   const [status, setStatus] = useState("");
   const [fulfillmentStatus, setFulfillmentStatus] = useState("");
+  const [channel, setChannel] = useState("");
 
   const load = useCallback(() => {
     const params = new URLSearchParams();
     if (status) params.set("status", status);
     if (fulfillmentStatus) params.set("fulfillmentStatus", fulfillmentStatus);
+    if (channel) params.set("channel", channel);
     const query = params.toString();
     api
       .get(`/admin/orders${query ? `?${query}` : ""}`)
       .then((data) => setOrders(data.orders))
       .catch((err) => setError(err instanceof ApiClientError ? err.message : "Failed to load orders."));
-  }, [status, fulfillmentStatus]);
+  }, [status, fulfillmentStatus, channel]);
 
   useEffect(() => {
     load();
@@ -101,6 +108,25 @@ function OrdersContent() {
           </div>
         }
       />
+
+      <div role="tablist" aria-label="Order type" className="mb-6 flex gap-1 border-b border-black/10">
+        {CHANNEL_TABS.map(({ value, label }) => (
+          <button
+            key={value || "all"}
+            type="button"
+            role="tab"
+            aria-selected={channel === value}
+            onClick={() => setChannel(value)}
+            className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-brand-red ${
+              channel === value
+                ? "border-brand-red text-brand-red"
+                : "border-transparent text-brand-charcoal/60 hover:text-brand-charcoal"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 

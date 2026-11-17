@@ -210,11 +210,12 @@ router.get(
   requireAuth,
   requirePermission("orders:read"),
   asyncHandler(async (req, res) => {
-    const { status, fulfillmentStatus } = req.query;
+    const { status, fulfillmentStatus, channel } = req.query;
     const orders = await prisma.order.findMany({
       where: {
         ...(status ? { status: String(status) } : {}),
         ...(fulfillmentStatus ? { fulfillmentStatus: String(fulfillmentStatus) } : {}),
+        ...(channel ? { channel: String(channel) } : {}),
       },
       include: { lines: true, customer: true },
       orderBy: { createdAt: "desc" },

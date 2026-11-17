@@ -501,7 +501,6 @@ const posSaleSchema = z
     discountReasonCode: z.string().min(1).max(120).optional(),
     pinOverride: pinOverrideSchema.optional(),
     salesAttribution: z.array(salesAttributionEntrySchema).min(1).max(2).optional(),
-    fulfillmentMethod: z.enum(["PICKUP", "DELIVERY", "IN_STORE"]),
     requestedDeliveryAt: z.coerce.date().optional().nullable(),
     shippingAddress: posAddressInputSchema.optional().nullable(),
     billingAddress: posAddressInputSchema.optional().nullable(),
@@ -533,11 +532,7 @@ const posSaleSchema = z
   .refine(
     (data) => !data.salesAttribution || data.salesAttribution.length !== 1 || data.salesAttribution[0].percent === 100,
     { message: "A single attributed staff member must be credited 100%", path: ["salesAttribution"] }
-  )
-  .refine((data) => data.fulfillmentMethod !== "DELIVERY" || Boolean(data.billingAddress), {
-    message: "billingAddress is required when fulfillmentMethod is DELIVERY",
-    path: ["billingAddress"],
-  });
+  );
 
 const posRefundSchema = z.object({
   registerSessionId: z.string().uuid(),
