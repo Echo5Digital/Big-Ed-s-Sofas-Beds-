@@ -124,6 +124,10 @@ function ReceiptPrintable({ sale }) {
                   <span className="font-semibold tabular-nums">-{formatCents(order.discountCents)}</span>
                 </div>
               )}
+              <div className="flex justify-between">
+                <span className="text-brand-charcoal/70">Tax</span>
+                <span className="font-semibold tabular-nums">{formatCents(order.taxCents)}</span>
+              </div>
               {payments.map((p) => (
                 <div key={p.id} className="flex justify-between">
                   <span className="text-brand-charcoal/70">{TENDER_LABELS[p.method] ?? p.method} received</span>
@@ -219,6 +223,10 @@ export default function ReceiptView({ open, onClose, sale }) {
                   <span>-{formatCents(order.discountCents)}</span>
                 </div>
               )}
+              <div className="flex justify-between">
+                <span>Tax</span>
+                <span>{formatCents(order.taxCents)}</span>
+              </div>
               {payments.map((p) => (
                 <div key={p.id} className="flex justify-between">
                   <span>{TENDER_LABELS[p.method] ?? p.method}</span>

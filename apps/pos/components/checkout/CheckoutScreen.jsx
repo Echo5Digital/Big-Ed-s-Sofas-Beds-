@@ -76,6 +76,7 @@ export default function CheckoutScreen() {
           variantName: row.variantName,
           priceCents: row.priceCents,
           compareAtCents: row.compareAtCents,
+          taxRatePercent: row.taxRatePercent,
           imageUrl: row.imageUrl,
           quantity: 1,
           maxAvailable: row.totalAvailable,
@@ -101,6 +102,13 @@ export default function CheckoutScreen() {
 
   const itemCount = cart.reduce((sum, l) => sum + l.quantity, 0);
   const subtotalCents = cart.reduce((sum, l) => sum + l.priceCents * l.quantity, 0);
+  // No discount has been entered yet at this point in the flow (that only
+  // happens inside TenderModal), so this preview total can just add each
+  // line's tax directly with no discount-proration step.
+  const estimatedTaxCents = cart.reduce(
+    (sum, l) => sum + Math.round((l.priceCents * l.quantity * Number(l.taxRatePercent ?? 0)) / 100),
+    0
+  );
   // Missing entries (cost not loaded yet, or costCents still null for that
   // variant) contribute 0 — same "only warn on a KNOWN loss" rule as the
   // server-side hard floor in pos.service.js's ringSale, so this preview
@@ -179,7 +187,7 @@ export default function CheckoutScreen() {
           {itemCount} item{itemCount === 1 ? "" : "s"}
         </span>
         <span className="flex items-center gap-2 text-sm font-semibold">
-          {formatCents(subtotalCents)}
+          {formatCents(subtotalCents + estimatedTaxCents)}
           <ChevronDown className="size-4 rotate-180" aria-hidden="true" />
         </span>
       </button>
@@ -250,6 +258,7 @@ export default function CheckoutScreen() {
           setError(null);
         }}
         subtotalCents={subtotalCents}
+        cart={cart}
         totalCostCents={totalCostCents}
         customer={selectedCustomer}
         onConfirm={handleConfirmPayment}

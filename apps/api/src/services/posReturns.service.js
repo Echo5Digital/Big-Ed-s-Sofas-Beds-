@@ -1,26 +1,32 @@
 const { prisma } = require("@big-eds/database");
 const { ConflictError, NotFoundError } = require("../lib/errors");
-const { createWithSequentialNumber } = require("../lib/sequentialNumber");
+const { nextSequenceValue } = require("../lib/sequentialNumber");
 const inventoryService = require("./inventory.service");
 const posService = require("./pos.service");
 const storeCreditService = require("./storeCredit.service");
 
 async function nextReturnReceiptNumber(tx) {
-  const count = await tx.returnTransaction.count();
-  return `RTN-${100000 + count + 1}`;
+  const count = await nextSequenceValue("returnTransaction", tx);
+  return `RTN-${100000 + count}`;
 }
 
+// Shared with orders.routes.js and pos.service.js's own nextOrderNumber —
+// every Order, regardless of channel, draws from this one "order" counter
+// so numbers never collide across ONLINE/POS/exchange orders.
 async function nextOrderNumber(tx) {
-  const count = await tx.order.count();
-  return `BE-${100000 + count + 1}`;
+  const count = await nextSequenceValue("order", tx);
+  return `BE-${100000 + count}`;
 }
 
 // Historical snapshot rule (same as OrderLine.unitPriceCents/skuSnapshot):
-// a return's eligible refund is derived from the ORIGINAL sale's price and
-// discount, never recomputed from the current catalog.
+// a return's eligible refund is derived from the ORIGINAL sale's price, tax,
+// and discount, never recomputed from the current catalog or tax rate — a
+// returned item refunds the tax the customer actually paid on it, not
+// whatever the variant's taxRatePercent happens to be today.
 function perUnitRefundCents(orderLine) {
   const discountPerUnit = orderLine.quantity > 0 ? Math.floor(orderLine.discountCents / orderLine.quantity) : 0;
-  return orderLine.unitPriceCents - discountPerUnit;
+  const taxPerUnit = orderLine.quantity > 0 ? Math.floor(orderLine.taxCents / orderLine.quantity) : 0;
+  return orderLine.unitPriceCents - discountPerUnit + taxPerUnit;
 }
 
 const ORDER_DETAIL_INCLUDE = {
@@ -205,106 +211,115 @@ async function createReturn({
   // serialize), then write the ReturnTransaction/ReturnLine header rows and
   // (for an exchange) the replacement Order shell.
   const { returnTransaction, exchangeOrder, lineInputs, totalRefundCents, replacementTotalCents } =
-    await createWithSequentialNumber(() =>
-      prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+    await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
 
-        const orderLineIds = lines.map((l) => l.orderLineId);
-        const returnedByLine = await tx.returnLine.groupBy({
-          by: ["orderLineId"],
-          where: { orderLineId: { in: orderLineIds } },
-          _sum: { quantity: true },
-        });
-        const previouslyReturnedByLineId = new Map(returnedByLine.map((r) => [r.orderLineId, r._sum.quantity || 0]));
+      const orderLineIds = lines.map((l) => l.orderLineId);
+      const returnedByLine = await tx.returnLine.groupBy({
+        by: ["orderLineId"],
+        where: { orderLineId: { in: orderLineIds } },
+        _sum: { quantity: true },
+      });
+      const previouslyReturnedByLineId = new Map(returnedByLine.map((r) => [r.orderLineId, r._sum.quantity || 0]));
 
-        let runningTotalRefundCents = 0;
-        const lineInputs = [];
-        for (const line of lines) {
-          const orderLine = orderLineById.get(line.orderLineId);
-          const previouslyReturnedQty = previouslyReturnedByLineId.get(line.orderLineId) || 0;
-          const eligibleQty = orderLine.quantity - previouslyReturnedQty;
-          if (line.quantity > eligibleQty) {
-            throw new ConflictError(`Return quantity for ${orderLine.skuSnapshot} exceeds the eligible quantity`, {
-              orderLineId: line.orderLineId,
-              eligibleQty,
-              requestedQty: line.quantity,
-            });
-          }
-          const unitRefundCents = perUnitRefundCents(orderLine);
-          runningTotalRefundCents += unitRefundCents * line.quantity;
-          lineInputs.push({ ...line, orderLine, unitRefundCents });
-        }
-
-        let exchangeOrder = null;
-        let replacementTotalCents = 0;
-        if (hasExchange) {
-          replacementTotalCents = exchangeReplacements.reduce(
-            (sum, r) => sum + replacementById.get(r.variantId).priceCents * r.quantity,
-            0
-          );
-
-          const exchangeOrderNumber = await nextOrderNumber(tx);
-          exchangeOrder = await tx.order.create({
-            data: {
-              orderNumber: exchangeOrderNumber,
-              channel: "POS",
-              customerId,
-              status: "DRAFT",
-              paymentStatus: "UNPAID",
-              fulfillmentStatus: "UNALLOCATED",
-              fulfillmentMethod: "IN_STORE",
-              subtotalCents: replacementTotalCents,
-              totalCents: replacementTotalCents,
-              lines: {
-                create: exchangeReplacements.map((r) => {
-                  const variant = replacementById.get(r.variantId);
-                  return {
-                    variantId: variant.id,
-                    skuSnapshot: variant.sku,
-                    nameSnapshot: `${variant.product.name} — ${variant.name}`,
-                    quantity: r.quantity,
-                    unitPriceCents: variant.priceCents,
-                    lineTotalCents: variant.priceCents * r.quantity,
-                  };
-                }),
-              },
-            },
+      let runningTotalRefundCents = 0;
+      const lineInputs = [];
+      for (const line of lines) {
+        const orderLine = orderLineById.get(line.orderLineId);
+        const previouslyReturnedQty = previouslyReturnedByLineId.get(line.orderLineId) || 0;
+        const eligibleQty = orderLine.quantity - previouslyReturnedQty;
+        if (line.quantity > eligibleQty) {
+          throw new ConflictError(`Return quantity for ${orderLine.skuSnapshot} exceeds the eligible quantity`, {
+            orderLineId: line.orderLineId,
+            eligibleQty,
+            requestedQty: line.quantity,
           });
         }
+        const unitRefundCents = perUnitRefundCents(orderLine);
+        runningTotalRefundCents += unitRefundCents * line.quantity;
+        lineInputs.push({ ...line, orderLine, unitRefundCents });
+      }
 
-        const receiptNumber = await nextReturnReceiptNumber(tx);
-        const returnTransaction = await tx.returnTransaction.create({
+      let exchangeOrder = null;
+      let replacementSubtotalCents = 0;
+      let replacementTotalCents = 0;
+      if (hasExchange) {
+        replacementSubtotalCents = exchangeReplacements.reduce(
+          (sum, r) => sum + replacementById.get(r.variantId).priceCents * r.quantity,
+          0
+        );
+        const replacementLineTaxCentsByIndex = exchangeReplacements.map((r) => {
+          const variant = replacementById.get(r.variantId);
+          const lineSubtotalCents = variant.priceCents * r.quantity;
+          return Math.round((lineSubtotalCents * Number(variant.taxRatePercent)) / 100);
+        });
+        const replacementTaxCents = replacementLineTaxCentsByIndex.reduce((sum, t) => sum + t, 0);
+        replacementTotalCents = replacementSubtotalCents + replacementTaxCents;
+
+        const exchangeOrderNumber = await nextOrderNumber(tx);
+        exchangeOrder = await tx.order.create({
           data: {
-            orderId,
-            receiptNumber,
-            registerSessionId,
+            orderNumber: exchangeOrderNumber,
+            channel: "POS",
             customerId,
-            exchangeOrderId: exchangeOrder?.id || null,
-            totalRefundCents: runningTotalRefundCents,
-            performedById,
+            status: "DRAFT",
+            paymentStatus: "UNPAID",
+            fulfillmentStatus: "UNALLOCATED",
+            fulfillmentMethod: "IN_STORE",
+            subtotalCents: replacementSubtotalCents,
+            taxCents: replacementTaxCents,
+            totalCents: replacementTotalCents,
             lines: {
-              create: lineInputs.map((l) => ({
-                orderLineId: l.orderLineId,
-                variantId: l.orderLine.variantId,
-                quantity: l.quantity,
-                unitRefundCents: l.unitRefundCents,
-                condition: l.condition,
-                reasonCode: l.reasonCode,
-                replacementVariantId: l.replacementVariantId || null,
-              })),
+              create: exchangeReplacements.map((r, i) => {
+                const variant = replacementById.get(r.variantId);
+                const thisLineTaxCents = replacementLineTaxCentsByIndex[i];
+                return {
+                  variantId: variant.id,
+                  skuSnapshot: variant.sku,
+                  nameSnapshot: `${variant.product.name} — ${variant.name}`,
+                  quantity: r.quantity,
+                  unitPriceCents: variant.priceCents,
+                  taxCents: thisLineTaxCents,
+                  lineTotalCents: variant.priceCents * r.quantity + thisLineTaxCents,
+                };
+              }),
             },
           },
         });
+      }
 
-        return {
-          returnTransaction,
-          exchangeOrder,
-          lineInputs,
+      const receiptNumber = await nextReturnReceiptNumber(tx);
+      const returnTransaction = await tx.returnTransaction.create({
+        data: {
+          orderId,
+          receiptNumber,
+          registerSessionId,
+          customerId,
+          exchangeOrderId: exchangeOrder?.id || null,
           totalRefundCents: runningTotalRefundCents,
-          replacementTotalCents,
-        };
-      })
-    );
+          performedById,
+          lines: {
+            create: lineInputs.map((l) => ({
+              orderLineId: l.orderLineId,
+              variantId: l.orderLine.variantId,
+              quantity: l.quantity,
+              unitRefundCents: l.unitRefundCents,
+              condition: l.condition,
+              reasonCode: l.reasonCode,
+              replacementVariantId: l.replacementVariantId || null,
+            })),
+          },
+        },
+      });
+
+      return {
+        returnTransaction,
+        exchangeOrder,
+        lineInputs,
+        totalRefundCents: runningTotalRefundCents,
+        replacementTotalCents,
+      };
+    });
 
   // Step 2 (independent calls, each its own transaction): apply the correct
   // inventory movement per line's condition — sellable returns add back to

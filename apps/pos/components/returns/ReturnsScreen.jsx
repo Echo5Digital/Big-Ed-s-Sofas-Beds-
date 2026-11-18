@@ -318,6 +318,7 @@ export default function ReturnsScreen({ open, onClose }) {
           productName: row.productName,
           variantName: row.variantName,
           priceCents: row.priceCents,
+          taxRatePercent: row.taxRatePercent,
           imageUrl: row.imageUrl,
           quantity: 1,
         },
@@ -344,8 +345,18 @@ export default function ReturnsScreen({ open, onClose }) {
       return sum + (line ? line.unitRefundCents * sel.quantity : 0);
     }, 0);
   }, [returnLines, orderData]);
+  // Preview mirror of the server's exchange-order tax calc in
+  // posReturns.service.js (no discount applies to a replacement item, so
+  // this is simpler than the sale-side preview in TenderModal). The server
+  // recomputes this fresh from the DB on submit and is the real source of
+  // truth.
   const replacementTotalCents = useMemo(
-    () => exchangeItems.reduce((sum, i) => sum + i.priceCents * i.quantity, 0),
+    () =>
+      exchangeItems.reduce((sum, i) => {
+        const lineSubtotalCents = i.priceCents * i.quantity;
+        const lineTaxCents = Math.round((lineSubtotalCents * Number(i.taxRatePercent ?? 0)) / 100);
+        return sum + lineSubtotalCents + lineTaxCents;
+      }, 0),
     [exchangeItems]
   );
   const diffCents = replacementTotalCents - eligibleRefundCents;

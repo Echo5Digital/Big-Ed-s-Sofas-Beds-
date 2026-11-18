@@ -280,6 +280,7 @@ function serializeProductMinimal(product) {
       name: v.name,
       priceCents: v.priceCents,
       compareAtCents: v.compareAtCents,
+      taxRatePercent: Number(v.taxRatePercent),
       isActive: v.isActive,
       availability: computeAvailability(v),
     })),

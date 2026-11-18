@@ -22,15 +22,19 @@ function prefixForRoles(roleNames) {
   return null;
 }
 
-// Counts existing ids by prefix (string match) rather than by current role
-// assignment, so the sequence never collides or skips regardless of how many
-// users have since changed roles away from this prefix.
+const { nextSequenceValue } = require("./sequentialNumber");
+
+// Each role prefix has its own counter (key "employeeId:<prefix>") rather
+// than counting existing rows by prefix — a role prefix's highest-issued
+// number can't regress even if a user with that prefix is later deleted or
+// changes roles, the same guarantee count()-by-prefix was going for, but
+// without its read-then-write race.
 async function nextEmployeeId(roleNames, tx) {
   const prefix = prefixForRoles(roleNames);
   if (!prefix) return null;
 
-  const count = await tx.user.count({ where: { employeeId: { startsWith: prefix } } });
-  return `${prefix}${String(count + 1).padStart(3, "0")}`;
+  const count = await nextSequenceValue(`employeeId:${prefix}`, tx);
+  return `${prefix}${String(count).padStart(3, "0")}`;
 }
 
 module.exports = { nextEmployeeId, prefixForRoles };

@@ -376,11 +376,11 @@ export default function CheckoutPage() {
               ))}
             </ul>
             <div className="mt-4 flex items-center justify-between border-t border-brand-charcoal/10 pt-4 text-sm">
-              <span className="text-brand-charcoal/70">Subtotal</span>
+              <span className="text-brand-charcoal/70">Subtotal (tax included)</span>
               <span className="font-semibold text-brand-charcoal">{formatCurrency(cartSubtotal)}</span>
             </div>
             <p className="mt-1 text-xs text-brand-charcoal/50">
-              Delivery fees and tax are confirmed by our team before final payment.
+              Delivery fees are confirmed by our team before final payment.
             </p>
             <button
               type="submit"

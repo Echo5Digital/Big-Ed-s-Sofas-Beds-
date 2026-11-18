@@ -79,14 +79,20 @@ function ReturnReceiptPrintable({ result, cashierName, cashierEmployeeId }) {
             <div className="border-t border-dashed border-black/50" />
             <div className="flex flex-col gap-2 py-3 font-mono text-[11px]">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-black/50">Replacement</p>
-              {exchangeItems.map((item) => (
-                <div key={item.variantId} className="flex justify-between gap-3">
-                  <span className="leading-snug">
-                    <span className="font-semibold">{item.quantity}×</span> {item.productName} — {item.variantName}
-                  </span>
-                  <span className="shrink-0 font-semibold tabular-nums">{formatCents(item.priceCents * item.quantity)}</span>
-                </div>
-              ))}
+              {exchangeItems.map((item) => {
+                const lineSubtotalCents = item.priceCents * item.quantity;
+                const lineTaxCents = Math.round((lineSubtotalCents * Number(item.taxRatePercent ?? 0)) / 100);
+                return (
+                  <div key={item.variantId} className="flex justify-between gap-3">
+                    <span className="leading-snug">
+                      <span className="font-semibold">{item.quantity}×</span> {item.productName} — {item.variantName}
+                    </span>
+                    <span className="shrink-0 font-semibold tabular-nums">
+                      {formatCents(lineSubtotalCents + lineTaxCents)}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </>
         )}

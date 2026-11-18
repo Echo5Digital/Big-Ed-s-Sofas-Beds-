@@ -1180,3 +1180,18 @@ model StatusHistory {
 
   @@index([orderId])
 }
+
+// ---------------------------------------------------------------------------
+// Sequence counters
+// ---------------------------------------------------------------------------
+
+// Backs every human-readable sequential number (order/receipt/PO numbers,
+// employee ids) with a single atomically-incrementable row per sequence,
+// instead of the previous count()+1 pattern — see
+// apps/api/src/lib/sequentialNumber.js for why count()+1 isn't safe under
+// concurrency (two reads of the same count can both "win" and collide on the
+// unique number column) and how `key` values are named per sequence.
+model SequenceCounter {
+  key   String @id
+  value Int    @default(0)
+}

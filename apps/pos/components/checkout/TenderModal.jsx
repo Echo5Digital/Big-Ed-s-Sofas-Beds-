@@ -25,6 +25,7 @@ export default function TenderModal({
   open,
   onClose,
   subtotalCents,
+  cart = [],
   totalCostCents = 0,
   customer,
   onConfirm,
@@ -86,7 +87,28 @@ export default function TenderModal({
     discountMode === "PERCENT"
       ? Math.round((subtotalCents * Number(discountValue || 0)) / 100)
       : Math.round(Number(discountValue || 0) * 100);
-  const totalCents = Math.max(0, subtotalCents - discountCents);
+
+  // Preview mirror of the server's per-line tax calc in pos.service.js: each
+  // line absorbs a share of the discount proportional to its own subtotal
+  // share, then tax applies to what's left of that line. The server is the
+  // real source of truth (recomputed fresh from the DB on submit) — this is
+  // only so the cashier sees, and collects, the same total before
+  // confirming the sale.
+  let allocatedDiscountCents = 0;
+  const taxCents = cart.reduce((sum, line, i) => {
+    const lineSubtotalCents = line.priceCents * line.quantity;
+    const isLastLine = i === cart.length - 1;
+    const lineDiscountCents = isLastLine
+      ? discountCents - allocatedDiscountCents
+      : subtotalCents > 0
+        ? Math.round((discountCents * lineSubtotalCents) / subtotalCents)
+        : 0;
+    allocatedDiscountCents += lineDiscountCents;
+    const taxableCents = lineSubtotalCents - lineDiscountCents;
+    return sum + Math.round((taxableCents * Number(line.taxRatePercent ?? 0)) / 100);
+  }, 0);
+
+  const totalCents = Math.max(0, subtotalCents - discountCents + taxCents);
   const belowCost = totalCostCents > 0 && totalCents < totalCostCents;
   const effectiveDiscountPercent = subtotalCents > 0 ? (discountCents / subtotalCents) * 100 : 0;
   const pinRequired = discountCents > 0 && effectiveDiscountPercent > CASHIER_DISCOUNT_CEILING_PERCENT;
@@ -331,6 +353,20 @@ export default function TenderModal({
 
         <div className="flex flex-col gap-1.5 rounded-lg bg-brand-cream/70 px-3 py-3 text-sm">
           <div className="flex items-center justify-between">
+            <span className="text-brand-charcoal/70">Subtotal</span>
+            <span className="font-semibold tabular-nums text-brand-charcoal">{formatCents(subtotalCents)}</span>
+          </div>
+          {discountCents > 0 && (
+            <div className="flex items-center justify-between">
+              <span className="text-brand-charcoal/70">Discount</span>
+              <span className="font-semibold tabular-nums text-brand-charcoal">-{formatCents(discountCents)}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-brand-charcoal/70">Tax</span>
+            <span className="font-semibold tabular-nums text-brand-charcoal">{formatCents(taxCents)}</span>
+          </div>
+          <div className="flex items-center justify-between border-t border-black/10 pt-1.5">
             <span className="text-brand-charcoal/70">Order total</span>
             <span className="font-semibold tabular-nums text-brand-charcoal">{formatCents(totalCents)}</span>
           </div>

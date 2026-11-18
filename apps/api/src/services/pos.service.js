@@ -1,6 +1,6 @@
 const { prisma } = require("@big-eds/database");
 const { ConflictError, NotFoundError } = require("../lib/errors");
-const { createWithSequentialNumber } = require("../lib/sequentialNumber");
+const { nextSequenceValue } = require("../lib/sequentialNumber");
 const { verifyManagerPin } = require("../lib/posPin");
 const inventoryService = require("./inventory.service");
 const storeCreditService = require("./storeCredit.service");
@@ -13,14 +13,17 @@ const posCustomersService = require("./posCustomers.service");
 // of the subtotal still requires the override.
 const CASHIER_DISCOUNT_CEILING_PERCENT = 10;
 
+// Shared with orders.routes.js and posReturns.service.js's own
+// nextOrderNumber — every Order, regardless of channel, draws from this one
+// "order" counter so numbers never collide across ONLINE/POS/exchange orders.
 async function nextOrderNumber(tx) {
-  const count = await tx.order.count();
-  return `BE-${100000 + count + 1}`;
+  const count = await nextSequenceValue("order", tx);
+  return `BE-${100000 + count}`;
 }
 
 async function nextReceiptNumber(tx) {
-  const count = await tx.receipt.count();
-  return `RCPT-${100000 + count + 1}`;
+  const count = await nextSequenceValue("receipt", tx);
+  return `RCPT-${100000 + count}`;
 }
 
 function serializeSession(session) {
@@ -230,7 +233,33 @@ async function ringSale({
   if (discountCents > subtotalCents) {
     throw new ConflictError("Discount cannot exceed the order subtotal", { subtotalCents, discountCents });
   }
-  const totalCents = subtotalCents - (discountCents || 0);
+
+  // Tax applies per line, at that variant's own flat rate, on the line's
+  // taxable base (its share of the subtotal minus its prorated share of the
+  // order-level discount — POS discounts aren't entered per line, so each
+  // line absorbs a share of the discount proportional to its own subtotal
+  // share before tax is computed on what's left). Remainder cents from
+  // rounding each line's discount share land on the last line, the same
+  // "largest remainder to the last bucket" approach as elsewhere in this
+  // codebase's money math, so the per-line discounts always sum to exactly
+  // discountCents.
+  let allocatedDiscountCents = 0;
+  const lineTaxCentsByIndex = lines.map((l, i) => {
+    const variant = variantById.get(l.variantId);
+    const lineSubtotalCents = variant.priceCents * l.quantity;
+    const isLastLine = i === lines.length - 1;
+    const lineDiscountCents = isLastLine
+      ? discountCents - allocatedDiscountCents
+      : subtotalCents > 0
+        ? Math.round((discountCents * lineSubtotalCents) / subtotalCents)
+        : 0;
+    allocatedDiscountCents += lineDiscountCents;
+    const taxableCents = lineSubtotalCents - lineDiscountCents;
+    return Math.round((taxableCents * Number(variant.taxRatePercent)) / 100);
+  });
+  const taxCents = lineTaxCentsByIndex.reduce((sum, t) => sum + t, 0);
+
+  const totalCents = subtotalCents - (discountCents || 0) + taxCents;
 
   // Hard floor: a discount (or combination of discounted lines) is never
   // allowed to bring the order total below what we paid for the goods in
@@ -315,77 +344,78 @@ async function ringSale({
       ? [{ userId: performedById, role: "SALESMAN", percent: 100 }]
       : [];
 
-  const order = await createWithSequentialNumber(() =>
-    prisma.$transaction(async (tx) => {
-      // Resolve billing/shipping address snapshots inside the same
-      // transaction that creates the order — a half-written order with one
-      // address but not the other must never persist. These are always
-      // freestanding rows (customerId null), never the customer's saved
-      // address book, since a POS-captured address isn't necessarily the
-      // customer's own (e.g. a gift). Purely informational — capturing one
-      // doesn't depend on (or imply) any particular fulfillment method.
-      // Billing is captured first in the UI; "same as billing" copies it
-      // into shipping.
-      let shippingAddressId = null;
-      let billingAddressId = null;
-      if (billingAddress) {
-        const createdBilling = await tx.address.create({
-          data: { type: "BILLING", customerId: null, ...billingAddress },
-        });
-        billingAddressId = createdBilling.id;
-
-        const shippingData = billingSameAsShipping ? billingAddress : shippingAddress;
-        if (shippingData) {
-          const createdShipping = await tx.address.create({
-            data: { type: "SHIPPING", customerId: null, ...shippingData },
-          });
-          shippingAddressId = createdShipping.id;
-        }
-      }
-
-      const orderNumber = await nextOrderNumber(tx);
-      return tx.order.create({
-        data: {
-          orderNumber,
-          channel: "POS",
-          customerId,
-          status: "DRAFT",
-          paymentStatus: "UNPAID",
-          fulfillmentStatus: "UNALLOCATED",
-          fulfillmentMethod: "IN_STORE",
-          subtotalCents,
-          discountCents: discountCents || 0,
-          discountPercent,
-          discountApprovedById,
-          requestedDeliveryAt: requestedDeliveryAt || null,
-          shippingAddressId,
-          billingAddressId,
-          totalCents,
-          lines: {
-            create: lines.map((l) => {
-              const variant = variantById.get(l.variantId);
-              return {
-                variantId: variant.id,
-                skuSnapshot: variant.sku,
-                nameSnapshot: `${variant.product.name} — ${variant.name}`,
-                quantity: l.quantity,
-                unitPriceCents: variant.priceCents,
-                lineTotalCents: variant.priceCents * l.quantity,
-              };
-            }),
-          },
-          salesAttributions: {
-            create: resolvedAttribution.map((a) => ({
-              userId: a.userId,
-              role: a.role,
-              splitPercent: a.percent,
-            })),
-          },
-        },
-        include: { lines: true, customer: true, salesAttributions: true },
+  const order = await prisma.$transaction(async (tx) => {
+    // Resolve billing/shipping address snapshots inside the same
+    // transaction that creates the order — a half-written order with one
+    // address but not the other must never persist. These are always
+    // freestanding rows (customerId null), never the customer's saved
+    // address book, since a POS-captured address isn't necessarily the
+    // customer's own (e.g. a gift). Purely informational — capturing one
+    // doesn't depend on (or imply) any particular fulfillment method.
+    // Billing is captured first in the UI; "same as billing" copies it
+    // into shipping.
+    let shippingAddressId = null;
+    let billingAddressId = null;
+    if (billingAddress) {
+      const createdBilling = await tx.address.create({
+        data: { type: "BILLING", customerId: null, ...billingAddress },
       });
-    })
-  );
+      billingAddressId = createdBilling.id;
+
+      const shippingData = billingSameAsShipping ? billingAddress : shippingAddress;
+      if (shippingData) {
+        const createdShipping = await tx.address.create({
+          data: { type: "SHIPPING", customerId: null, ...shippingData },
+        });
+        shippingAddressId = createdShipping.id;
+      }
+    }
+
+    const orderNumber = await nextOrderNumber(tx);
+    return tx.order.create({
+      data: {
+        orderNumber,
+        channel: "POS",
+        customerId,
+        status: "DRAFT",
+        paymentStatus: "UNPAID",
+        fulfillmentStatus: "UNALLOCATED",
+        fulfillmentMethod: "IN_STORE",
+        subtotalCents,
+        taxCents,
+        discountCents: discountCents || 0,
+        discountPercent,
+        discountApprovedById,
+        requestedDeliveryAt: requestedDeliveryAt || null,
+        shippingAddressId,
+        billingAddressId,
+        totalCents,
+        lines: {
+          create: lines.map((l, i) => {
+            const variant = variantById.get(l.variantId);
+            const thisLineTaxCents = lineTaxCentsByIndex[i];
+            return {
+              variantId: variant.id,
+              skuSnapshot: variant.sku,
+              nameSnapshot: `${variant.product.name} — ${variant.name}`,
+              quantity: l.quantity,
+              unitPriceCents: variant.priceCents,
+              taxCents: thisLineTaxCents,
+              lineTotalCents: variant.priceCents * l.quantity + thisLineTaxCents,
+            };
+          }),
+        },
+        salesAttributions: {
+          create: resolvedAttribution.map((a) => ({
+            userId: a.userId,
+            role: a.role,
+            splitPercent: a.percent,
+          })),
+        },
+      },
+      include: { lines: true, customer: true, salesAttributions: true },
+    });
+  });
 
   // Reserve+convert each line in a single transaction (reserveAndConvertForSale)
   // rather than two separately-committed ones — a POS cashier completes
@@ -475,72 +505,70 @@ async function ringSale({
         })()
       : payments;
 
-  const result = await createWithSequentialNumber(() =>
-    prisma.$transaction(async (tx) => {
-      const createdPayments = await createPaymentEntries(tx, {
-        orderId: order.id,
+  const result = await prisma.$transaction(async (tx) => {
+    const createdPayments = await createPaymentEntries(tx, {
+      orderId: order.id,
+      registerSessionId,
+      payments: appliedPayments,
+      customerId,
+      performedById,
+    });
+
+    const paymentStatus =
+      totalTenderedCents >= totalCents ? "PAID" : totalTenderedCents > 0 ? "PARTIALLY_PAID" : "UNPAID";
+
+    // Every POS sale is IN_STORE and stock is already reserved+converted
+    // (sold) at this point, so it's handed over immediately.
+    const fulfillmentStatus = "READY";
+
+    const confirmedOrder = await tx.order.update({
+      where: { id: order.id },
+      data: {
+        status: "CONFIRMED",
+        fulfillmentStatus,
+        paymentStatus,
+      },
+      include: {
+        lines: true,
+        customer: true,
+        payments: true,
+        salesAttributions: { include: { user: { select: { firstName: true, lastName: true } } } },
+        shippingAddress: true,
+        billingAddress: true,
+      },
+    });
+
+    const receiptNumber = await nextReceiptNumber(tx);
+    const receipt = await tx.receipt.create({
+      data: {
         registerSessionId,
-        payments: appliedPayments,
-        customerId,
-        performedById,
-      });
+        orderId: order.id,
+        receiptNumber,
+      },
+    });
 
-      const paymentStatus =
-        totalTenderedCents >= totalCents ? "PAID" : totalTenderedCents > 0 ? "PARTIALLY_PAID" : "UNPAID";
-
-      // Every POS sale is IN_STORE and stock is already reserved+converted
-      // (sold) at this point, so it's handed over immediately.
-      const fulfillmentStatus = "READY";
-
-      const confirmedOrder = await tx.order.update({
-        where: { id: order.id },
+    if (discountCents > 0) {
+      await tx.auditLog.create({
         data: {
-          status: "CONFIRMED",
-          fulfillmentStatus,
-          paymentStatus,
-        },
-        include: {
-          lines: true,
-          customer: true,
-          payments: true,
-          salesAttributions: { include: { user: { select: { firstName: true, lastName: true } } } },
-          shippingAddress: true,
-          billingAddress: true,
-        },
-      });
-
-      const receiptNumber = await nextReceiptNumber(tx);
-      const receipt = await tx.receipt.create({
-        data: {
-          registerSessionId,
-          orderId: order.id,
-          receiptNumber,
-        },
-      });
-
-      if (discountCents > 0) {
-        await tx.auditLog.create({
-          data: {
-            userId: performedById,
-            action: "pos.sale.discount",
-            entityType: "Order",
-            entityId: order.id,
-            reasonCode: discountReasonCode,
-            metadata: {
-              discountCents,
-              subtotalCents,
-              discountPercent,
-              discountMode: discount?.mode ?? null,
-              approvedByUserId: discountApprovedById,
-              approvedViaPin: Boolean(discountApprovedById),
-            },
+          userId: performedById,
+          action: "pos.sale.discount",
+          entityType: "Order",
+          entityId: order.id,
+          reasonCode: discountReasonCode,
+          metadata: {
+            discountCents,
+            subtotalCents,
+            discountPercent,
+            discountMode: discount?.mode ?? null,
+            approvedByUserId: discountApprovedById,
+            approvedViaPin: Boolean(discountApprovedById),
           },
-        });
-      }
+        },
+      });
+    }
 
-      return { order: confirmedOrder, payments: createdPayments, receipt };
-    })
-  );
+    return { order: confirmedOrder, payments: createdPayments, receipt };
+  });
 
   return {
     order: result.order,

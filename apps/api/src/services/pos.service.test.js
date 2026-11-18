@@ -38,6 +38,11 @@ describe("pos.service", () => {
         sku: `TEST-SOFA-${Date.now()}`,
         name: "Default",
         priceCents: 50000,
+        // Zeroed so every pre-existing total/discount assertion in this file
+        // stays about discount/cost-floor behavior, not tax — tax has its
+        // own dedicated describe block below with its own non-zero-rate
+        // fixture.
+        taxRatePercent: 0,
       },
     });
   });
@@ -347,6 +352,115 @@ describe("pos.service", () => {
 
       await prisma.variant.update({ where: { id: variant.id }, data: { costCents: null } });
       await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
+    });
+  });
+
+  describe("tax", () => {
+    let taxedVariant;
+
+    beforeAll(async () => {
+      taxedVariant = await prisma.variant.create({
+        data: {
+          productId: product.id,
+          sku: `TEST-SOFA-TAX-${Date.now()}`,
+          name: "Taxed",
+          priceCents: 50000,
+          taxRatePercent: 8.25,
+        },
+      });
+    });
+
+    afterAll(async () => {
+      const orders = await prisma.order.findMany({ where: { lines: { some: { variantId: taxedVariant.id } } } });
+      for (const order of orders) {
+        await prisma.payment.deleteMany({ where: { orderId: order.id } });
+        await prisma.orderLine.deleteMany({ where: { orderId: order.id } });
+        await prisma.orderSalesAttribution.deleteMany({ where: { orderId: order.id } });
+        await prisma.order.delete({ where: { id: order.id } });
+      }
+      await prisma.stockMovement.deleteMany({ where: { variantId: taxedVariant.id } });
+      await prisma.reservation.deleteMany({ where: { variantId: taxedVariant.id } });
+      await prisma.stockBalance.deleteMany({ where: { variantId: taxedVariant.id } });
+      await prisma.variant.delete({ where: { id: taxedVariant.id } });
+    });
+
+    async function seedTaxedStock(quantity) {
+      await prisma.stockBalance.upsert({
+        where: { variantId_locationId: { variantId: taxedVariant.id, locationId: location.id } },
+        update: { onHand: quantity, reserved: 0 },
+        create: { variantId: taxedVariant.id, locationId: location.id, onHand: quantity },
+      });
+    }
+
+    it("charges the variant's flat tax rate on top of the subtotal, with no discount", async () => {
+      await seedTaxedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      // 50000 * 8.25% = 4125 tax -> 54125 total.
+      const result = await posService.ringSale({
+        registerSessionId: session.id,
+        lines: [{ variantId: taxedVariant.id, quantity: 1 }],
+        payments: [{ method: "CASH", amountCents: 54125 }],
+        performedById: null,
+      });
+
+      expect(result.order.subtotalCents).toBe(50000);
+      expect(result.order.taxCents).toBe(4125);
+      expect(result.order.totalCents).toBe(54125);
+      expect(result.order.lines[0].taxCents).toBe(4125);
+      expect(result.order.lines[0].lineTotalCents).toBe(54125);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 54125 });
+    });
+
+    it("computes tax on the discounted (post-discount) amount, not the pre-discount subtotal", async () => {
+      await seedTaxedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      // 50000 subtotal, 10% discount = 5000 -> taxable 45000, tax = 45000 *
+      // 8.25% = 3712.5 -> rounds to 3713. Total = 50000 - 5000 + 3713 = 48713.
+      const result = await posService.ringSale({
+        registerSessionId: session.id,
+        lines: [{ variantId: taxedVariant.id, quantity: 1 }],
+        payments: [{ method: "CASH", amountCents: 48713 }],
+        discount: { mode: "PERCENT", percent: 10 },
+        discountReasonCode: "loyalty_discount",
+        performedById: null,
+      });
+
+      expect(result.order.discountCents).toBe(5000);
+      expect(result.order.taxCents).toBe(3713);
+      expect(result.order.totalCents).toBe(48713);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 48713 });
+    });
+
+    it("prorates discount across lines by subtotal share before computing each line's tax", async () => {
+      await seedTaxedStock(5);
+      await seedStock(5); // the zero-tax fixture variant, for a mixed-rate cart
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      // Line A (taxed): 50000 @ 8.25%. Line B (zero-tax fixture): 50000 @ 0%.
+      // Subtotal 100000, flat $100 discount -> 50/50 split by subtotal share
+      // -> each line absorbs 5000 discount. Line A taxable 45000 -> tax 3713
+      // (rounds from 3712.5). Line B taxable 45000 @ 0% -> tax 0.
+      // Total = 100000 - 10000 + 3713 = 93713.
+      const result = await posService.ringSale({
+        registerSessionId: session.id,
+        lines: [
+          { variantId: taxedVariant.id, quantity: 1 },
+          { variantId: variant.id, quantity: 1 },
+        ],
+        payments: [{ method: "CASH", amountCents: 93713 }],
+        discount: { mode: "FLAT_CENTS", amountCents: 10000 },
+        discountReasonCode: "manager_price_match",
+        performedById: null,
+      });
+
+      expect(result.order.taxCents).toBe(3713);
+      expect(result.order.totalCents).toBe(93713);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 93713 });
     });
   });
 

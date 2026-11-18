@@ -1,3 +1,5 @@
+import { priceWithTax } from "./tax";
+
 // Adapts live API catalog data (multi-variant, integer-cents) into the flat,
 // dollar-based shape the existing presentational components (ProductCard,
 // Price, the product detail page) were built against for the mock data, so
@@ -18,8 +20,12 @@ export function normalizeProductForCard(product) {
     // product has more than one photo — null if it only has one, so callers
     // can just check truthiness rather than comparing against `image`.
     secondImage: product.images?.[1]?.url ?? null,
-    price: variant ? variant.priceCents / 100 : 0,
-    compareAtPrice: variant?.compareAtCents ? variant.compareAtCents / 100 : null,
+    // Tax-inclusive — matches what checkout/POS actually charges. See
+    // lib/api/tax.js.
+    price: variant ? priceWithTax(variant.priceCents, variant.taxRatePercent) : 0,
+    compareAtPrice: variant?.compareAtCents
+      ? priceWithTax(variant.compareAtCents, variant.taxRatePercent)
+      : null,
     category: product.category?.slug ?? null,
     // Every category id this product belongs to — its primary category plus
     // any secondary ProductCategory tags (see schema.prisma) — used by the

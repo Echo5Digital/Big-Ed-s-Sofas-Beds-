@@ -24,6 +24,7 @@ function flattenVariants(products) {
         variantName: variant.name,
         priceCents: variant.priceCents,
         compareAtCents: variant.compareAtCents,
+        taxRatePercent: variant.taxRatePercent,
         imageUrl: product.imageUrl,
         locations: variant.availability.byLocation.filter((l) => l.availableToSell > 0),
         totalAvailable: variant.availability.totalAvailable,

@@ -8,13 +8,16 @@ const { NotFoundError, ConflictError } = require("../lib/errors");
 const inventoryService = require("../services/inventory.service");
 const { saveCheckoutDeliveryAddress } = require("../services/orders.service");
 const { stripe } = require("../lib/stripe");
-const { createWithSequentialNumber } = require("../lib/sequentialNumber");
+const { nextSequenceValue } = require("../lib/sequentialNumber");
 
 const router = express.Router();
 
-async function nextOrderNumber() {
-  const count = await prisma.order.count();
-  return `BE-${100000 + count + 1}`;
+// Shared with pos.service.js and posReturns.service.js's own nextOrderNumber
+// — every Order, regardless of channel, draws from this one "order" counter
+// so numbers never collide across ONLINE/POS/exchange orders.
+async function nextOrderNumber(db) {
+  const count = await nextSequenceValue("order", db);
+  return `BE-${100000 + count}`;
 }
 
 function serializeOrder(order) {
@@ -39,6 +42,7 @@ function serializeOrder(order) {
       name: l.nameSnapshot,
       quantity: l.quantity,
       unitPriceCents: l.unitPriceCents,
+      taxCents: l.taxCents,
       lineTotalCents: l.lineTotalCents,
     })),
     createdAt: order.createdAt,
@@ -83,11 +87,25 @@ router.post(
 
     const subtotalCents = lines.reduce((sum, l) => sum + variantById.get(l.variantId).priceCents * l.quantity, 0);
 
+    // Tax is charged per line at that variant's own flat rate (captured by
+    // staff on the product as e.g. 8.25%) rather than one rate for the whole
+    // order, since different variants are allowed different taxRatePercent
+    // values. Rounded per line, then summed, rather than rounding once on
+    // the order total — matches how a receipt itemizes tax per line. Indexed
+    // by position (not variantId) since the same variant can appear as two
+    // separate cart lines.
+    const lineTaxCentsByIndex = lines.map((l) => {
+      const variant = variantById.get(l.variantId);
+      const lineSubtotalCents = variant.priceCents * l.quantity;
+      return Math.round((lineSubtotalCents * Number(variant.taxRatePercent)) / 100);
+    });
+    const taxCents = lineTaxCentsByIndex.reduce((sum, t) => sum + t, 0);
+
     const deliveryAddressRecord = await saveCheckoutDeliveryAddress(customer.id, deliveryAddress);
 
-    const order = await createWithSequentialNumber(async () => {
-      const orderNumber = await nextOrderNumber();
-      return prisma.order.create({
+    const order = await prisma.$transaction(async (tx) => {
+      const orderNumber = await nextOrderNumber(tx);
+      return tx.order.create({
         data: {
           orderNumber,
           channel: "ONLINE",
@@ -97,18 +115,21 @@ router.post(
           fulfillmentStatus: "UNALLOCATED",
           fulfillmentMethod,
           subtotalCents,
-          totalCents: subtotalCents,
+          taxCents,
+          totalCents: subtotalCents + taxCents,
           ...(deliveryAddressRecord ? { deliveryAddressId: deliveryAddressRecord.id } : {}),
           lines: {
-            create: lines.map((l) => {
+            create: lines.map((l, i) => {
               const variant = variantById.get(l.variantId);
+              const thisLineTaxCents = lineTaxCentsByIndex[i];
               return {
                 variantId: variant.id,
                 skuSnapshot: variant.sku,
                 nameSnapshot: `${variant.product.name} — ${variant.name}`,
                 quantity: l.quantity,
                 unitPriceCents: variant.priceCents,
-                lineTotalCents: variant.priceCents * l.quantity,
+                taxCents: thisLineTaxCents,
+                lineTotalCents: variant.priceCents * l.quantity + thisLineTaxCents,
               };
             }),
           },

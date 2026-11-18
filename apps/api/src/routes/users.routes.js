@@ -12,7 +12,6 @@ const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
 const { NotFoundError, ConflictError } = require("../lib/errors");
 const { listRegisteredCustomers, deleteRegisteredCustomer } = require("../services/customers.service");
-const { createWithSequentialNumber } = require("../lib/sequentialNumber");
 const { nextEmployeeId, prefixForRoles } = require("../lib/employeeId");
 const { hashPin } = require("../lib/posPin");
 
@@ -131,16 +130,14 @@ router.post(
 
     const passwordHash = await bcrypt.hash(password, 12);
 
-    const user = await createWithSequentialNumber(() =>
-      prisma.$transaction(async (tx) => {
-        const employeeId = await nextEmployeeId(roleNames, tx);
-        const created = await tx.user.create({
-          data: { email, passwordHash, firstName, lastName, employeeId },
-        });
-        await setUserRoles(tx, created.id, roleNames);
-        return tx.user.findUnique({ where: { id: created.id }, include: ROLE_INCLUDE });
-      })
-    );
+    const user = await prisma.$transaction(async (tx) => {
+      const employeeId = await nextEmployeeId(roleNames, tx);
+      const created = await tx.user.create({
+        data: { email, passwordHash, firstName, lastName, employeeId },
+      });
+      await setUserRoles(tx, created.id, roleNames);
+      return tx.user.findUnique({ where: { id: created.id }, include: ROLE_INCLUDE });
+    });
 
     await prisma.auditLog.create({
       data: {
@@ -218,13 +215,11 @@ router.patch(
     const currentPrefix = target.employeeId ? target.employeeId.slice(0, 3) : null;
     const nextPrefix = prefixForRoles(roleNames);
 
-    const user = await createWithSequentialNumber(() =>
-      prisma.$transaction(async (tx) => {
-        const employeeId = nextPrefix === currentPrefix ? target.employeeId : await nextEmployeeId(roleNames, tx);
-        await setUserRoles(tx, req.params.id, roleNames);
-        return tx.user.update({ where: { id: req.params.id }, data: { employeeId }, include: ROLE_INCLUDE });
-      })
-    );
+    const user = await prisma.$transaction(async (tx) => {
+      const employeeId = nextPrefix === currentPrefix ? target.employeeId : await nextEmployeeId(roleNames, tx);
+      await setUserRoles(tx, req.params.id, roleNames);
+      return tx.user.update({ where: { id: req.params.id }, data: { employeeId }, include: ROLE_INCLUDE });
+    });
 
     await prisma.auditLog.create({
       data: {

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Minus, Plus, ShoppingCart, Check, Truck, Store } from "lucide-react";
 import { stripInlineMarkdown } from "@big-eds/ui";
 import { useDemoCart } from "@/components/layout/DemoCartProvider";
+import { priceWithTax } from "@/lib/api/tax";
 
 export default function ProductPurchasePanel({ product }) {
   const { addToCart, cartItems } = useDemoCart();
@@ -33,8 +34,10 @@ export default function ProductPurchasePanel({ product }) {
         slug: product.slug,
         name: `${stripInlineMarkdown(product.name)} — ${selectedVariant.name}`,
         image: product.images[0]?.url ?? null,
-        price: selectedVariant.priceCents / 100,
-        compareAtPrice: selectedVariant.compareAtCents ? selectedVariant.compareAtCents / 100 : null,
+        price: priceWithTax(selectedVariant.priceCents, selectedVariant.taxRatePercent),
+        compareAtPrice: selectedVariant.compareAtCents
+          ? priceWithTax(selectedVariant.compareAtCents, selectedVariant.taxRatePercent)
+          : null,
       },
       quantity
     );

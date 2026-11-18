@@ -1,33 +1,22 @@
-// Human-readable sequence numbers (order/PO/receipt numbers) are generated
-// as count()+1, which is not atomic — two concurrent creates can read the
-// same count and collide on the unique number column. Rather than serialize
-// all creates behind a lock (which would throttle unrelated concurrent
-// sales/orders), retry the whole generate-and-create step on exactly that
-// collision: the retry re-reads a fresh count, so it converges quickly
-// without blocking anything that isn't actually colliding.
-//
-// Was 5 — observed exhausting all 5 attempts in the test suite (real
-// contention against the remote dev Postgres instance, not test-only
-// pollution: reproduced on an otherwise-clean, gap-free order sequence) once
-// several orders got created back-to-back. 15 gives real collisions enough
-// room to converge without materially slowing down the rare case that
-// actually needs more than one attempt.
-const MAX_ATTEMPTS = 15;
+const { prisma } = require("@big-eds/database");
 
-async function createWithSequentialNumber(createFn) {
-  let lastError;
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    try {
-      return await createFn();
-    } catch (err) {
-      if (err?.code === "P2002") {
-        lastError = err;
-        continue;
-      }
-      throw err;
-    }
-  }
-  throw lastError;
+// Atomically increments and returns the next value for a named sequence,
+// backed by the SequenceCounter table (one row per sequence key). INSERT ...
+// ON CONFLICT DO UPDATE ... RETURNING is a single statement as far as
+// Postgres is concerned — it takes the row lock, creates the row on first
+// use or increments it on every use after, and returns the new value, all
+// atomically. Two concurrent calls for the same key serialize on that row
+// lock and each get a distinct value; neither can read-then-write a stale
+// count the way the old count()+1 approach could. Pass `tx` to participate
+// in a caller's existing transaction; omit it to run standalone.
+async function nextSequenceValue(key, db = prisma) {
+  const [row] = await db.$queryRaw`
+    INSERT INTO "SequenceCounter" ("key", "value")
+    VALUES (${key}, 1)
+    ON CONFLICT ("key") DO UPDATE SET "value" = "SequenceCounter"."value" + 1
+    RETURNING "value"
+  `;
+  return row.value;
 }
 
-module.exports = { createWithSequentialNumber };
+module.exports = { nextSequenceValue };

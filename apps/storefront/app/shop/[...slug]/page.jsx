@@ -19,6 +19,7 @@ import FrequentlyBoughtTogether from "@/components/products/FrequentlyBoughtToge
 import ReviewsSection from "@/components/products/ReviewsSection";
 import { getCategories, getAllProducts, getProductBySlug, getProducts } from "@/lib/api/catalog";
 import { normalizeProductForCard } from "@/lib/api/normalize";
+import { priceWithTax } from "@/lib/api/tax";
 import {
   homepageDisplayRating,
   homepageDisplayReviewCount,
@@ -342,8 +343,12 @@ async function ProductDetailPage({ product }) {
               instead of those signals being loose rows down the page. */}
           <div className="flex flex-col gap-4 rounded-2xl border border-brand-charcoal/10 bg-white p-5 shadow-sm">
             <Price
-              price={defaultVariant ? defaultVariant.priceCents / 100 : 0}
-              compareAtPrice={defaultVariant?.compareAtCents ? defaultVariant.compareAtCents / 100 : null}
+              price={defaultVariant ? priceWithTax(defaultVariant.priceCents, defaultVariant.taxRatePercent) : 0}
+              compareAtPrice={
+                defaultVariant?.compareAtCents
+                  ? priceWithTax(defaultVariant.compareAtCents, defaultVariant.taxRatePercent)
+                  : null
+              }
               size="lg"
               showDiscount
             />

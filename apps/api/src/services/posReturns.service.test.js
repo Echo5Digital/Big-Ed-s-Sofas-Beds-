@@ -24,11 +24,14 @@ describe("posReturns.service", () => {
     product = await prisma.product.create({
       data: { name: "Returns Test Sofa", slug: `returns-test-sofa-${Date.now()}`, status: "ACTIVE", categoryId: category.id },
     });
+    // Zeroed so every pre-existing refund/exchange assertion in this file
+    // stays about discount/exchange-balance behavior, not tax — tax has its
+    // own dedicated describe block below with its own non-zero-rate fixture.
     variant = await prisma.variant.create({
-      data: { productId: product.id, sku: `RETURNS-TEST-${Date.now()}`, name: "Default", priceCents: 40000 },
+      data: { productId: product.id, sku: `RETURNS-TEST-${Date.now()}`, name: "Default", priceCents: 40000, taxRatePercent: 0 },
     });
     replacementVariant = await prisma.variant.create({
-      data: { productId: product.id, sku: `RETURNS-REPLACEMENT-${Date.now()}`, name: "Premium", priceCents: 50000 },
+      data: { productId: product.id, sku: `RETURNS-REPLACEMENT-${Date.now()}`, name: "Premium", priceCents: 50000, taxRatePercent: 0 },
     });
     customer = await prisma.customer.create({
       data: { firstName: "Returns", lastName: "Test Customer", phone: `555-${Date.now().toString().slice(-7)}` },
@@ -352,5 +355,90 @@ describe("posReturns.service", () => {
         performedById: null,
       })
     ).rejects.toThrow(/Balance due was not fully collected/);
+  });
+
+  describe("tax", () => {
+    let taxedVariant; // priceCents 40000, taxRatePercent 8.25
+
+    beforeAll(async () => {
+      taxedVariant = await prisma.variant.create({
+        data: {
+          productId: product.id,
+          sku: `RETURNS-TAX-${Date.now()}`,
+          name: "Taxed",
+          priceCents: 40000,
+          taxRatePercent: 8.25,
+        },
+      });
+    });
+
+    afterAll(async () => {
+      const orders = await prisma.order.findMany({ where: { lines: { some: { variantId: taxedVariant.id } } } });
+      const orderIds = orders.map((o) => o.id);
+      // ReturnTransaction.orderId is Restrict (blocks deleting the original
+      // sale order while a return references it) — must go before the order
+      // delete below, same as the outer suite's own afterAll.
+      await prisma.returnLine.deleteMany({ where: { variantId: taxedVariant.id } });
+      await prisma.returnTransaction.deleteMany({ where: { orderId: { in: orderIds } } });
+      for (const order of orders) {
+        await prisma.refund.deleteMany({ where: { orderId: order.id } });
+        await prisma.payment.deleteMany({ where: { orderId: order.id } });
+        await prisma.orderLine.deleteMany({ where: { orderId: order.id } });
+        await prisma.order.delete({ where: { id: order.id } }).catch(() => {});
+      }
+      await prisma.stockMovement.deleteMany({ where: { variantId: taxedVariant.id } });
+      await prisma.reservation.deleteMany({ where: { variantId: taxedVariant.id } });
+      await prisma.stockBalance.deleteMany({ where: { variantId: taxedVariant.id } });
+      await prisma.variant.delete({ where: { id: taxedVariant.id } });
+    });
+
+    async function ringTaxedSale({ quantity = 1 } = {}) {
+      await seedStock(taxedVariant, 10);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+      // 40000 * 8.25% = 3300 tax per unit -> 43300 per unit total.
+      const sale = await posService.ringSale({
+        registerSessionId: session.id,
+        lines: [{ variantId: taxedVariant.id, quantity }],
+        payments: [{ method: "CASH", amountCents: 43300 * quantity }],
+        performedById: null,
+      });
+      return { session, sale };
+    }
+
+    it("refunds the tax paid on a line along with its price, not just the pre-tax price", async () => {
+      const { session, sale } = await ringTaxedSale();
+      expect(sale.order.lines[0].taxCents).toBe(3300);
+
+      const result = await posReturnsService.createReturn({
+        orderId: sale.order.id,
+        registerSessionId: session.id,
+        lines: [{ orderLineId: sale.order.lines[0].id, quantity: 1, condition: "SELLABLE", reasonCode: "OTHER" }],
+        refundMethod: "CASH",
+        performedById: null,
+      });
+
+      // 40000 price + 3300 tax = 43300 refunded, matching what was charged.
+      expect(result.refundRecord.amountCents).toBe(43300);
+    });
+
+    it("exchange replacement order is priced tax-inclusive, matching what createReturn charges/refunds", async () => {
+      await seedStock(taxedVariant, 10);
+      const { session, sale } = await ringTaxedSale({ quantity: 1 });
+
+      const result = await posReturnsService.createReturn({
+        orderId: sale.order.id,
+        registerSessionId: session.id,
+        lines: [{ orderLineId: sale.order.lines[0].id, quantity: 1, condition: "SELLABLE", reasonCode: "OTHER" }],
+        exchangeReplacements: [{ variantId: taxedVariant.id, quantity: 1 }],
+        performedById: null,
+      });
+
+      // Identical variant in and out (same price, same tax) -> no balance due.
+      expect(result.exchangeOrder.subtotalCents).toBe(40000);
+      expect(result.exchangeOrder.taxCents).toBe(3300);
+      expect(result.exchangeOrder.totalCents).toBe(43300);
+      expect(result.balanceDueCents).toBe(0);
+      expect(result.refundRecord).toBeNull();
+    });
   });
 });

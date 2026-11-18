@@ -100,11 +100,11 @@ export default function CartPage() {
             <div className="h-fit rounded-xl border border-brand-charcoal/10 bg-white p-5">
               <h2 className="font-display text-lg font-semibold text-brand-charcoal">Order Summary</h2>
               <div className="mt-4 flex items-center justify-between text-sm text-brand-charcoal/70">
-                <span>Subtotal</span>
+                <span>Subtotal (tax included)</span>
                 <span className="font-semibold text-brand-charcoal">{formatCurrency(cartSubtotal)}</span>
               </div>
               <p className="mt-1 text-xs text-brand-charcoal/50">
-                Delivery fees, pickup scheduling and tax are calculated at checkout.
+                Delivery fees and pickup scheduling are calculated at checkout.
               </p>
               <Button href="/checkout" variant="primary" size="lg" icon={ArrowRight} className="mt-5 w-full">
                 Proceed to Checkout

@@ -13,7 +13,7 @@ const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
 const { NotFoundError, ConflictError } = require("../lib/errors");
-const { createWithSequentialNumber } = require("../lib/sequentialNumber");
+const { nextSequenceValue } = require("../lib/sequentialNumber");
 const purchasingService = require("../services/purchasing.service");
 
 const router = express.Router();
@@ -53,9 +53,9 @@ router.patch(
 
 // --- Purchase Orders -----------------------------------------------------
 
-async function nextPoNumber() {
-  const count = await prisma.purchaseOrder.count();
-  return `PO-${1000 + count + 1}`;
+async function nextPoNumber(db) {
+  const count = await nextSequenceValue("purchaseOrder", db);
+  return `PO-${1000 + count}`;
 }
 
 function serializePO(po) {
@@ -135,9 +135,9 @@ router.post(
     });
     const variantById = new Map(variants.map((v) => [v.id, v]));
 
-    const po = await createWithSequentialNumber(async () => {
-      const poNumber = await nextPoNumber();
-      return prisma.purchaseOrder.create({
+    const po = await prisma.$transaction(async (tx) => {
+      const poNumber = await nextPoNumber(tx);
+      return tx.purchaseOrder.create({
         data: {
           poNumber,
           status: "DRAFT",

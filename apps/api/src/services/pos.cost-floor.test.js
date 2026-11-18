@@ -4,16 +4,14 @@ const posService = require("./pos.service");
 // Kept in its own file, separate from pos.service.test.js, rather than as a
 // nested describe there: adding these 3 order-creating tests into that
 // already order-heavy file was observed to reliably trigger a P2002
-// (orderNumber unique constraint) collision a few tests later, exhausting
-// createWithSequentialNumber's retry budget (see lib/sequentialNumber.js) —
-// reproducible on the combined file, but NOT reproducible running either
-// the original file alone or these 3 tests' ringSale calls in a standalone
-// script outside Vitest. The real cause is specific to this Vitest
-// project's test-file volume/scheduling, not a bug in ringSale's cost-floor
-// logic itself (confirmed correct via the standalone repro) — splitting
-// into a second file sidesteps it without touching the proven-stable
-// original file. vitest.config.mjs's fileParallelism:false still guarantees
-// this file and pos.service.test.js never run concurrently with each other.
+// (orderNumber unique constraint) collision a few tests later. That was
+// order numbering's old count()+1 scheme racing itself under this dev DB's
+// multi-second query latency — fixed at the root by nextSequenceValue's
+// atomic counter row (see lib/sequentialNumber.js), so the collision itself
+// shouldn't recur. Left split across two files anyway since there's no
+// reason to re-merge a proven-stable split. vitest.config.mjs's
+// fileParallelism:false still guarantees this file and pos.service.test.js
+// never run concurrently with each other.
 describe("pos.service — cost floor (Purchase Price feature)", () => {
   let location;
   let register;
@@ -51,9 +49,17 @@ describe("pos.service — cost floor (Purchase Price feature)", () => {
       data: { name: "Cost Floor Test Product", slug: `cost-floor-test-${Date.now()}`, status: "ACTIVE" },
     });
     // costCents: null on purpose — exercises the "unknown cost never blocks
-    // a sale" rule in ringSale (pos.service.js).
+    // a sale" rule in ringSale (pos.service.js). taxRatePercent: 0 so this
+    // file's hardcoded amountCents figures stay about cost-floor behavior,
+    // not tax (tax has its own dedicated coverage in pos.service.test.js).
     variant = await prisma.variant.create({
-      data: { productId: product.id, sku: `COST-FLOOR-NULL-${Date.now()}`, name: "Default", priceCents: 50000 },
+      data: {
+        productId: product.id,
+        sku: `COST-FLOOR-NULL-${Date.now()}`,
+        name: "Default",
+        priceCents: 50000,
+        taxRatePercent: 0,
+      },
     });
     await prisma.stockBalance.create({ data: { variantId: variant.id, locationId: location.id, onHand: 5 } });
 
@@ -64,6 +70,7 @@ describe("pos.service — cost floor (Purchase Price feature)", () => {
         name: "Cost Floor Test",
         priceCents: 50000,
         costCents: 30000,
+        taxRatePercent: 0,
       },
     });
     await prisma.stockBalance.create({ data: { variantId: costedVariant.id, locationId: location.id, onHand: 10 } });
