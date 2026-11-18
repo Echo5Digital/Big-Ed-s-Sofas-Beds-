@@ -1,18 +1,21 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
-import { Banknote, CreditCard, HandCoins, Landmark, Gift, AlertTriangle, Plus, X } from "lucide-react";
-import { api } from "@/lib/api/client";
+import { useState, useMemo } from "react";
+import { Banknote, CreditCard, HandCoins, AlertTriangle, Plus, X } from "lucide-react";
 import { formatCents } from "@/lib/format";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
 
+// Only these three tenders are offered — Bank Transfer and Store Credit are
+// deliberately not in this list (a prior iteration had them; both worked,
+// but the business only wants Cash/Card/Deposit at the register). Card stays
+// listed but disabled: no payment processor/terminal has been selected yet
+// (see docs/requirements/open-questions.md), so it shows a "not available
+// yet" notice rather than accepting a tender it can't actually process.
 const TENDERS = [
   { key: "CASH", label: "Cash", icon: Banknote },
-  { key: "DEPOSIT", label: "Deposit", icon: HandCoins },
-  { key: "BANK_TRANSFER", label: "Bank transfer", icon: Landmark },
-  { key: "STORE_CREDIT", label: "Store credit", icon: Gift },
   { key: "CARD", label: "Card (terminal)", icon: CreditCard },
+  { key: "DEPOSIT", label: "Deposit", icon: HandCoins },
 ];
 
 // Discounts above this percent of subtotal need a manager/admin PIN —
@@ -27,7 +30,6 @@ export default function TenderModal({
   subtotalCents,
   cart = [],
   totalCostCents = 0,
-  customer,
   onConfirm,
   submitting,
   error,
@@ -35,12 +37,10 @@ export default function TenderModal({
   const [entries, setEntries] = useState([]);
   const [method, setMethod] = useState("CASH");
   const [amount, setAmount] = useState("");
-  const [reference, setReference] = useState("");
   const [discountMode, setDiscountMode] = useState("PERCENT");
   const [discountValue, setDiscountValue] = useState("");
   const [discountReasonCode, setDiscountReasonCode] = useState("");
   const [approverPin, setApproverPin] = useState("");
-  const [storeCreditBalanceCents, setStoreCreditBalanceCents] = useState(null);
 
   // Reset the form the moment `open` flips to false — covers both an
   // explicit cancel (handleClose below) and the parent closing this modal
@@ -54,7 +54,6 @@ export default function TenderModal({
     if (!open) {
       setEntries([]);
       setAmount("");
-      setReference("");
       setDiscountMode("PERCENT");
       setDiscountValue("");
       setDiscountReasonCode("");
@@ -67,22 +66,6 @@ export default function TenderModal({
     onClose();
   }
 
-  useEffect(() => {
-    if (!open || !customer?.id) return;
-    let cancelled = false;
-    api
-      .get(`/pos/customers/${customer.id}/store-credit`)
-      .then((data) => {
-        if (!cancelled) setStoreCreditBalanceCents(data.balanceCents);
-      })
-      .catch(() => {
-        if (!cancelled) setStoreCreditBalanceCents(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, customer?.id]);
-
   const discountCents =
     discountMode === "PERCENT"
       ? Math.round((subtotalCents * Number(discountValue || 0)) / 100)
@@ -93,20 +76,28 @@ export default function TenderModal({
   // share, then tax applies to what's left of that line. The server is the
   // real source of truth (recomputed fresh from the DB on submit) — this is
   // only so the cashier sees, and collects, the same total before
-  // confirming the sale.
-  let allocatedDiscountCents = 0;
-  const taxCents = cart.reduce((sum, line, i) => {
-    const lineSubtotalCents = line.priceCents * line.quantity;
-    const isLastLine = i === cart.length - 1;
-    const lineDiscountCents = isLastLine
-      ? discountCents - allocatedDiscountCents
-      : subtotalCents > 0
-        ? Math.round((discountCents * lineSubtotalCents) / subtotalCents)
-        : 0;
-    allocatedDiscountCents += lineDiscountCents;
-    const taxableCents = lineSubtotalCents - lineDiscountCents;
-    return sum + Math.round((taxableCents * Number(line.taxRatePercent ?? 0)) / 100);
-  }, 0);
+  // confirming the sale. Carries the running discount allocation inside the
+  // reduce's own accumulator (rather than a `let` closed over outside it) so
+  // the last line can still absorb the rounding remainder without mutating
+  // state across renders.
+  const taxCents = cart.reduce(
+    (acc, line, i) => {
+      const lineSubtotalCents = line.priceCents * line.quantity;
+      const isLastLine = i === cart.length - 1;
+      const lineDiscountCents = isLastLine
+        ? discountCents - acc.allocatedDiscountCents
+        : subtotalCents > 0
+          ? Math.round((discountCents * lineSubtotalCents) / subtotalCents)
+          : 0;
+      const taxableCents = lineSubtotalCents - lineDiscountCents;
+      const lineTaxCents = Math.round((taxableCents * Number(line.taxRatePercent ?? 0)) / 100);
+      return {
+        allocatedDiscountCents: acc.allocatedDiscountCents + lineDiscountCents,
+        taxCents: acc.taxCents + lineTaxCents,
+      };
+    },
+    { allocatedDiscountCents: 0, taxCents: 0 }
+  ).taxCents;
 
   const totalCents = Math.max(0, subtotalCents - discountCents + taxCents);
   const belowCost = totalCostCents > 0 && totalCents < totalCostCents;
@@ -120,20 +111,15 @@ export default function TenderModal({
   const canAddEntry = useMemo(() => {
     if (!entryAmountCents || entryAmountCents <= 0) return false;
     if (method === "CARD") return false;
-    if (method === "STORE_CREDIT") {
-      if (!customer?.id) return false;
-      if (storeCreditBalanceCents == null || entryAmountCents > storeCreditBalanceCents) return false;
-    }
     // Only cash may exceed the remaining balance (to produce change).
     if (method !== "CASH" && entryAmountCents > remainingBalanceCents) return false;
     return true;
-  }, [entryAmountCents, method, customer?.id, storeCreditBalanceCents, remainingBalanceCents]);
+  }, [entryAmountCents, method, remainingBalanceCents]);
 
   function handleAddEntry() {
     if (!canAddEntry) return;
-    setEntries((prev) => [...prev, { method, amountCents: entryAmountCents, reference: reference.trim() || undefined }]);
+    setEntries((prev) => [...prev, { method, amountCents: entryAmountCents }]);
     setAmount("");
-    setReference("");
   }
 
   function handleRemoveEntry(index) {
@@ -251,9 +237,9 @@ export default function TenderModal({
           </p>
         )}
 
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+        <div className="grid grid-cols-3 gap-2">
           {TENDERS.map(({ key, label, icon: Icon }) => {
-            const disabled = key === "CARD" || (key === "STORE_CREDIT" && !customer?.id);
+            const disabled = key === "CARD";
             return (
               <button
                 key={key}
@@ -280,16 +266,6 @@ export default function TenderModal({
           </p>
         )}
 
-        {method === "STORE_CREDIT" && (
-          <p className="rounded-lg bg-brand-cream/70 px-3 py-2.5 text-sm text-brand-charcoal/70">
-            {customer?.id
-              ? storeCreditBalanceCents == null
-                ? "Loading balance…"
-                : `${customer.firstName}'s store credit balance: ${formatCents(storeCreditBalanceCents)}`
-              : "Attach a customer to this sale to redeem store credit."}
-          </p>
-        )}
-
         {method !== "CARD" && (
           <div className="flex items-end gap-2">
             <div className="flex flex-1 flex-col gap-1.5">
@@ -307,20 +283,6 @@ export default function TenderModal({
                 className="rounded-lg border border-black/15 px-3 py-3 text-base transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
               />
             </div>
-            {(method === "BANK_TRANSFER" || method === "STORE_CREDIT") && (
-              <div className="flex flex-1 flex-col gap-1.5">
-                <label htmlFor="entryReference" className="text-sm font-medium text-brand-charcoal">
-                  Reference (optional)
-                </label>
-                <input
-                  id="entryReference"
-                  type="text"
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  className="rounded-lg border border-black/15 px-3 py-3 text-base transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
-                />
-              </div>
-            )}
             <Button type="button" variant="outline" icon={Plus} disabled={!canAddEntry} onClick={handleAddEntry}>
               Add
             </Button>

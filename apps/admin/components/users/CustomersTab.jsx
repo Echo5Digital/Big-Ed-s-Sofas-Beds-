@@ -154,12 +154,12 @@ export default function CustomersTab() {
     },
     {
       key: "addressLine1",
-      header: "Address Line 1",
+      header: "Billing Address Line 1",
       render: (c) => c.address?.line1 || <span className="text-brand-charcoal/40">—</span>,
     },
     {
       key: "addressLine2",
-      header: "Address Line 2",
+      header: "Billing Address Line 2",
       render: (c) => c.address?.line2 || <span className="text-brand-charcoal/40">—</span>,
     },
     { key: "city", header: "City", render: (c) => c.address?.city || <span className="text-brand-charcoal/40">—</span> },

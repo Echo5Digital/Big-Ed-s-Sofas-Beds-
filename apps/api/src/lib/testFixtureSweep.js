@@ -13,16 +13,16 @@ const { prisma } = require("@big-eds/database");
 // signal: delete anything matching it before a fresh test run starts,
 // regardless of whether a PRIOR run's own afterAll ever got to execute.
 //
-// Run automatically via vitest.config.mjs's globalSetup — see there for why
-// this must run once per test-run, not per file/test.
-async function sweepLeakedTestFixtures() {
+// Fully removes every order matching `where` — same cleanup order every
+// test file's own afterAll already uses (return/refund/payment rows before
+// lines, address FKs cleared before the address rows they point to), so an
+// order is always deleted as a whole, never left half-gone. Shared by both
+// sweep passes below: the first finds leaked orders by their own
+// product/customer naming, the second catches any order a leaked Variant is
+// still attached to that the first pass's query didn't happen to match.
+async function deleteOrdersMatching(where) {
   const orders = await prisma.order.findMany({
-    where: {
-      OR: [
-        { lines: { some: { variant: { product: { name: { contains: "Test", mode: "insensitive" } } } } } },
-        { customer: { email: { contains: "test", mode: "insensitive" } } },
-      ],
-    },
+    where,
     select: { id: true, shippingAddressId: true, billingAddressId: true },
   });
   const orderIds = orders.map((o) => o.id);
@@ -41,8 +41,7 @@ async function sweepLeakedTestFixtures() {
     await prisma.pickup.deleteMany({ where: { orderId: { in: orderIds } } });
     await prisma.reservation.deleteMany({ where: { orderId: { in: orderIds } } });
     // Clear the address FKs before deleting the orders so SetNull isn't
-    // racing the order delete, then delete the now-orphaned snapshot rows —
-    // same sequencing every test file's own afterAll already uses.
+    // racing the order delete, then delete the now-orphaned snapshot rows.
     await prisma.order.updateMany({
       where: { id: { in: orderIds } },
       data: { shippingAddressId: null, billingAddressId: null, deliveryAddressId: null },
@@ -52,6 +51,17 @@ async function sweepLeakedTestFixtures() {
   if (addressIds.length) {
     await prisma.address.deleteMany({ where: { id: { in: addressIds } } });
   }
+}
+
+// Run automatically via vitest.config.mjs's globalSetup — see there for why
+// this must run once per test-run, not per file/test.
+async function sweepLeakedTestFixtures() {
+  await deleteOrdersMatching({
+    OR: [
+      { lines: { some: { variant: { product: { name: { contains: "Test", mode: "insensitive" } } } } } },
+      { customer: { email: { contains: "test", mode: "insensitive" } } },
+    ],
+  });
 
   const variants = await prisma.variant.findMany({
     where: { product: { name: { contains: "Test", mode: "insensitive" } } },
@@ -61,6 +71,15 @@ async function sweepLeakedTestFixtures() {
   const productIds = [...new Set(variants.map((v) => v.productId))];
 
   if (variantIds.length) {
+    // Defense in depth beyond the sweep above: that pass only matched
+    // orders whose line variant/product already said "Test" AT THE TIME
+    // ITS OWN QUERY RAN — an order line can still reference one of these
+    // variants if that query's result went stale (e.g. two sweep/test runs
+    // overlapping against this DB, observed once after running concurrent
+    // background test invocations). OrderLine.variantId's Restrict FK would
+    // otherwise block the Variant delete below.
+    await deleteOrdersMatching({ lines: { some: { variantId: { in: variantIds } } } });
+
     await prisma.priceHistory.deleteMany({ where: { variantId: { in: variantIds } } });
     await prisma.stockMovement.deleteMany({ where: { variantId: { in: variantIds } } });
     await prisma.reservation.deleteMany({ where: { variantId: { in: variantIds } } });
@@ -114,7 +133,28 @@ async function sweepLeakedTestFixtures() {
     await prisma.register.deleteMany({ where: { id: { in: registerIds } } });
   }
 
-  await prisma.location.deleteMany({ where: { name: { contains: "Test", mode: "insensitive" } } });
+  const locations = await prisma.location.findMany({
+    where: { name: { contains: "Test", mode: "insensitive" } },
+    select: { id: true },
+  });
+  const locationIds = locations.map((l) => l.id);
+  if (locationIds.length) {
+    // Restrict FKs into Location — same class of bug as the Variant/OrderLine
+    // gap above. StockBalance is Cascade (safe on its own) but is cleaned up
+    // here anyway since its unique(variantId, locationId) index would otherwise
+    // leave a dangling-looking row once the location is gone.
+    await prisma.stockMovement.deleteMany({ where: { locationId: { in: locationIds } } });
+    await prisma.reservation.deleteMany({ where: { locationId: { in: locationIds } } });
+    await prisma.stockBalance.deleteMany({ where: { locationId: { in: locationIds } } });
+    await prisma.transfer.deleteMany({
+      where: { OR: [{ fromLocationId: { in: locationIds } }, { toLocationId: { in: locationIds } }] },
+    });
+    await prisma.receiptLine.deleteMany({ where: { goodsReceipt: { locationId: { in: locationIds } } } });
+    await prisma.goodsReceipt.deleteMany({ where: { locationId: { in: locationIds } } });
+    await prisma.count.deleteMany({ where: { locationId: { in: locationIds } } });
+    await prisma.register.updateMany({ where: { locationId: { in: locationIds } }, data: { locationId: null } });
+    await prisma.location.deleteMany({ where: { id: { in: locationIds } } });
+  }
 
   // Test users (every fixture in the suite uses an @test.local or @example.com
   // address with "test" in the local-part) — clear what they're attributed to

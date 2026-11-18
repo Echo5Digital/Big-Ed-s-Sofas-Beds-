@@ -544,6 +544,16 @@ const posRefundSchema = z.object({
   paymentId: z.string().uuid().optional().nullable(),
 });
 
+// Collecting the rest of a deposit/under-tendered sale's balance — CARD is
+// still a valid shape here (posSaleSchema allows it too) even though the
+// service rejects it before processing, same "shape vs. business rule"
+// split as posSaleSchema's own CARD handling.
+const posSettleBalanceSchema = z.object({
+  registerSessionId: z.string().uuid(),
+  orderId: z.string().uuid(),
+  payments: z.array(posPaymentEntrySchema).min(1),
+});
+
 // ---------------------------------------------------------------------------
 // POS customer search / creation (checkout customer identification)
 // ---------------------------------------------------------------------------
@@ -642,6 +652,7 @@ module.exports = {
   posAddressInputSchema,
   posSaleSchema,
   posRefundSchema,
+  posSettleBalanceSchema,
   posCustomerCreateSchema,
   posReturnCreateSchema,
 };

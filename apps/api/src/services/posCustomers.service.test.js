@@ -83,5 +83,8 @@ describe("posCustomers.service", () => {
     expect(addresses).toHaveLength(1);
     expect(addresses[0].city).toBe("Springfield");
     expect(addresses[0].isDefault).toBe(true);
+    // Billing, not shipping — this is the walk-in customer's own address for
+    // their record, not a delivery destination (see createPosCustomer).
+    expect(addresses[0].type).toBe("BILLING");
   });
 });

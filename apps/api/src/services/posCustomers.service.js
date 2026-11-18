@@ -71,10 +71,15 @@ async function createPosCustomer({ firstName, lastName, phone, email, address })
     : await prisma.customer.create({ data: customerData });
 
   if (address) {
+    // BILLING, not SHIPPING: this is the address a walk-in customer gives
+    // the cashier for their own record/billing purposes, not a delivery
+    // destination — a POS sale's own delivery address (if any) is captured
+    // per-order on the Order itself (see ringSale's shippingAddress), not on
+    // the Customer's saved address book.
     await prisma.address.create({
       data: {
         customerId: customer.id,
-        type: "SHIPPING",
+        type: "BILLING",
         line1: address.line1,
         line2: address.line2 || null,
         city: address.city,

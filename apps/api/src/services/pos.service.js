@@ -836,6 +836,210 @@ async function refund({ registerSessionId, orderId, amountCents, reasonCode, not
   return result;
 }
 
+// Looks up one order with an outstanding balance by order number, receipt
+// number, or customer phone (contains match — most recent match wins; same
+// shape as posReturns.service.js's findOrderForReturn, the closest existing
+// precedent for "find an order at the register by a few different IDs").
+// Scoped to PARTIALLY_PAID/UNPAID — an already-PAID or REFUNDED order has
+// nothing left to collect, and surfacing it here would just invite a
+// cashier to double-collect on a settled sale.
+async function findOrderWithBalance({ q }) {
+  const query = String(q ?? "").trim();
+  if (!query) throw new ConflictError("Search query is required");
+
+  const order = await prisma.order.findFirst({
+    where: {
+      paymentStatus: { in: ["PARTIALLY_PAID", "UNPAID"] },
+      OR: [
+        { orderNumber: { contains: query, mode: "insensitive" } },
+        { receipts: { some: { receiptNumber: { contains: query, mode: "insensitive" } } } },
+        { customer: { phone: { contains: query, mode: "insensitive" } } },
+      ],
+    },
+    include: {
+      lines: true,
+      customer: true,
+      payments: { where: { status: "SUCCEEDED" } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!order) throw new NotFoundError("No order with an outstanding balance matches that search");
+
+  const paidSoFarCents = order.payments.reduce((sum, p) => sum + p.amountCents, 0);
+  return {
+    order: {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      createdAt: order.createdAt,
+      paymentStatus: order.paymentStatus,
+      subtotalCents: order.subtotalCents,
+      discountCents: order.discountCents,
+      taxCents: order.taxCents,
+      totalCents: order.totalCents,
+      customer: order.customer
+        ? {
+            id: order.customer.id,
+            firstName: order.customer.firstName,
+            lastName: order.customer.lastName,
+            email: order.customer.email,
+            phone: order.customer.phone,
+          }
+        : null,
+      lines: order.lines.map((l) => ({
+        id: l.id,
+        name: l.nameSnapshot,
+        sku: l.skuSnapshot,
+        quantity: l.quantity,
+        unitPriceCents: l.unitPriceCents,
+        lineTotalCents: l.lineTotalCents,
+      })),
+      paidSoFarCents,
+      balanceDueCents: Math.max(0, order.totalCents - paidSoFarCents),
+    },
+  };
+}
+
+// Collects an additional payment against an order that was left
+// PARTIALLY_PAID or UNPAID (a deposit sale, or any other under-tendered
+// sale) — the "pay down a pending balance" counterpart to refund() above.
+// Never creates a new Order; always attaches to the existing one, exactly
+// like ringSale attaching payments to the order it just created, just at a
+// later register session. CARD is rejected for the same reason ringSale
+// rejects it: no payment processor/terminal has been selected yet.
+async function settleBalance({ registerSessionId, orderId, payments, performedById }) {
+  if (payments.some((p) => p.method === "CARD")) {
+    throw new ConflictError(
+      "Card-present tender is not available yet — no payment processor or terminal model has been selected. Use cash or deposit."
+    );
+  }
+
+  // Throws if the session doesn't exist or isn't OPEN — that check is this
+  // call's only purpose here; unlike refund()'s use of the same helper,
+  // settling a balance never touches stock/location, so the session object
+  // itself isn't needed afterward.
+  await getOpenSession(registerSessionId);
+
+  // Explicit timeout, well above Prisma's 5s interactive-transaction
+  // default: this transaction's round trips scale with how many payment
+  // entries are being recorded (one Payment + possibly one CashMovement per
+  // entry, plus the order lock/read, order update, and receipt create), and
+  // on this project's remote dev database a handful of sequential round
+  // trips can already approach the default on its own under load — observed
+  // timing out in the full test suite even though the same test passes in
+  // isolation. 20s gives real multi-entry settlements room without masking
+  // a genuine hang.
+  const result = await prisma.$transaction(
+    async (tx) => {
+      // Lock the order row before re-reading how much has already been
+      // paid, so two concurrent settlement attempts for the same order (a
+      // double-submit, or two cashiers both pulling it up) serialize
+      // instead of both reading the same paidSoFar snapshot and jointly
+      // overcollecting — the same race refund() above already guards
+      // against on the refund side.
+      await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+
+      const order = await tx.order.findUnique({ where: { id: orderId } });
+      if (!order) throw new NotFoundError("Order not found");
+      if (!["PARTIALLY_PAID", "UNPAID"].includes(order.paymentStatus)) {
+        throw new ConflictError(`This order is already ${order.paymentStatus.toLowerCase()} — there's nothing left to collect`, {
+          paymentStatus: order.paymentStatus,
+        });
+      }
+
+      const alreadyPaid = await tx.payment.aggregate({
+        where: { orderId, status: "SUCCEEDED" },
+        _sum: { amountCents: true },
+      });
+      const paidSoFarCents = alreadyPaid._sum.amountCents || 0;
+      const balanceDueCents = Math.max(0, order.totalCents - paidSoFarCents);
+
+      // Never trust frontend-computed totals: recompute from the payments
+      // array itself, same rule ringSale applies to a brand-new sale.
+      const totalTenderedCents = payments.reduce((sum, p) => sum + p.amountCents, 0);
+      const nonCashTenderedCents =
+        totalTenderedCents - payments.filter((p) => p.method === "CASH").reduce((sum, p) => sum + p.amountCents, 0);
+      if (nonCashTenderedCents > balanceDueCents) {
+        throw new ConflictError("Non-cash payment amounts cannot exceed the remaining balance", {
+          balanceDueCents,
+          nonCashTenderedCents,
+        });
+      }
+
+      // Only cash can overtender (to produce change). Mirrors ringSale's
+      // own trim-the-last-cash-entry logic so a Payment row never records
+      // more than what was actually applied to the balance.
+      const changeDueCents = Math.max(0, totalTenderedCents - balanceDueCents);
+      const appliedPayments =
+        changeDueCents > 0
+          ? (() => {
+              let remainingTrim = changeDueCents;
+              const trimmed = [];
+              for (let i = payments.length - 1; i >= 0; i--) {
+                const entry = payments[i];
+                if (entry.method === "CASH" && remainingTrim > 0) {
+                  const cut = Math.min(remainingTrim, entry.amountCents);
+                  remainingTrim -= cut;
+                  if (entry.amountCents - cut > 0) {
+                    trimmed.unshift({ ...entry, amountCents: entry.amountCents - cut });
+                  }
+                } else {
+                  trimmed.unshift(entry);
+                }
+              }
+              return trimmed;
+            })()
+          : payments;
+
+      const createdPayments = await createPaymentEntries(tx, {
+        orderId,
+        registerSessionId,
+        payments: appliedPayments,
+        customerId: order.customerId,
+        performedById,
+      });
+
+      const newTotalPaidCents = paidSoFarCents + appliedPayments.reduce((sum, p) => sum + p.amountCents, 0);
+      const paymentStatus = newTotalPaidCents >= order.totalCents ? "PAID" : "PARTIALLY_PAID";
+
+      const updatedOrder = await tx.order.update({
+        where: { id: orderId },
+        data: { paymentStatus },
+        include: {
+          lines: true,
+          customer: true,
+          payments: true,
+          salesAttributions: { include: { user: { select: { firstName: true, lastName: true } } } },
+          shippingAddress: true,
+          billingAddress: true,
+        },
+      });
+
+      const receiptNumber = await nextReceiptNumber(tx);
+      const receipt = await tx.receipt.create({
+        data: { registerSessionId, orderId, receiptNumber },
+      });
+
+      // `payments` is every payment ever recorded on this order (the
+      // original deposit plus this settlement), not just what was
+      // collected just now — ReceiptView.jsx sums `payments` to show total
+      // paid, and that must reflect the order's full payment history, the
+      // same way a brand-new sale's single batch of payments already does
+      // for ringSale. Callers that specifically want "what was collected
+      // in this transaction" get that separately via `collectedPayments`.
+      return {
+        order: updatedOrder,
+        payments: updatedOrder.payments,
+        collectedPayments: createdPayments,
+        receipt,
+        changeDueCents,
+      };
+    },
+    { timeout: 20000 }
+  );
+
+  return result;
+}
+
 module.exports = {
   openRegister,
   closeRegister,
@@ -845,6 +1049,8 @@ module.exports = {
   denyReopen,
   ringSale,
   refund,
+  findOrderWithBalance,
+  settleBalance,
   createPaymentEntries,
   serializeSession,
 };

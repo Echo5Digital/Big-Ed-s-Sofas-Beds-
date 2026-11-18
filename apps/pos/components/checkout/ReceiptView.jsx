@@ -30,7 +30,12 @@ function ReceiptPrintable({ sale }) {
   if (typeof document === "undefined") return null;
   const { order, payments, receipt, changeDueCents } = sale;
   const totalPaidCents = payments.reduce((sum, p) => sum + p.amountCents, 0);
-  const isDepositOnly = payments.length === 1 && payments[0].method === "DEPOSIT";
+  // Driven by the server-authoritative paymentStatus, not "is the only
+  // tender a DEPOSIT entry" — a split tender (e.g. deposit + cash) that
+  // still leaves a balance is just as much a partial payment, and the old
+  // single-DEPOSIT-entry check incorrectly read that case as fully paid.
+  const isPartiallyPaid = order.paymentStatus === "PARTIALLY_PAID";
+  const balanceDueCents = Math.max(0, order.totalCents - totalPaidCents);
   const printedAt = new Date(order.createdAt);
   const billingAddressLine = formatAddress(order.billingAddress);
   const deliveryAddressLine = formatAddress(order.shippingAddress);
@@ -52,8 +57,12 @@ function ReceiptPrintable({ sale }) {
 
           <div className="text-right">
             <p className="font-display text-xl font-bold uppercase">Sales Receipt</p>
-            <p className="mt-1 text-xs font-bold uppercase tracking-wide text-green-700">
-              {isDepositOnly ? "Partially Paid" : "Paid"}
+            <p
+              className={`mt-1 text-xs font-bold uppercase tracking-wide ${
+                isPartiallyPaid ? "text-amber-700" : "text-green-700"
+              }`}
+            >
+              {isPartiallyPaid ? "Partially Paid" : "Paid"}
             </p>
             <div className="mt-2 flex flex-col gap-0.5 text-xs text-brand-charcoal/70">
               <p>
@@ -128,6 +137,10 @@ function ReceiptPrintable({ sale }) {
                 <span className="text-brand-charcoal/70">Tax</span>
                 <span className="font-semibold tabular-nums">{formatCents(order.taxCents)}</span>
               </div>
+              <div className="flex justify-between border-t border-black/10 pt-2 font-semibold">
+                <span className="text-brand-charcoal/70">Order Total</span>
+                <span className="tabular-nums">{formatCents(order.totalCents)}</span>
+              </div>
               {payments.map((p) => (
                 <div key={p.id} className="flex justify-between">
                   <span className="text-brand-charcoal/70">{TENDER_LABELS[p.method] ?? p.method} received</span>
@@ -140,10 +153,16 @@ function ReceiptPrintable({ sale }) {
                   <span className="font-semibold tabular-nums">{formatCents(changeDueCents)}</span>
                 </div>
               )}
+              {balanceDueCents > 0 && (
+                <div className="flex justify-between border-t border-black/10 pt-2 font-semibold text-amber-700">
+                  <span>Balance Due</span>
+                  <span className="tabular-nums">{formatCents(balanceDueCents)}</span>
+                </div>
+              )}
             </div>
             <div className="flex items-center justify-between rounded-b-lg bg-brand-charcoal px-3 py-3 text-white">
               <span className="font-display text-sm font-bold uppercase tracking-wide">
-                {isDepositOnly ? "Deposit Paid" : "Total Paid"}
+                {isPartiallyPaid ? "Deposit Paid" : "Total Paid"}
               </span>
               <span className="font-display text-base font-bold tabular-nums">{formatCents(totalPaidCents)}</span>
             </div>
@@ -183,7 +202,11 @@ export default function ReceiptView({ open, onClose, sale }) {
   if (!sale) return null;
   const { order, payments, receipt, changeDueCents } = sale;
   const totalPaidCents = payments.reduce((sum, p) => sum + p.amountCents, 0);
-  const isDepositOnly = payments.length === 1 && payments[0].method === "DEPOSIT";
+  // Driven by the server-authoritative paymentStatus, not "is the only
+  // tender a DEPOSIT entry" — a split tender (e.g. deposit + cash) that
+  // still leaves a balance is just as much a partial payment.
+  const isPartiallyPaid = order.paymentStatus === "PARTIALLY_PAID";
+  const balanceDueCents = Math.max(0, order.totalCents - totalPaidCents);
 
   return (
     <>
@@ -194,7 +217,7 @@ export default function ReceiptView({ open, onClose, sale }) {
               <CheckCircle2 className="size-8 text-green-600" aria-hidden="true" />
             </span>
             <p className="font-display text-xl font-bold tabular-nums text-brand-charcoal">
-              {formatCents(totalPaidCents)} {isDepositOnly ? "deposit" : "paid"}
+              {formatCents(totalPaidCents)} {isPartiallyPaid ? "deposit" : "paid"}
             </p>
             <p className="text-sm text-brand-charcoal/50">
               Receipt {receipt.receiptNumber} · Order {order.orderNumber}
@@ -227,6 +250,10 @@ export default function ReceiptView({ open, onClose, sale }) {
                 <span>Tax</span>
                 <span>{formatCents(order.taxCents)}</span>
               </div>
+              <div className="flex justify-between font-semibold">
+                <span>Order total</span>
+                <span>{formatCents(order.totalCents)}</span>
+              </div>
               {payments.map((p) => (
                 <div key={p.id} className="flex justify-between">
                   <span>{TENDER_LABELS[p.method] ?? p.method}</span>
@@ -234,7 +261,7 @@ export default function ReceiptView({ open, onClose, sale }) {
                 </div>
               ))}
               <div className="flex justify-between font-semibold">
-                <span>{isDepositOnly ? "Deposit paid" : "Total paid"}</span>
+                <span>{isPartiallyPaid ? "Deposit paid" : "Total paid"}</span>
                 <span>{formatCents(totalPaidCents)}</span>
               </div>
               {changeDueCents > 0 && (
@@ -243,14 +270,20 @@ export default function ReceiptView({ open, onClose, sale }) {
                   <span>{formatCents(changeDueCents)}</span>
                 </div>
               )}
+              {balanceDueCents > 0 && (
+                <div className="flex justify-between font-semibold text-amber-700">
+                  <span>Balance due</span>
+                  <span>{formatCents(balanceDueCents)}</span>
+                </div>
+              )}
             </div>
           </div>
 
-          {order.totalCents > totalPaidCents && (
+          {balanceDueCents > 0 && (
             <p className="rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-              Remaining balance: {formatCents(order.totalCents - totalPaidCents)}. This order is{" "}
-              {order.paymentStatus === "PARTIALLY_PAID" ? "partially paid" : order.paymentStatus.toLowerCase()} until
-              the balance is collected.
+              Remaining balance: {formatCents(balanceDueCents)}. This order is{" "}
+              {isPartiallyPaid ? "partially paid" : order.paymentStatus.toLowerCase()} until the balance is collected
+              — use Pending Balance to settle it later.
             </p>
           )}
 

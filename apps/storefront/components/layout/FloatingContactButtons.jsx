@@ -43,7 +43,15 @@ export default function FloatingContactButtons() {
 
   return (
     <div
-      className={`inset-x-0 z-40 flex justify-end gap-3 px-4 pb-4 sm:px-6 lg:px-10 ${
+      // Anchored with right-0 (not inset-x-0 + justify-end) — the old
+      // full-width-row-pushed-right approach left this div's own box
+      // spanning the entire viewport width at this scroll position, so its
+      // empty left-hand space (not just the two visible buttons) sat over
+      // whatever content was underneath and intercepted clicks/scroll there
+      // even though nothing was visibly drawn. right-0 shrinks the box down
+      // to just its content (the two buttons + their padding), so there's
+      // nothing left to block.
+      className={`right-0 z-40 flex gap-3 px-4 pb-4 sm:px-6 lg:px-10 ${
         dockedAtFooter ? "absolute top-0 -translate-y-full" : "fixed bottom-20 sm:bottom-4"
       }`}
     >

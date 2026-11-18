@@ -8,6 +8,7 @@ const {
   registerReopenDenySchema,
   posSaleSchema,
   posRefundSchema,
+  posSettleBalanceSchema,
   posCustomerCreateSchema,
   posReturnCreateSchema,
 } = require("@big-eds/validation");
@@ -395,6 +396,52 @@ router.post(
       storeCredit: result.storeCreditRecord,
       exchangePayments: result.exchangePayments.map(serializePayment),
       balanceDueCents: result.balanceDueCents,
+    });
+  })
+);
+
+// Pending Balance: find a previously under-tendered sale (a deposit, or any
+// other sale left PARTIALLY_PAID/UNPAID) by order number, receipt number, or
+// customer phone, and collect the rest of what's owed on it.
+router.get(
+  "/balances/find-order",
+  requirePermission("pos:sell"),
+  asyncHandler(async (req, res) => {
+    const result = await posService.findOrderWithBalance({ q: req.query.q });
+    res.json(result);
+  })
+);
+
+router.post(
+  "/balances/settle",
+  requirePermission("pos:sell"),
+  saleLimiter,
+  validateBody(posSettleBalanceSchema),
+  asyncHandler(async (req, res) => {
+    const { registerSessionId, orderId, payments } = req.body;
+
+    if (payments.some((p) => p.method === "CARD")) {
+      return res.status(501).json({
+        error: {
+          message:
+            "Card-present tender is not available yet — no payment processor or terminal model has been selected.",
+        },
+      });
+    }
+
+    const result = await posService.settleBalance({
+      registerSessionId,
+      orderId,
+      payments,
+      performedById: req.user.id,
+    });
+
+    res.status(201).json({
+      order: serializeOrder(result.order),
+      payments: result.payments.map(serializePayment),
+      collectedPayments: result.collectedPayments.map(serializePayment),
+      receipt: result.receipt,
+      changeDueCents: result.changeDueCents,
     });
   })
 );

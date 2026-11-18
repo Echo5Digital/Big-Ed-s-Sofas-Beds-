@@ -1009,4 +1009,209 @@ describe("pos.service", () => {
       await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
     });
   });
+
+  describe("pending balance settlement", () => {
+    async function depositSale({ depositCents }) {
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+      // 50000 total, tendered as a deposit only -> PARTIALLY_PAID.
+      const sale = await posService.ringSale({
+        registerSessionId: session.id,
+        lines: [{ variantId: variant.id, quantity: 1 }],
+        payments: [{ method: "DEPOSIT", amountCents: depositCents }],
+        performedById: null,
+      });
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
+      return sale;
+    }
+
+    it("finds a PARTIALLY_PAID order by order number, receipt number, or customer phone", async () => {
+      const { order, receipt } = await depositSale({ depositCents: 20000 });
+
+      const byOrderNumber = await posService.findOrderWithBalance({ q: order.orderNumber });
+      expect(byOrderNumber.order.id).toBe(order.id);
+      expect(byOrderNumber.order.paidSoFarCents).toBe(20000);
+      expect(byOrderNumber.order.balanceDueCents).toBe(30000);
+
+      const byReceiptNumber = await posService.findOrderWithBalance({ q: receipt.receiptNumber });
+      expect(byReceiptNumber.order.id).toBe(order.id);
+    });
+
+    it("does not surface an order that's already fully PAID — nothing left to collect", async () => {
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+      const sale = await posService.ringSale({
+        registerSessionId: session.id,
+        lines: [{ variantId: variant.id, quantity: 1 }],
+        payments: [{ method: "CASH", amountCents: 50000 }],
+        performedById: null,
+      });
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 50000 });
+
+      await expect(posService.findOrderWithBalance({ q: sale.order.orderNumber })).rejects.toThrow(
+        /no order with an outstanding balance/i
+      );
+    });
+
+    it("collects the remaining balance in full, flips paymentStatus to PAID, and the receipt sums the full payment history", async () => {
+      const { order: depositOrder } = await depositSale({ depositCents: 20000 });
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      const result = await posService.settleBalance({
+        registerSessionId: session.id,
+        orderId: depositOrder.id,
+        payments: [{ method: "CASH", amountCents: 30000 }],
+        performedById: null,
+      });
+
+      expect(result.order.paymentStatus).toBe("PAID");
+      expect(result.collectedPayments).toHaveLength(1);
+      expect(result.collectedPayments[0].amountCents).toBe(30000);
+      // `payments` is the FULL history (original 20000 deposit + this 30000
+      // settlement) — ReceiptView.jsx sums this to show total paid, which
+      // must equal the full order total once settled, not just this batch.
+      expect(result.payments).toHaveLength(2);
+      expect(result.payments.reduce((sum, p) => sum + p.amountCents, 0)).toBe(50000);
+      expect(result.changeDueCents).toBe(0);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 30000 });
+    });
+
+    it("partial settlement of a partial balance stays PARTIALLY_PAID, and a second settlement finishes it", async () => {
+      const { order: depositOrder } = await depositSale({ depositCents: 10000 }); // 40000 remaining
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      const first = await posService.settleBalance({
+        registerSessionId: session.id,
+        orderId: depositOrder.id,
+        payments: [{ method: "CASH", amountCents: 15000 }], // 25000 still remaining
+        performedById: null,
+      });
+      expect(first.order.paymentStatus).toBe("PARTIALLY_PAID");
+      expect(first.payments.reduce((sum, p) => sum + p.amountCents, 0)).toBe(25000); // 10000 + 15000
+
+      const second = await posService.settleBalance({
+        registerSessionId: session.id,
+        orderId: depositOrder.id,
+        payments: [{ method: "CASH", amountCents: 25000 }],
+        performedById: null,
+      });
+      expect(second.order.paymentStatus).toBe("PAID");
+      expect(second.payments.reduce((sum, p) => sum + p.amountCents, 0)).toBe(50000);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 40000 });
+    });
+
+    it("records change due when cash overtenders the remaining balance, without recording the overtendered amount", async () => {
+      const { order: depositOrder } = await depositSale({ depositCents: 30000 }); // 20000 remaining
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      const result = await posService.settleBalance({
+        registerSessionId: session.id,
+        orderId: depositOrder.id,
+        payments: [{ method: "CASH", amountCents: 25000 }], // 5000 over the 20000 remaining
+        performedById: null,
+      });
+
+      expect(result.changeDueCents).toBe(5000);
+      expect(result.collectedPayments[0].amountCents).toBe(20000); // never 25000
+      expect(result.order.paymentStatus).toBe("PAID");
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 20000 });
+    });
+
+    it("rejects a non-cash settlement payment that exceeds the remaining balance", async () => {
+      const { order: depositOrder } = await depositSale({ depositCents: 30000 }); // 20000 remaining
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      await expect(
+        posService.settleBalance({
+          registerSessionId: session.id,
+          orderId: depositOrder.id,
+          payments: [{ method: "DEPOSIT", amountCents: 25000 }], // over the 20000 remaining, and DEPOSIT can't overtender
+          performedById: null,
+        })
+      ).rejects.toThrow(/cannot exceed the remaining balance/);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
+    });
+
+    it("rejects CARD as a settlement tender, same as a new sale", async () => {
+      const { order: depositOrder } = await depositSale({ depositCents: 20000 });
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      await expect(
+        posService.settleBalance({
+          registerSessionId: session.id,
+          orderId: depositOrder.id,
+          payments: [{ method: "CARD", amountCents: 30000 }],
+          performedById: null,
+        })
+      ).rejects.toThrow(/Card-present tender is not available/);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 0 });
+    });
+
+    it("rejects settling an order that's already fully PAID", async () => {
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+      const sale = await posService.ringSale({
+        registerSessionId: session.id,
+        lines: [{ variantId: variant.id, quantity: 1 }],
+        payments: [{ method: "CASH", amountCents: 50000 }],
+        performedById: null,
+      });
+
+      await expect(
+        posService.settleBalance({
+          registerSessionId: session.id,
+          orderId: sale.order.id,
+          payments: [{ method: "CASH", amountCents: 1000 }],
+          performedById: null,
+        })
+      ).rejects.toThrow(/nothing left to collect/);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 50000 });
+    });
+
+    it("never lets two concurrent settlements jointly overcollect beyond the remaining balance", async () => {
+      const { order: depositOrder } = await depositSale({ depositCents: 20000 }); // 30000 remaining
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+
+      // Both attempts try to collect the full 30000 remaining at once —
+      // only one can win; the loser must see the order as already PAID by
+      // the time its own transaction re-reads it, the same row-lock
+      // serialization refund() already relies on for the mirror case.
+      const results = await Promise.allSettled([
+        posService.settleBalance({
+          registerSessionId: session.id,
+          orderId: depositOrder.id,
+          payments: [{ method: "CASH", amountCents: 30000 }],
+          performedById: null,
+        }),
+        posService.settleBalance({
+          registerSessionId: session.id,
+          orderId: depositOrder.id,
+          payments: [{ method: "CASH", amountCents: 30000 }],
+          performedById: null,
+        }),
+      ]);
+
+      const fulfilled = results.filter((r) => r.status === "fulfilled");
+      const rejected = results.filter((r) => r.status === "rejected");
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0].reason.message).toMatch(/nothing left to collect|exceeds/i);
+
+      const finalOrder = await prisma.order.findUnique({ where: { id: depositOrder.id } });
+      expect(finalOrder.paymentStatus).toBe("PAID");
+      const totalPaid = await prisma.payment.aggregate({
+        where: { orderId: depositOrder.id, status: "SUCCEEDED" },
+        _sum: { amountCents: true },
+      });
+      expect(totalPaid._sum.amountCents).toBe(50000); // never more than the order total
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 30000 });
+    });
+  });
 });
