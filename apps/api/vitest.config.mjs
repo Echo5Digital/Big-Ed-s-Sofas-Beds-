@@ -17,5 +17,9 @@ export default defineConfig({
     globals: true,
     testTimeout: 30000,
     hookTimeout: 30000,
+    // Sweeps any test fixture left behind by a previous run that never
+    // reached its own afterAll (killed process, crashed run) — see
+    // vitest.globalSetup.mjs. Runs once before any test file, not per file.
+    globalSetup: "./vitest.globalSetup.mjs",
   },
 });

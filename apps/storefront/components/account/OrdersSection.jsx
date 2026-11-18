@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Package } from "lucide-react";
+import { Package, ChevronDown } from "lucide-react";
 import { listOrders, isSessionExpired } from "@/lib/api/customerAccount";
 import { Notice, describeError, linkButtonClass, secondaryButtonClass } from "@/components/account/formParts";
 import { formatCurrency } from "@/utils/formatCurrency";
@@ -74,30 +74,39 @@ function OrderCard({ order }) {
   const method = FULFILLMENT_METHOD_LABEL[order.fulfillmentMethod];
 
   return (
-    <li className="rounded-xl border border-brand-charcoal/15 p-5">
+    <li className="rounded-xl border border-brand-charcoal/15 bg-white p-5 transition-shadow hover:shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-        <div>
-          <p className="font-display text-base font-bold text-brand-charcoal">Order {order.orderNumber}</p>
-          <p className="mt-0.5 text-sm text-brand-charcoal/60">
-            Placed {formatPlacedDate(order.placedAt)}
-            {method ? ` · ${method}` : ""}
-          </p>
+        <div className="flex min-w-0 items-start gap-3">
+          <span
+            aria-hidden="true"
+            className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-red/10 text-brand-red"
+          >
+            <Package className="size-5" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <p className="font-display text-base font-bold text-brand-charcoal">Order {order.orderNumber}</p>
+            <p className="mt-0.5 text-sm text-brand-charcoal/60">
+              Placed {formatPlacedDate(order.placedAt)}
+              {method ? ` · ${method}` : ""}
+            </p>
+          </div>
         </div>
-        <p className="text-base font-bold text-brand-charcoal">{money(order.totalCents)}</p>
+        <p className="shrink-0 text-base font-bold text-brand-charcoal">{money(order.totalCents)}</p>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap gap-2 pl-13">
         <Badge tone={progressTone(order)}>{progressLabel(order)}</Badge>
         <Badge tone={paymentTone(order)}>{PAYMENT_LABEL[order.paymentStatus] ?? order.paymentStatus}</Badge>
       </div>
 
       {order.lines.length > 0 ? (
-        <details className="group mt-4">
-          <summary className="cursor-pointer text-sm font-semibold text-brand-red hover:text-brand-red-dark focus-visible:outline-2 focus-visible:outline-brand-red">
+        <details className="group mt-4 border-t border-brand-charcoal/10 pt-4">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm font-semibold text-brand-red hover:text-brand-red-dark focus-visible:outline-2 focus-visible:outline-brand-red [&::-webkit-details-marker]:hidden">
             <span className="group-open:hidden">
               View {itemCount} {itemCount === 1 ? "item" : "items"}
             </span>
             <span className="hidden group-open:inline">Hide items</span>
+            <ChevronDown className="size-4 transition-transform group-open:rotate-180" aria-hidden="true" />
           </summary>
           <ul className="mt-3 divide-y divide-brand-charcoal/10 text-sm">
             {order.lines.map((line) => (

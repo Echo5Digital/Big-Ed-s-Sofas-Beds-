@@ -319,6 +319,7 @@ async function ProductDetailPage({ product }) {
       <Container className="grid grid-cols-1 gap-10 pt-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-start lg:gap-14">
         <ProductImageGallery
           images={product.images}
+          videos={product.videos}
           name={plainName}
           inStock={inStock}
           discountPercent={discountPercent}

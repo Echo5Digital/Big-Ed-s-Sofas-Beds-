@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import { Play } from "lucide-react";
 
 // How far "into" the image the magnifier lens looks, relative to the lens
 // size — e.g. 2.5 means the lens shows a region 2.5x smaller than the lens
@@ -13,13 +14,31 @@ const ZOOM_LEVEL = 2.5;
 // reused again further down the page as the large-format gallery section —
 // there's no separate "gallery" image set, just a different layout of the
 // same ordered list.
-export default function ProductImageGallery({ images, name, inStock, discountPercent }) {
+//
+// A product's first video (if any) is spliced in as the second media item —
+// right after the primary image — rather than appended at the end, so a
+// shopper sees it while still near the top of the gallery instead of having
+// to scroll/click through every photo first. Only the first video is shown
+// here; this is the PDP gallery only — the product CARD's hover-swap
+// (components/home/ProductCard.jsx) stays image-only and untouched.
+export default function ProductImageGallery({ images, videos, name, inStock, discountPercent }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [zoom, setZoom] = useState(null);
   const frameRef = useRef(null);
-  const active = images[activeIndex] ?? images[0];
+
+  const media = useMemo(() => {
+    const items = images.map((img) => ({ type: "image", ...img }));
+    const firstVideo = videos?.[0];
+    if (firstVideo) {
+      items.splice(1, 0, { type: "video", ...firstVideo });
+    }
+    return items;
+  }, [images, videos]);
+
+  const active = media[activeIndex] ?? media[0];
 
   function handleMouseMove(e) {
+    if (active?.type === "video") return;
     const frame = frameRef.current;
     if (!frame) return;
     const rect = frame.getBoundingClientRect();
@@ -37,7 +56,18 @@ export default function ProductImageGallery({ images, name, inStock, discountPer
         onMouseLeave={() => setZoom(null)}
         className="group relative aspect-4/3 w-full overflow-hidden rounded-2xl border border-brand-charcoal/10 bg-brand-cream shadow-sm"
       >
-        {active && (
+        {active && active.type === "video" ? (
+          // No magnifier lens for video — zooming a playing video doesn't
+          // make sense the way it does for a still photo.
+          <video
+            key={active.id ?? active.url}
+            src={active.url}
+            controls
+            playsInline
+            preload="metadata"
+            className="size-full object-cover"
+          />
+        ) : active ? (
           <>
             <Image
               src={active.url}
@@ -65,7 +95,7 @@ export default function ProductImageGallery({ images, name, inStock, discountPer
               />
             )}
           </>
-        )}
+        ) : null}
         {!inStock && (
           <span className="absolute left-4 top-4 rounded px-2.5 py-1 text-xs font-bold tracking-wide bg-brand-charcoal/70 text-white">
             OUT OF STOCK
@@ -78,14 +108,14 @@ export default function ProductImageGallery({ images, name, inStock, discountPer
         )}
       </div>
 
-      {images.length > 1 && (
+      {media.length > 1 && (
         <div className="flex gap-2.5 overflow-x-auto pb-1">
-          {images.map((img, index) => (
+          {media.map((item, index) => (
             <button
-              key={img.id ?? img.url}
+              key={item.id ?? item.url}
               type="button"
               onClick={() => setActiveIndex(index)}
-              aria-label={`Show image ${index + 1} of ${images.length}`}
+              aria-label={item.type === "video" ? "Play product video" : `Show image ${index + 1} of ${media.length}`}
               aria-pressed={activeIndex === index}
               className={`relative size-16 shrink-0 overflow-hidden rounded-lg border-2 bg-brand-cream transition-colors sm:size-20 ${
                 activeIndex === index
@@ -93,7 +123,16 @@ export default function ProductImageGallery({ images, name, inStock, discountPer
                   : "border-brand-charcoal/10 hover:border-brand-charcoal/30"
               }`}
             >
-              <Image src={img.url} alt="" fill sizes="80px" className="object-cover" />
+              {item.type === "video" ? (
+                <>
+                  <video src={item.url} muted playsInline preload="metadata" className="size-full object-cover" />
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/25">
+                    <Play className="size-5 fill-white text-white" aria-hidden="true" />
+                  </span>
+                </>
+              ) : (
+                <Image src={item.url} alt="" fill sizes="80px" className="object-cover" />
+              )}
             </button>
           ))}
         </div>

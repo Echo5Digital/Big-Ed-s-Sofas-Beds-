@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
+import { Pencil, Mail, Phone, User, CalendarDays } from "lucide-react";
 import { getProfile, updateProfile, isSessionExpired } from "@/lib/api/customerAccount";
 import {
   Field,
@@ -17,11 +18,16 @@ function formatMemberSince(value) {
   return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
-function Detail({ label, children }) {
+function Detail({ label, icon: Icon, children }) {
   return (
-    <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-brand-charcoal/50">{label}</dt>
-      <dd className="mt-1 break-words text-sm text-brand-charcoal">{children}</dd>
+    <div className="flex items-start gap-3 rounded-xl border border-brand-charcoal/10 bg-brand-cream/40 p-4">
+      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-white text-brand-charcoal/40">
+        <Icon className="size-4" aria-hidden="true" />
+      </span>
+      <div className="min-w-0">
+        <dt className="text-xs font-semibold uppercase tracking-wide text-brand-charcoal/50">{label}</dt>
+        <dd className="mt-0.5 break-words text-sm font-semibold text-brand-charcoal">{children}</dd>
+      </div>
     </div>
   );
 }
@@ -107,11 +113,16 @@ export default function ProfileSection({ onSessionExpired, onProfileSaved }) {
   const memberSince = formatMemberSince(profile.memberSince);
 
   return (
-    <div className="max-w-xl">
+    <div className="max-w-2xl">
       <div className="flex items-center justify-between gap-4">
         <h3 className="font-display text-lg font-bold text-brand-charcoal">Personal Information</h3>
         {!editing ? (
-          <button type="button" onClick={startEditing} className={linkButtonClass}>
+          <button
+            type="button"
+            onClick={startEditing}
+            className="flex shrink-0 items-center gap-1.5 rounded-full border border-brand-charcoal/15 px-3.5 py-1.5 text-sm font-semibold text-brand-charcoal transition-colors hover:border-brand-red/30 hover:bg-brand-red/5 hover:text-brand-red focus-visible:outline-2 focus-visible:outline-brand-red"
+          >
+            <Pencil className="size-3.5" aria-hidden="true" />
             Edit
           </button>
         ) : null}
@@ -165,7 +176,7 @@ export default function ProfileSection({ onSessionExpired, onProfileSaved }) {
             value={form.phone}
             onChange={setField("phone")}
           />
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3 pt-1">
             <button type="submit" disabled={busy} className={smallPrimaryButtonClass}>
               {busy ? "Saving…" : "Save Changes"}
             </button>
@@ -175,12 +186,24 @@ export default function ProfileSection({ onSessionExpired, onProfileSaved }) {
           </div>
         </form>
       ) : (
-        <dl className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2">
-          <Detail label="First Name">{profile.firstName || "—"}</Detail>
-          <Detail label="Last Name">{profile.lastName || "—"}</Detail>
-          <Detail label="Email Address">{profile.email}</Detail>
-          <Detail label="Phone Number">{profile.phone || "Not added"}</Detail>
-          {memberSince ? <Detail label="Member Since">{memberSince}</Detail> : null}
+        <dl className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Detail label="First Name" icon={User}>
+            {profile.firstName || "—"}
+          </Detail>
+          <Detail label="Last Name" icon={User}>
+            {profile.lastName || "—"}
+          </Detail>
+          <Detail label="Email Address" icon={Mail}>
+            {profile.email}
+          </Detail>
+          <Detail label="Phone Number" icon={Phone}>
+            {profile.phone || "Not added"}
+          </Detail>
+          {memberSince ? (
+            <Detail label="Member Since" icon={CalendarDays}>
+              {memberSince}
+            </Detail>
+          ) : null}
         </dl>
       )}
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, MapPin, Pencil, Trash2, Star } from "lucide-react";
 import {
   listAddresses,
   createAddress,
@@ -241,7 +241,7 @@ export default function AddressesSection({ onSessionExpired }) {
       <Notice notice={notice} className="mb-4" />
 
       {editingId === "new" ? (
-        <div className="rounded-xl border border-brand-charcoal/15 p-5">{addressForm}</div>
+        <div className="rounded-xl border border-brand-charcoal/15 bg-brand-cream/30 p-5">{addressForm}</div>
       ) : atLimit ? (
         <p className="rounded-xl border border-brand-charcoal/10 bg-brand-charcoal/5 px-5 py-4 text-sm text-brand-charcoal/70">
           You&apos;ve saved the maximum of {MAX_ADDRESSES} addresses. Remove one to add another.
@@ -251,9 +251,11 @@ export default function AddressesSection({ onSessionExpired }) {
           type="button"
           onClick={() => openForm("new", EMPTY_FORM)}
           disabled={busy}
-          className="flex w-full items-center gap-3 rounded-xl border border-brand-charcoal/15 px-5 py-4 text-left text-sm font-semibold text-brand-red transition-colors hover:bg-brand-red/5 focus-visible:outline-2 focus-visible:outline-brand-red disabled:cursor-not-allowed disabled:opacity-60"
+          className="flex w-full items-center gap-3 rounded-xl border border-dashed border-brand-charcoal/20 px-5 py-4 text-left text-sm font-semibold text-brand-red transition-colors hover:border-brand-red/30 hover:bg-brand-red/5 focus-visible:outline-2 focus-visible:outline-brand-red disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <Plus className="size-4" aria-hidden="true" />
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-red/10">
+            <Plus className="size-4" aria-hidden="true" />
+          </span>
           Add a New Address
         </button>
       )}
@@ -263,22 +265,38 @@ export default function AddressesSection({ onSessionExpired }) {
       ) : (
         <ul className="mt-4 flex flex-col gap-3">
           {addresses.map((address) => (
-            <li key={address.id} className="rounded-xl border border-brand-charcoal/15 p-5">
+            <li
+              key={address.id}
+              className={`rounded-xl border p-5 transition-colors ${
+                address.isDefault ? "border-brand-gold/40 bg-brand-gold/5" : "border-brand-charcoal/15 bg-white"
+              }`}
+            >
               {editingId === address.id ? (
                 addressForm
               ) : (
                 <>
                   <div className="flex items-start justify-between gap-4">
-                    <AddressLines address={address} />
+                    <div className="flex min-w-0 items-start gap-3">
+                      <span
+                        aria-hidden="true"
+                        className={`mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full ${
+                          address.isDefault ? "bg-brand-gold/25 text-brand-charcoal" : "bg-brand-charcoal/5 text-brand-charcoal/50"
+                        }`}
+                      >
+                        <MapPin className="size-4" aria-hidden="true" />
+                      </span>
+                      <AddressLines address={address} />
+                    </div>
                     {address.isDefault ? (
-                      <span className="shrink-0 rounded-full bg-brand-gold/20 px-2.5 py-0.5 text-xs font-semibold text-brand-charcoal">
+                      <span className="flex shrink-0 items-center gap-1 rounded-full bg-brand-gold/25 px-2.5 py-1 text-xs font-semibold text-brand-charcoal">
+                        <Star className="size-3 fill-current" aria-hidden="true" />
                         Default
                       </span>
                     ) : null}
                   </div>
 
                   {confirmingDeleteId === address.id ? (
-                    <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+                    <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg bg-brand-red/5 px-4 py-3 text-sm">
                       <span className="text-brand-charcoal/80">Delete this address?</span>
                       <button
                         type="button"
@@ -298,7 +316,7 @@ export default function AddressesSection({ onSessionExpired }) {
                       </button>
                     </div>
                   ) : (
-                    <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
+                    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-brand-charcoal/10 pt-3">
                       <button
                         type="button"
                         onClick={() =>
@@ -312,8 +330,9 @@ export default function AddressesSection({ onSessionExpired }) {
                           })
                         }
                         disabled={busy}
-                        className={linkButtonClass}
+                        className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-brand-charcoal/70 transition-colors hover:bg-brand-charcoal/5 hover:text-brand-charcoal focus-visible:outline-2 focus-visible:outline-brand-red disabled:cursor-not-allowed disabled:opacity-60"
                       >
+                        <Pencil className="size-3.5" aria-hidden="true" />
                         Edit
                       </button>
                       <button
@@ -323,8 +342,9 @@ export default function AddressesSection({ onSessionExpired }) {
                           setConfirmingDeleteId(address.id);
                         }}
                         disabled={busy}
-                        className={linkButtonClass}
+                        className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-brand-charcoal/70 transition-colors hover:bg-brand-red/10 hover:text-brand-red-dark focus-visible:outline-2 focus-visible:outline-brand-red disabled:cursor-not-allowed disabled:opacity-60"
                       >
+                        <Trash2 className="size-3.5" aria-hidden="true" />
                         Delete
                       </button>
                       {!address.isDefault ? (
@@ -332,8 +352,9 @@ export default function AddressesSection({ onSessionExpired }) {
                           type="button"
                           onClick={() => handleMakeDefault(address.id)}
                           disabled={busy}
-                          className={linkButtonClass}
+                          className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-brand-charcoal/70 transition-colors hover:bg-brand-gold/15 hover:text-brand-charcoal focus-visible:outline-2 focus-visible:outline-brand-red disabled:cursor-not-allowed disabled:opacity-60"
                         >
+                          <Star className="size-3.5" aria-hidden="true" />
                           Make default
                         </button>
                       ) : null}
