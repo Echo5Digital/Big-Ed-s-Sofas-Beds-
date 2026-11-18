@@ -26,6 +26,7 @@ async function newCustomer(overrides = {}) {
       lastName: "Customer",
       passwordHash: await bcrypt.hash(PASSWORD, 4),
       emailVerifiedAt: new Date(),
+      channel: "ONLINE",
       ...overrides,
     },
   });
@@ -227,6 +228,26 @@ describe("customerAccount.service — orders", () => {
     expect(orders.map((o) => o.id)).toEqual([newer.id, older.id]);
     expect(pagination).toMatchObject({ page: 1, total: 2 });
     expect(orders[0]).toMatchObject({ totalCents: 12345, status: "CONFIRMED", paymentStatus: "UNPAID" });
+  });
+
+  // Regression test: before Customer.channel existed, a cashier creating a
+  // POS customer with the same email as an online account's could merge
+  // into that account's row via an email-only upsert, after which a POS
+  // sale's customerId pointed at the signed-in customer and leaked into
+  // their online "My Orders". Customer separation now makes that merge
+  // impossible going forward, but listOrders's own channel: "ONLINE" filter
+  // is what protects any already-affected historical data (and is cheap
+  // insurance either way) — this proves a POS-channel order attached to a
+  // customerId is still excluded regardless of how it got attached.
+  it("never shows a POS order even if one is attached to this customerId", async () => {
+    const mine = await newCustomer();
+    const onlineOrder = await makeOrder(mine.id, "ONLINE-LEAK-CHECK");
+    const posOrder = await makeOrder(mine.id, "POS-LEAK-CHECK", { channel: "POS" });
+
+    const { orders } = await service.listOrders(mine.id);
+
+    expect(orders.map((o) => o.id)).toEqual([onlineOrder.id]);
+    expect(orders.map((o) => o.id)).not.toContain(posOrder.id);
   });
 
   it("pages through orders", async () => {

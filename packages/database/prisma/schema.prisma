@@ -520,16 +520,35 @@ model CountLine {
 // Sales / Orders (e-commerce + shared order model)
 // ---------------------------------------------------------------------------
 
+// Which flow first created this Customer row — ONLINE (storefront checkout
+// or account registration) or POS (a cashier creating/attaching a walk-in
+// customer). The two never merge into one row even when the same email is
+// used in both: an online account's order history must never pick up an
+// in-store sale (or vice versa) just because a cashier typed the same email
+// a customer uses online. See Customer.email's own comment for how this
+// interacts with uniqueness.
+enum CustomerChannel {
+  ONLINE
+  POS
+}
+
 model Customer {
   id              String              @id @default(uuid())
-  email           String?             @unique
+  // Unique per channel, not globally — the same email can exist as both an
+  // ONLINE row (their storefront account/guest checkouts) and a separate POS
+  // row (their in-store purchase history), and the two are never merged. Every
+  // lookup/upsert against email (checkout, registration, login, POS search)
+  // must filter by channel to land on the right row.
+  email           String?
   phone           String?
   firstName       String?
   lastName        String?
+  channel         CustomerChannel
   // Storefront account credentials. Both stay null for guest customers — rows
-  // created implicitly by checkout/POS — so those keep working unchanged. A
+  // created implicitly by checkout — so those keep working unchanged. A
   // customer can sign in only once both are set, which only happens after the
-  // emailed one-time code has been confirmed (see CustomerRegistration).
+  // emailed one-time code has been confirmed (see CustomerRegistration). Never
+  // set on a POS-channel row — POS customers don't have storefront logins.
   passwordHash    String?
   emailVerifiedAt DateTime?
   addresses       Address[]
@@ -539,6 +558,7 @@ model Customer {
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
+  @@unique([email, channel])
   @@index([email])
 }
 

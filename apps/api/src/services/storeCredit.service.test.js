@@ -6,7 +6,7 @@ describe("storeCredit.service", () => {
 
   beforeAll(async () => {
     customer = await prisma.customer.create({
-      data: { firstName: "Store", lastName: "Credit Test", phone: `555-${Date.now().toString().slice(-7)}` },
+      data: { firstName: "Store", lastName: "Credit Test", phone: `555-${Date.now().toString().slice(-7)}`, channel: "POS" },
     });
   });
 
@@ -56,7 +56,7 @@ describe("storeCredit.service", () => {
 
   it("never lets two concurrent redemptions jointly exceed the balance", async () => {
     const freshCustomer = await prisma.customer.create({
-      data: { firstName: "Concurrent", lastName: "Credit Test", phone: `555-${Date.now().toString().slice(-7)}` },
+      data: { firstName: "Concurrent", lastName: "Credit Test", phone: `555-${Date.now().toString().slice(-7)}`, channel: "POS" },
     });
     await prisma.$transaction((tx) =>
       storeCreditService.issueStoreCredit(tx, { customerId: freshCustomer.id, amountCents: 5000, performedById: null })

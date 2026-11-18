@@ -20,12 +20,21 @@ function displayName(customer) {
   return `${customer.firstName ?? ""} ${customer.lastName ?? ""}`.trim() || customer.email;
 }
 
-// Storefront customers who registered an account (and verified their email),
-// with the ability to permanently delete one. Searching and paging happen on
-// the server since the list grows with every sign-up.
+const CHANNEL_TABS = [
+  ["", "All"],
+  ["ONLINE", "Online"],
+  ["POS", "POS"],
+];
+
+// Every customer — online storefront accounts/guest checkouts and
+// POS-created walk-ins, each tagged by Customer.channel — with the ability
+// to permanently delete a registered (has real login credentials) one.
+// Searching and paging happen on the server since the list grows with every
+// sign-up and every POS customer created.
 export default function CustomersTab() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [channel, setChannel] = useState("");
   const [page, setPage] = useState(1);
   // Bumped after a delete to refetch the current page.
   const [reloadToken, setReloadToken] = useState(0);
@@ -37,7 +46,7 @@ export default function CustomersTab() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
 
-  const queryKey = `${debouncedSearch}|${page}|${reloadToken}`;
+  const queryKey = `${debouncedSearch}|${channel}|${page}|${reloadToken}`;
   const loading = result?.key !== queryKey;
 
   useEffect(() => {
@@ -48,12 +57,18 @@ export default function CustomersTab() {
     return () => clearTimeout(timer);
   }, [search]);
 
+  function handleChannelChange(next) {
+    setChannel(next);
+    setPage(1);
+  }
+
   useEffect(() => {
     // A response that arrives after the query has moved on must not overwrite
     // the newer one.
     let cancelled = false;
     const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
     if (debouncedSearch) params.set("q", debouncedSearch);
+    if (channel) params.set("channel", channel);
 
     api
       .get(`/users/customers?${params}`)
@@ -69,7 +84,7 @@ export default function CustomersTab() {
     return () => {
       cancelled = true;
     };
-  }, [queryKey, debouncedSearch, page]);
+  }, [queryKey, debouncedSearch, channel, page]);
 
   const customers = result?.customers ?? null;
   const total = result?.pagination?.total ?? 0;
@@ -112,7 +127,16 @@ export default function CustomersTab() {
     },
     { key: "email", header: "Email" },
     { key: "phone", header: "Phone", render: (c) => c.phone || <span className="text-brand-charcoal/40">—</span> },
-    { key: "registeredAt", header: "Registered", render: (c) => formatDate(c.registeredAt) },
+    {
+      key: "channel",
+      header: "Channel",
+      render: (c) => <Badge tone={c.channel === "POS" ? "default" : "info"}>{c.channel}</Badge>,
+    },
+    {
+      key: "registeredAt",
+      header: "Registered",
+      render: (c) => (c.registeredAt ? formatDate(c.registeredAt) : <span className="text-brand-charcoal/40">—</span>),
+    },
     {
       key: "orderCount",
       header: "Orders",
@@ -153,20 +177,26 @@ export default function CustomersTab() {
     {
       key: "actions",
       header: "",
-      render: (c) => (
-        <button
-          type="button"
-          onClick={() => {
-            setDeleteError(null);
-            setPendingDelete(c);
-          }}
-          aria-label={`Delete ${displayName(c)}`}
-          title="Delete customer"
-          className="rounded-lg p-2 text-brand-charcoal/50 transition-colors hover:bg-red-50 hover:text-red-700 focus-visible:outline-2 focus-visible:outline-brand-red"
-        >
-          <Trash2 className="size-4" aria-hidden="true" />
-        </button>
-      ),
+      // Only a registered account (real login credentials — registeredAt set)
+      // can be deleted through this path; see deleteRegisteredCustomer in
+      // apps/api/src/services/customers.service.js. A guest/POS row has
+      // nothing to delete here, so no button is offered rather than one that
+      // would just 404.
+      render: (c) =>
+        c.registeredAt ? (
+          <button
+            type="button"
+            onClick={() => {
+              setDeleteError(null);
+              setPendingDelete(c);
+            }}
+            aria-label={`Delete ${displayName(c)}`}
+            title="Delete customer"
+            className="rounded-lg p-2 text-brand-charcoal/50 transition-colors hover:bg-red-50 hover:text-red-700 focus-visible:outline-2 focus-visible:outline-brand-red"
+          >
+            <Trash2 className="size-4" aria-hidden="true" />
+          </button>
+        ) : null,
     },
   ];
 
@@ -174,7 +204,7 @@ export default function CustomersTab() {
     ? "Loading customers…"
     : debouncedSearch
       ? "No customers match your search."
-      : "No customers have registered yet.";
+      : "No customers yet.";
 
   return (
     <div>
@@ -190,10 +220,26 @@ export default function CustomersTab() {
             className="w-full rounded-lg border border-black/15 bg-white py-2 pl-9 pr-3 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
           />
         </div>
-        <p className="text-xs text-brand-charcoal/50">
-          Customers who created a storefront account and verified their email. Guest checkouts aren&apos;t listed.
-        </p>
+        <div role="group" aria-label="Filter by channel" className="flex rounded-lg border border-black/15 bg-white p-0.5">
+          {CHANNEL_TABS.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={channel === value}
+              onClick={() => handleChannelChange(value)}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                channel === value ? "bg-brand-red text-white" : "text-brand-charcoal/60 hover:bg-black/5"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
+      <p className="mb-4 text-xs text-brand-charcoal/50">
+        Every customer — storefront accounts, online guest checkouts, and POS walk-ins — tagged by how they were
+        created. Only a registered account (storefront login) can be deleted here.
+      </p>
 
       {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 

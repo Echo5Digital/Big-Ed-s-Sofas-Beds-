@@ -135,8 +135,17 @@ async function sweepLeakedTestFixtures() {
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   }
 
+  // Matches by email OR name — some fixtures (e.g. pos.service.test.js's
+  // split-payment tests) create customers with no email at all, only a name
+  // like "Split Payment Test", so an email-only match misses them.
   const customers = await prisma.customer.findMany({
-    where: { email: { contains: "test", mode: "insensitive" } },
+    where: {
+      OR: [
+        { email: { contains: "test", mode: "insensitive" } },
+        { firstName: { contains: "test", mode: "insensitive" } },
+        { lastName: { contains: "test", mode: "insensitive" } },
+      ],
+    },
     select: { id: true },
   });
   const customerIds = customers.map((c) => c.id);

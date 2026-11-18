@@ -4,8 +4,9 @@ const { escapeLikeWildcards } = require("../lib/searchText");
 
 // A "registered" customer is one who created a storefront account and proved
 // they own the email with the one-time code (see customerAuth.service.js).
-// Guests created implicitly by checkout/POS have neither field set, so they are
-// not listed here — they're still visible through their orders.
+// Used only by deleteRegisteredCustomer below — hard-deleting a customer stays
+// limited to accounts with real login credentials; the list itself (below)
+// now shows every customer, online and POS alike, distinguished by channel.
 const REGISTERED = { passwordHash: { not: null }, emailVerifiedAt: { not: null } };
 
 const MAX_PAGE_SIZE = 100;
@@ -19,14 +20,16 @@ function fieldsMatching(term) {
 
 // Every whitespace-separated term must match somewhere, so "jane doe" finds
 // Jane Doe even though her first and last name live in different columns.
-function buildWhere(q) {
+// `channel` narrows to ONLINE or POS when given; omitted shows both.
+function buildWhere(q, channel) {
   const terms = String(q ?? "")
     .trim()
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, MAX_SEARCH_TERMS);
 
-  return terms.length > 0 ? { ...REGISTERED, AND: terms.map(fieldsMatching) } : REGISTERED;
+  const channelFilter = channel ? { channel } : {};
+  return terms.length > 0 ? { ...channelFilter, AND: terms.map(fieldsMatching) } : channelFilter;
 }
 
 // Explicit `select`, never the whole row: passwordHash must not be able to
@@ -54,6 +57,7 @@ function serialize(customer) {
     firstName: customer.firstName,
     lastName: customer.lastName,
     phone: customer.phone,
+    channel: customer.channel,
     registeredAt: customer.emailVerifiedAt,
     address: address
       ? {
@@ -71,16 +75,20 @@ function serialize(customer) {
   };
 }
 
-async function listRegisteredCustomers({ q, page, pageSize } = {}) {
+// Lists every Customer row — both ONLINE (storefront accounts and guest
+// checkouts) and POS (cashier-created walk-in customers) — optionally
+// narrowed to one channel. `channel` in each returned row is what the admin
+// UI uses to label/filter by how the customer was created.
+async function listCustomers({ q, page, pageSize, channel } = {}) {
   const take = Math.min(MAX_PAGE_SIZE, Math.max(1, Math.floor(Number(pageSize)) || DEFAULT_PAGE_SIZE));
   const currentPage = Math.max(1, Math.floor(Number(page)) || 1);
-  const where = buildWhere(q);
+  const where = buildWhere(q, channel);
 
   const [rows, total] = await Promise.all([
     prisma.customer.findMany({
       where,
-      // Newest registrations first; id breaks ties so paging is stable.
-      orderBy: [{ emailVerifiedAt: "desc" }, { id: "asc" }],
+      // Newest first; id breaks ties so paging is stable.
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
       skip: (currentPage - 1) * take,
       take,
       select: {
@@ -89,6 +97,7 @@ async function listRegisteredCustomers({ q, page, pageSize } = {}) {
         firstName: true,
         lastName: true,
         phone: true,
+        channel: true,
         emailVerifiedAt: true,
         addresses: {
           orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
@@ -123,8 +132,9 @@ async function listRegisteredCustomers({ q, page, pageSize } = {}) {
 // Their signed-in sessions stop working on the next request, since the session
 // middleware re-reads the customer from the database every time.
 //
-// Only registered accounts can be deleted through this path (it's the list the
-// admin sees); guest checkout records are not reachable by it.
+// Only registered accounts (real login credentials) can be deleted through
+// this path — guest/POS-created rows, now also shown in listCustomers above,
+// are not reachable by it.
 async function deleteRegisteredCustomer(customerId) {
   return prisma.$transaction(async (tx) => {
     const customer = await tx.customer.findFirst({
@@ -140,4 +150,4 @@ async function deleteRegisteredCustomer(customerId) {
   });
 }
 
-module.exports = { listRegisteredCustomers, deleteRegisteredCustomer };
+module.exports = { listCustomers, deleteRegisteredCustomer };

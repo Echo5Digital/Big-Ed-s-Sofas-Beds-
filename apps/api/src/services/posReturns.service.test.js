@@ -34,7 +34,7 @@ describe("posReturns.service", () => {
       data: { productId: product.id, sku: `RETURNS-REPLACEMENT-${Date.now()}`, name: "Premium", priceCents: 50000, taxRatePercent: 0 },
     });
     customer = await prisma.customer.create({
-      data: { firstName: "Returns", lastName: "Test Customer", phone: `555-${Date.now().toString().slice(-7)}` },
+      data: { firstName: "Returns", lastName: "Test Customer", phone: `555-${Date.now().toString().slice(-7)}`, channel: "POS" },
     });
   });
 

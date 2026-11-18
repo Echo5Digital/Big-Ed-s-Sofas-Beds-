@@ -226,7 +226,13 @@ function serializeOrder(order) {
 async function listOrders(customerId, { page, pageSize } = {}) {
   const take = Math.min(MAX_ORDERS_PAGE_SIZE, Math.max(1, Math.floor(Number(pageSize)) || ORDERS_PAGE_SIZE));
   const currentPage = Math.max(1, Math.floor(Number(page)) || 1);
-  const where = { customerId, ...VISIBLE_ORDERS };
+  // channel: "ONLINE" is defense-in-depth, not redundant with Customer.channel
+  // separation: pre-existing orders created before that separation existed
+  // can still have a POS order's customerId pointing at what's now an
+  // ONLINE-channel row (the exact collision this whole fix addresses) — a
+  // signed-in customer's online order history must never include one of
+  // those, regardless of how customerId ended up pointing there.
+  const where = { customerId, channel: "ONLINE", ...VISIBLE_ORDERS };
 
   const [orders, total] = await Promise.all([
     prisma.order.findMany({

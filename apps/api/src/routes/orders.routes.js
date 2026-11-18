@@ -79,10 +79,14 @@ router.post(
       }
     }
 
+    // Scoped to channel: "ONLINE" so this can only ever find/update an
+    // online-origin Customer row — a cashier having used this same email in
+    // POS must never cause a checkout here to land on, or merge into, that
+    // separate POS-channel record (see Customer.channel in schema.prisma).
     const customer = await prisma.customer.upsert({
-      where: { email: customerInput.email },
+      where: { email_channel: { email: customerInput.email, channel: "ONLINE" } },
       update: { firstName: customerInput.firstName, lastName: customerInput.lastName, phone: customerInput.phone },
-      create: customerInput,
+      create: { ...customerInput, channel: "ONLINE" },
     });
 
     const subtotalCents = lines.reduce((sum, l) => sum + variantById.get(l.variantId).priceCents * l.quantity, 0);

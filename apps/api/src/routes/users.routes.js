@@ -11,7 +11,7 @@ const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
 const { NotFoundError, ConflictError } = require("../lib/errors");
-const { listRegisteredCustomers, deleteRegisteredCustomer } = require("../services/customers.service");
+const { listCustomers, deleteRegisteredCustomer } = require("../services/customers.service");
 const { nextEmployeeId, prefixForRoles } = require("../lib/employeeId");
 const { hashPin } = require("../lib/posPin");
 
@@ -81,15 +81,21 @@ router.get(
   })
 );
 
-// Storefront customers who registered an account (read-only). Lives under
+// Every customer — storefront accounts, online guest checkouts, and
+// POS-created walk-ins alike (read-only), filterable by channel. Lives under
 // /users so it shares this router's requireAuth + users:manage guard — these
 // are personal details, so no broader permission can see them.
 router.get(
   "/customers",
   asyncHandler(async (req, res) => {
-    const { q, page, pageSize } = req.query;
-    // A repeated query param arrives as an array; only a plain string is a search.
-    const result = await listRegisteredCustomers({ q: typeof q === "string" ? q : undefined, page, pageSize });
+    const { q, page, pageSize, channel } = req.query;
+    // A repeated query param arrives as an array; only a plain string is a search/channel.
+    const result = await listCustomers({
+      q: typeof q === "string" ? q : undefined,
+      page,
+      pageSize,
+      channel: channel === "ONLINE" || channel === "POS" ? channel : undefined,
+    });
     res.json(result);
   })
 );

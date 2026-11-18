@@ -27,7 +27,7 @@ describe("reports.routes — GET /overview month range", () => {
       data: { name: `Reports Test Supplier ${Date.now()}` },
     });
     customer = await prisma.customer.create({
-      data: { email: `reports-test-${Date.now()}@example.com`, firstName: "Rep", lastName: "Tester" },
+      data: { email: `reports-test-${Date.now()}@example.com`, firstName: "Rep", lastName: "Tester", channel: "ONLINE" },
     });
   });
 

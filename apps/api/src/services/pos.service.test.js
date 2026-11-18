@@ -864,7 +864,7 @@ describe("pos.service", () => {
     it("redeems store credit as a sale tender and debits the customer's balance", async () => {
       const storeCreditService = require("./storeCredit.service");
       const customer = await prisma.customer.create({
-        data: { firstName: "Split", lastName: "Payment Test", phone: `555-${Date.now().toString().slice(-7)}` },
+        data: { firstName: "Split", lastName: "Payment Test", phone: `555-${Date.now().toString().slice(-7)}`, channel: "POS" },
       });
       await prisma.$transaction((tx) =>
         storeCreditService.issueStoreCredit(tx, { customerId: customer.id, amountCents: 20000, performedById: null })

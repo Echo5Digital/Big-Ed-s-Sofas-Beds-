@@ -24,7 +24,7 @@ describe("payments.routes", () => {
       data: { productId: product.id, sku: `PAYMENTS-TEST-${Date.now()}`, name: "Default", priceCents: 100000 },
     });
     customer = await prisma.customer.create({
-      data: { email: `payments-test-${Date.now()}@example.com`, firstName: "Pay", lastName: "Tester" },
+      data: { email: `payments-test-${Date.now()}@example.com`, firstName: "Pay", lastName: "Tester", channel: "ONLINE" },
     });
   });
 

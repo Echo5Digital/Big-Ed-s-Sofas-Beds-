@@ -50,9 +50,13 @@ function toPublicCustomer(customer) {
 }
 
 // Case-insensitive so an address a guest typed as "Jane@X.com" at checkout is
-// still matched when she registers as "jane@x.com".
+// still matched when she registers as "jane@x.com". Scoped to channel:
+// "ONLINE" — every caller here (pre-registration check, claiming a guest's
+// order history on verify, login) is about the storefront account
+// specifically, and must never match a separate POS-channel row that
+// happens to share the same email (see Customer.channel in schema.prisma).
 function findCustomerByEmail(client, email) {
-  return client.customer.findFirst({ where: { email: { equals: email, mode: "insensitive" } } });
+  return client.customer.findFirst({ where: { email: { equals: email, mode: "insensitive" }, channel: "ONLINE" } });
 }
 
 // The sign-up exists but its code has timed out: the customer can ask for a
@@ -204,9 +208,10 @@ async function verifyRegistration({ pendingId, code }, { now = new Date() } = {}
 
     const verifiedAt = new Date();
     if (existing) {
-      // A guest customer (from checkout/POS) now proves they own this email, so
-      // the account attaches to their existing order history. Names the shop
-      // already holds are kept; only blanks are filled in.
+      // A guest who checked out online (never POS — findCustomerByEmail is
+      // channel: "ONLINE"-scoped) now proves they own this email, so the
+      // account attaches to their existing online order history. Names the
+      // shop already holds are kept; only blanks are filled in.
       return tx.customer.update({
         where: { id: existing.id },
         data: {
@@ -224,6 +229,7 @@ async function verifyRegistration({ pendingId, code }, { now = new Date() } = {}
         firstName: registration.firstName,
         lastName: registration.lastName,
         passwordHash: registration.passwordHash,
+        channel: "ONLINE",
         emailVerifiedAt: verifiedAt,
       },
     });

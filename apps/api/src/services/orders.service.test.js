@@ -9,7 +9,7 @@ describe("orders.service — saveCheckoutDeliveryAddress", () => {
 
   beforeAll(async () => {
     customer = await prisma.customer.create({
-      data: { email: `orders-service-test-${RUN}@example.com`, firstName: "Ord", lastName: "Tester" },
+      data: { email: `orders-service-test-${RUN}@example.com`, firstName: "Ord", lastName: "Tester", channel: "ONLINE" },
     });
   });
 

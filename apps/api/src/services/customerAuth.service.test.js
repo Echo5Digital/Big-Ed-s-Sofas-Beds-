@@ -246,11 +246,17 @@ describe("customerAuth.service — sign-up with emailed one-time code", () => {
     expect(await prisma.customerRegistration.count({ where: { email } })).toBe(0);
   });
 
-  it("a guest customer from checkout adopts the account after proving the email, keeping their record", async () => {
+  it("a guest customer from online checkout adopts the account after proving the email, keeping their record", async () => {
     const mailer = fakeMailer();
     const email = newEmail();
     const guest = await prisma.customer.create({
-      data: { email: email.toUpperCase().replace("@EXAMPLE.COM", "@example.com"), firstName: "Guest", lastName: "Shopper", phone: "555-0100" },
+      data: {
+        email: email.toUpperCase().replace("@EXAMPLE.COM", "@example.com"),
+        firstName: "Guest",
+        lastName: "Shopper",
+        phone: "555-0100",
+        channel: "ONLINE",
+      },
     });
     expect(guest.passwordHash).toBeNull();
 
@@ -268,6 +274,29 @@ describe("customerAuth.service — sign-up with emailed one-time code", () => {
     expect(stored.phone).toBe("555-0100");
     expect(stored.emailVerifiedAt).toBeInstanceOf(Date);
     expect(await prisma.customer.count({ where: { email: { equals: email, mode: "insensitive" } } })).toBe(1);
+  });
+
+  // The core guarantee behind Customer.channel: a POS-created customer must
+  // never be claimed by an online registration for the same email — the two
+  // are separate people's records as far as this shop's data model is
+  // concerned, even if a cashier happened to type the exact same address a
+  // customer uses online.
+  it("never attaches to a POS-channel customer with the same email — creates a separate ONLINE row instead", async () => {
+    const mailer = fakeMailer();
+    const email = newEmail();
+    const posCustomer = await prisma.customer.create({
+      data: { email, firstName: "Walk", lastName: "In", phone: "555-0199", channel: "POS" },
+    });
+
+    const { pendingId } = await register(email, mailer, { firstName: "Online", lastName: "Shopper" });
+    const customer = await service.verifyRegistration({ pendingId, code: mailer.lastCodeFor(email) });
+
+    expect(customer.id).not.toBe(posCustomer.id);
+    expect(customer.firstName).toBe("Online");
+    const stillPos = await prisma.customer.findUnique({ where: { id: posCustomer.id } });
+    expect(stillPos.firstName).toBe("Walk"); // untouched by the registration
+    expect(stillPos.passwordHash).toBeNull();
+    expect(await prisma.customer.count({ where: { email: { equals: email, mode: "insensitive" } } })).toBe(2);
   });
 });
 
@@ -314,7 +343,9 @@ describe("customerAuth.service — sign-in", () => {
   });
 
   it("getSignedInCustomer returns null for a guest with no password", async () => {
-    const guest = await prisma.customer.create({ data: { email: newEmail(), firstName: "No", lastName: "Password" } });
+    const guest = await prisma.customer.create({
+      data: { email: newEmail(), firstName: "No", lastName: "Password", channel: "ONLINE" },
+    });
     expect(await service.getSignedInCustomer(guest.id)).toBeNull();
   });
 });

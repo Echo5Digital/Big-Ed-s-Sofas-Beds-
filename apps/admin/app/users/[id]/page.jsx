@@ -13,6 +13,19 @@ import { formatCentsAsCurrency } from "@/lib/formatCurrency";
 
 const ROLE_TONE = { SALESMAN: "default", MANAGER: "info" };
 
+// "Sales credited" is shown for any role except Cashier — a Cashier account
+// exists purely to run POS sales, not to be tracked as a salesperson, even
+// though pos.service.js's default-attribution rule (crediting the cashier
+// themself when no one else is picked) means a Cashier row CAN exist in
+// OrderSalesAttribution. This is a deliberate exclusion, not a reflection of
+// what data can exist. Every other role (Salesman, Manager, Admin, Super
+// Admin) shows the section whenever they have rows.
+//
+// "Discounts approved via PIN" is shown only for roles that can actually
+// hold the pos:register:approve-reopen permission this relies on — mirrors
+// PIN_ELIGIBLE_ROLES in app/users/page.jsx and apps/api/src/lib/posPin.js.
+const DISCOUNT_APPROVAL_ROLES = ["ADMIN", "MANAGER", "SUPER_ADMIN"];
+
 function formatDateTime(value) {
   return value ? new Date(value).toLocaleString() : "—";
 }
@@ -37,15 +50,22 @@ function UserDrilldownContent() {
   const [error, setError] = useState(null);
 
   const load = useCallback(() => {
-    Promise.all([
-      api.get("/users"),
-      api.get(`/users/${id}/sales-attribution`),
-      api.get(`/users/${id}/discount-approvals`),
-    ])
-      .then(([usersData, attributionData, approvalData]) => {
-        setUser(usersData.users.find((u) => u.id === id) ?? null);
-        setAttributions(attributionData.attributions);
-        setApprovals(approvalData.approvals);
+    api
+      .get("/users")
+      .then(async (usersData) => {
+        const target = usersData.users.find((u) => u.id === id) ?? null;
+        setUser(target);
+        if (!target) return;
+
+        const showSalesCredited = !target.roles.includes("CASHIER");
+        const showDiscountApprovals = target.roles.some((role) => DISCOUNT_APPROVAL_ROLES.includes(role));
+
+        const [attributionData, approvalData] = await Promise.all([
+          showSalesCredited ? api.get(`/users/${id}/sales-attribution`) : Promise.resolve(null),
+          showDiscountApprovals ? api.get(`/users/${id}/discount-approvals`) : Promise.resolve(null),
+        ]);
+        setAttributions(attributionData?.attributions ?? null);
+        setApprovals(approvalData?.approvals ?? null);
       })
       .catch((err) => setError(err instanceof ApiClientError ? err.message : "Failed to load user activity."));
   }, [id]);
@@ -53,6 +73,9 @@ function UserDrilldownContent() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const showSalesCredited = Boolean(user) && !user.roles.includes("CASHIER");
+  const showDiscountApprovals = Boolean(user) && user.roles.some((role) => DISCOUNT_APPROVAL_ROLES.includes(role));
 
   const salesColumns = [
     {
@@ -124,13 +147,37 @@ function UserDrilldownContent() {
 
       {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-      <h2 className="mb-3 mt-2 text-sm font-semibold uppercase tracking-wide text-brand-charcoal/50">Sales credited</h2>
-      <DataTable columns={salesColumns} rows={attributions} emptyMessage="No sales credited to this user yet." />
+      {showSalesCredited && (
+        <>
+          <h2 className="mb-3 mt-2 text-sm font-semibold uppercase tracking-wide text-brand-charcoal/50">
+            Sales credited
+          </h2>
+          <DataTable columns={salesColumns} rows={attributions} emptyMessage="No sales credited to this user yet." />
+        </>
+      )}
 
-      <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-brand-charcoal/50">
-        Discounts approved via PIN
-      </h2>
-      <DataTable columns={approvalColumns} rows={approvals} emptyMessage="This user hasn't approved any discount overrides." />
+      {showDiscountApprovals && (
+        <>
+          <h2
+            className={`mb-3 text-sm font-semibold uppercase tracking-wide text-brand-charcoal/50 ${
+              showSalesCredited ? "mt-8" : "mt-2"
+            }`}
+          >
+            Discounts approved via PIN
+          </h2>
+          <DataTable
+            columns={approvalColumns}
+            rows={approvals}
+            emptyMessage="This user hasn't approved any discount overrides."
+          />
+        </>
+      )}
+
+      {user && !showSalesCredited && !showDiscountApprovals && (
+        <p className="rounded-lg border border-dashed border-black/15 px-4 py-6 text-center text-sm text-brand-charcoal/50">
+          This account is used to run POS sales — there&apos;s no sales-credit or discount-approval activity to show.
+        </p>
+      )}
     </div>
   );
 }

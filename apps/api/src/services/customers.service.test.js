@@ -1,5 +1,5 @@
 const { prisma } = require("@big-eds/database");
-const { listRegisteredCustomers, deleteRegisteredCustomer } = require("./customers.service");
+const { listCustomers, deleteRegisteredCustomer } = require("./customers.service");
 
 // Runs against the real dev database (same convention as pos.service.test.js —
 // no Prisma mock layer). Every row uses a run-unique surname/email prefix so
@@ -9,7 +9,7 @@ const RUN = Date.now();
 const SURNAME = `Zephyr${RUN}`;
 const emailPrefix = `customer-list-test-${RUN}`;
 
-describe("customers.service — listRegisteredCustomers", () => {
+describe("customers.service — listCustomers", () => {
   const created = {};
 
   beforeAll(async () => {
@@ -17,18 +17,39 @@ describe("customers.service — listRegisteredCustomers", () => {
     const later = new Date(Date.now() - 60 * 1000);
 
     created.alice = await prisma.customer.create({
-      data: { email: `${emailPrefix}-alice@example.com`, firstName: "Alice", lastName: SURNAME, phone: "555-0101", passwordHash: "x", emailVerifiedAt: earlier },
+      data: {
+        email: `${emailPrefix}-alice@example.com`,
+        firstName: "Alice",
+        lastName: SURNAME,
+        phone: "555-0101",
+        passwordHash: "x",
+        emailVerifiedAt: earlier,
+        channel: "ONLINE",
+      },
     });
     created.bob = await prisma.customer.create({
-      data: { email: `${emailPrefix}-bob@example.com`, firstName: "Bob", lastName: SURNAME, passwordHash: "x", emailVerifiedAt: later },
+      data: {
+        email: `${emailPrefix}-bob@example.com`,
+        firstName: "Bob",
+        lastName: SURNAME,
+        passwordHash: "x",
+        emailVerifiedAt: later,
+        channel: "ONLINE",
+      },
     });
-    // A guest from checkout/POS: has an order trail but never registered.
+    // A guest from online checkout: has an order trail but never registered.
     created.guest = await prisma.customer.create({
-      data: { email: `${emailPrefix}-guest@example.com`, firstName: "Gina", lastName: SURNAME },
+      data: { email: `${emailPrefix}-guest@example.com`, firstName: "Gina", lastName: SURNAME, channel: "ONLINE" },
     });
     // Defensive: a password without a verified email must not count as registered.
     created.unverified = await prisma.customer.create({
-      data: { email: `${emailPrefix}-unverified@example.com`, firstName: "Una", lastName: SURNAME, passwordHash: "x" },
+      data: { email: `${emailPrefix}-unverified@example.com`, firstName: "Una", lastName: SURNAME, passwordHash: "x", channel: "ONLINE" },
+    });
+    // A POS-channel customer sharing the exact same (unqualified) email
+    // local-part style as the others, to prove channel scoping/filtering
+    // actually separates them rather than merging by name/search match.
+    created.posWalkIn = await prisma.customer.create({
+      data: { email: `${emailPrefix}-pos@example.com`, firstName: "Pat", lastName: SURNAME, channel: "POS" },
     });
   });
 
@@ -36,23 +57,58 @@ describe("customers.service — listRegisteredCustomers", () => {
     await prisma.customer.deleteMany({ where: { email: { startsWith: emailPrefix } } });
   });
 
-  it("lists only customers who registered and verified, never guests or unverified rows", async () => {
-    const { customers, pagination } = await listRegisteredCustomers({ q: SURNAME });
+  it("lists every customer regardless of channel by default", async () => {
+    const { customers, pagination } = await listCustomers({ q: SURNAME });
 
     expect(customers.map((c) => c.email).sort()).toEqual(
-      [`${emailPrefix}-alice@example.com`, `${emailPrefix}-bob@example.com`].sort()
+      [
+        `${emailPrefix}-alice@example.com`,
+        `${emailPrefix}-bob@example.com`,
+        `${emailPrefix}-guest@example.com`,
+        `${emailPrefix}-unverified@example.com`,
+        `${emailPrefix}-pos@example.com`,
+      ].sort()
     );
-    expect(pagination.total).toBe(2);
+    expect(pagination.total).toBe(5);
+  });
+
+  it("narrows to one channel when asked", async () => {
+    const online = await listCustomers({ q: SURNAME, channel: "ONLINE" });
+    expect(online.customers.map((c) => c.email).sort()).toEqual(
+      [
+        `${emailPrefix}-alice@example.com`,
+        `${emailPrefix}-bob@example.com`,
+        `${emailPrefix}-guest@example.com`,
+        `${emailPrefix}-unverified@example.com`,
+      ].sort()
+    );
+
+    const pos = await listCustomers({ q: SURNAME, channel: "POS" });
+    expect(pos.customers.map((c) => c.email)).toEqual([`${emailPrefix}-pos@example.com`]);
+  });
+
+  it("tags each row with registeredAt only when it actually has verified credentials", async () => {
+    const { customers } = await listCustomers({ q: SURNAME });
+    const byName = Object.fromEntries(customers.map((c) => [c.firstName, c]));
+
+    expect(byName.Alice.registeredAt).not.toBeNull();
+    expect(byName.Bob.registeredAt).not.toBeNull();
+    expect(byName.Gina.registeredAt).toBeNull();
+    expect(byName.Una.registeredAt).toBeNull();
+    expect(byName.Pat.registeredAt).toBeNull();
+    expect(byName.Pat.channel).toBe("POS");
+    expect(byName.Alice.channel).toBe("ONLINE");
   });
 
   it("never exposes credentials, only the intended public fields", async () => {
-    const { customers } = await listRegisteredCustomers({ q: SURNAME });
+    const { customers } = await listCustomers({ q: SURNAME });
 
     for (const customer of customers) {
       expect(Object.keys(customer).sort()).toEqual(
         [
           "address",
           "averageOrderValueCents",
+          "channel",
           "email",
           "firstName",
           "id",
@@ -87,7 +143,7 @@ describe("customers.service — listRegisteredCustomers", () => {
     });
 
     try {
-      const { customers } = await listRegisteredCustomers({ q: SURNAME });
+      const { customers } = await listCustomers({ q: SURNAME });
       const alice = customers.find((c) => c.firstName === "Alice");
       const bob = customers.find((c) => c.firstName === "Bob");
 
@@ -108,54 +164,57 @@ describe("customers.service — listRegisteredCustomers", () => {
     }
   });
 
-  it("puts the newest registration first", async () => {
-    const { customers } = await listRegisteredCustomers({ q: SURNAME });
-    expect(customers.map((c) => c.firstName)).toEqual(["Bob", "Alice"]);
+  it("puts the most recently created customer first", async () => {
+    const { customers } = await listCustomers({ q: SURNAME });
+    // created in order alice, bob, guest, unverified, posWalkIn — newest first.
+    expect(customers.map((c) => c.firstName)).toEqual(["Pat", "Una", "Gina", "Bob", "Alice"]);
   });
 
   it("searches case-insensitively across name and email, requiring every term to match", async () => {
-    const byFullName = await listRegisteredCustomers({ q: `alice ${SURNAME.toUpperCase()}` });
+    const byFullName = await listCustomers({ q: `alice ${SURNAME.toUpperCase()}` });
     expect(byFullName.customers.map((c) => c.firstName)).toEqual(["Alice"]);
 
-    const byEmail = await listRegisteredCustomers({ q: `${emailPrefix}-bob` });
+    const byEmail = await listCustomers({ q: `${emailPrefix}-bob` });
     expect(byEmail.customers.map((c) => c.firstName)).toEqual(["Bob"]);
 
     // Phone is shown but deliberately not searchable — someone who changes or
     // removes their number shouldn't stay findable by the old one.
-    const byPhone = await listRegisteredCustomers({ q: "555-0101" });
+    const byPhone = await listCustomers({ q: "555-0101" });
     expect(byPhone.customers.some((c) => c.firstName === "Alice")).toBe(false);
 
-    const noMatch = await listRegisteredCustomers({ q: `alice nobody${RUN}` });
+    const noMatch = await listCustomers({ q: `alice nobody${RUN}` });
     expect(noMatch.customers).toEqual([]);
     expect(noMatch.pagination.total).toBe(0);
   });
 
   it("does not treat SQL wildcards in the search as wildcards", async () => {
-    const { customers } = await listRegisteredCustomers({ q: `%${SURNAME}%_` });
+    const { customers } = await listCustomers({ q: `%${SURNAME}%_` });
     expect(customers).toEqual([]);
   });
 
   it("pages stably and reports the total", async () => {
-    const first = await listRegisteredCustomers({ q: SURNAME, page: 1, pageSize: 1 });
-    const second = await listRegisteredCustomers({ q: SURNAME, page: 2, pageSize: 1 });
-    const third = await listRegisteredCustomers({ q: SURNAME, page: 3, pageSize: 1 });
+    // Scoped to ONLINE so the total (4: alice, bob, guest, unverified) is
+    // exact and independent of the POS fixture above.
+    const first = await listCustomers({ q: SURNAME, channel: "ONLINE", page: 1, pageSize: 1 });
+    const second = await listCustomers({ q: SURNAME, channel: "ONLINE", page: 2, pageSize: 1 });
+    const fifth = await listCustomers({ q: SURNAME, channel: "ONLINE", page: 5, pageSize: 1 });
 
     expect(first.customers).toHaveLength(1);
     expect(second.customers).toHaveLength(1);
     expect(first.customers[0].id).not.toBe(second.customers[0].id);
-    expect(third.customers).toEqual([]);
-    expect([first, second, third].every((r) => r.pagination.total === 2)).toBe(true);
+    expect(fifth.customers).toEqual([]);
+    expect([first, second, fifth].every((r) => r.pagination.total === 4)).toBe(true);
     expect(first.pagination).toMatchObject({ page: 1, pageSize: 1 });
   });
 
   it("falls back to sane defaults for junk paging input and caps the page size", async () => {
-    const junk = await listRegisteredCustomers({ q: SURNAME, page: "banana", pageSize: -5 });
+    const junk = await listCustomers({ q: SURNAME, page: "banana", pageSize: -5 });
     expect(junk.pagination).toMatchObject({ page: 1, pageSize: 1 }); // -5 -> clamped to the minimum of 1
 
-    const zero = await listRegisteredCustomers({ q: SURNAME, page: 0, pageSize: "abc" });
+    const zero = await listCustomers({ q: SURNAME, page: 0, pageSize: "abc" });
     expect(zero.pagination).toMatchObject({ page: 1, pageSize: 25 });
 
-    const huge = await listRegisteredCustomers({ q: SURNAME, pageSize: 100000 });
+    const huge = await listCustomers({ q: SURNAME, pageSize: 100000 });
     expect(huge.pagination.pageSize).toBe(100);
   });
 });
@@ -174,6 +233,7 @@ describe("customers.service — deleteRegisteredCustomer", () => {
         lastName: `Test${RUN}`,
         passwordHash: "x",
         emailVerifiedAt: new Date(),
+        channel: "ONLINE",
         ...overrides,
       },
     });
@@ -258,10 +318,10 @@ describe("customers.service — deleteRegisteredCustomer", () => {
 
   it("drops them from the admin list immediately", async () => {
     const customer = await makeCustomer();
-    expect((await listRegisteredCustomers({ q: customer.email })).customers).toHaveLength(1);
+    expect((await listCustomers({ q: customer.email })).customers).toHaveLength(1);
 
     await deleteRegisteredCustomer(customer.id);
 
-    expect((await listRegisteredCustomers({ q: customer.email })).customers).toHaveLength(0);
+    expect((await listCustomers({ q: customer.email })).customers).toHaveLength(0);
   });
 });
