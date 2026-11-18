@@ -57,14 +57,18 @@ export default function ProductImageGallery({ images, videos, name, inStock, dis
         className="group relative aspect-4/3 w-full overflow-hidden rounded-2xl border border-brand-charcoal/10 bg-brand-cream shadow-sm"
       >
         {active && active.type === "video" ? (
-          // No magnifier lens for video — zooming a playing video doesn't
-          // make sense the way it does for a still photo.
+          // No controls bar, no magnifier — this behaves like a silent,
+          // looping product photo that happens to move, not a video player.
+          // autoPlay requires muted in every browser (autoplay-with-sound is
+          // universally blocked), so muted is load-bearing here, not optional.
           <video
             key={active.id ?? active.url}
             src={active.url}
-            controls
+            autoPlay
+            loop
+            muted
             playsInline
-            preload="metadata"
+            preload="auto"
             className="size-full object-cover"
           />
         ) : active ? (
