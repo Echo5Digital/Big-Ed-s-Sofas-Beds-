@@ -423,6 +423,21 @@ const checkoutCreateSchema = z.object({
     .nullable(),
 });
 
+// Mirrors the unified display-status ladder computeOrderDisplayStatus()
+// derives from Order.status/paymentStatus/fulfillmentStatus (see
+// apps/api/src/services/orderStatus.service.js) — NOT a Prisma enum itself
+// (there is no such column), so kept here as a plain literal list. "Draft"
+// and "Canceled" are intentionally excluded: Draft is a read of payment
+// state (reversing it is settleBalance/refund's job, not this endpoint's),
+// and canceling an order is a separate, higher-stakes action than a plain
+// status change.
+const orderDisplayStatusSchema = z.enum(["Ordered", "Processing", "Ready", "Completed"]);
+
+const orderStatusUpdateSchema = z.object({
+  displayStatus: orderDisplayStatusSchema,
+  note: z.string().max(1000).optional().nullable(),
+});
+
 // ---------------------------------------------------------------------------
 // POS (in-store cashier app)
 // ---------------------------------------------------------------------------
@@ -643,6 +658,8 @@ module.exports = {
   goodsReceiptCreateSchema,
   cartLineSchema,
   checkoutCreateSchema,
+  orderDisplayStatusSchema,
+  orderStatusUpdateSchema,
   registerOpenSchema,
   registerCloseSchema,
   registerReopenApproveSchema,

@@ -1,93 +1,70 @@
-import Image from "next/image";
+import { BedDouble, Flame, Sofa, Tag } from "lucide-react";
 import Container from "@/components/ui/Container";
 
-// Decorative confetti: [position, size, colour, rotation].
-const CONFETTI = [
-  ["left-[14%] top-[14%]", "h-1.5 w-4", "bg-[#2f6bff]", "rotate-[-28deg]"],
-  ["left-[20%] top-[8%]", "h-1.5 w-1.5", "bg-[#ffc400]", "rotate-12"],
-  ["left-[26%] top-[26%]", "h-4 w-1.5", "bg-[#ff9d1c]", "rotate-[25deg]"],
-  ["left-[10%] top-[40%]", "h-1.5 w-3.5", "bg-[#a855f7]", "rotate-[18deg]"],
-  ["left-[88%] top-[12%]", "h-4 w-1.5", "bg-[#ff9d1c]", "rotate-[35deg]"],
-  ["left-[93%] top-[22%]", "h-1.5 w-4", "bg-[#2f6bff]", "rotate-[-20deg]"],
-  ["left-[82%] top-[30%]", "h-1.5 w-1.5", "bg-[#ffc400]", "rotate-12"],
-  ["left-[96%] top-[44%]", "h-1.5 w-3.5", "bg-[#a855f7]", "rotate-[40deg]"],
+// /grand-opening-sale's own hero — dark charcoal, matching the calm,
+// professional tone PageHero.jsx uses site-wide (cart, checkout, account)
+// rather than this page's former carnival-flyer look (confetti, italic
+// Montserrat, hand-drawn sparkle marks). No mascot here (dropped per
+// feedback) — centered copy block instead of the old side-by-side layout.
+//
+// Reads as a SALE page rather than a generic page banner: a red "doorbuster"
+// pill (same badge convention DealsCarousel uses for its savings corner-tag),
+// a two-tone gradient headline (same technique as the homepage HeroBanner's
+// "Grand Opening / Doorbusters!" treatment), and a row of icon-chip
+// highlights (HeroBanner's FEATURES pattern) plus a CTA that jumps straight
+// to the specials grid below — so there's an actual reason to scroll, not
+// just a mood-setting banner.
+const HIGHLIGHTS = [
+  { icon: BedDouble, label: "Bedroom Sets" },
+  { icon: Sofa, label: "Sofas & Sectionals" },
+  { icon: Tag, label: "Doorbuster Pricing" },
 ];
-
-// Three short red rays, like the sparkle marks beside the title in the design.
-function Sparkles({ flip = false }) {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 48 48"
-      className={`absolute top-0 size-9 text-brand-red sm:size-14 ${
-        flip ? "-right-9 scale-x-[-1] sm:-right-16" : "-left-9 sm:-left-16"
-      }`}
-    >
-      <g fill="none" stroke="currentColor" strokeWidth="4.5" strokeLinecap="round">
-        <path d="M8 26 L22 17" />
-        <path d="M5 11 L17 11" />
-        <path d="M14 42 L24 29" />
-      </g>
-    </svg>
-  );
-}
 
 export default function SaleHeader() {
   return (
-    <header className="relative isolate overflow-hidden bg-linear-to-b from-[#fffdf8] via-[#fff7e6] to-[#fdecc8] pt-8 pb-10 sm:pt-12 sm:pb-14">
+    <header className="relative overflow-hidden bg-brand-charcoal py-14 sm:py-20">
       <div
         aria-hidden="true"
-        className="absolute inset-x-0 top-0 -z-10 h-96 bg-[radial-gradient(ellipse_at_50%_0%,rgba(255,206,48,0.32),transparent_65%)]"
+        className="absolute inset-x-0 top-0 h-full bg-[radial-gradient(ellipse_at_50%_0%,rgba(247,191,50,0.14),transparent_70%)]"
       />
 
-      <Container className="relative">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 hidden sm:block">
-          {CONFETTI.map(([position, size, colour, rotation]) => (
-            <span key={position} className={`absolute rounded-[1px] ${position} ${size} ${colour} ${rotation}`} />
+      <Container className="relative flex flex-col items-center text-center">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-red px-3.5 py-1 text-xs font-extrabold tracking-wide text-white uppercase shadow-md">
+          <Flame className="size-3.5" strokeWidth={2.5} aria-hidden="true" />
+          Limited Time Only
+        </span>
+
+        <h1 className="mt-4 font-display text-4xl leading-[1.05] font-bold tracking-tight sm:text-5xl lg:text-6xl">
+          <span className="block text-white">Grand Opening</span>
+          <span className="block bg-linear-to-b from-[#ffe9a8] via-brand-gold to-[#b8790f] bg-clip-text text-transparent">
+            Sale
+          </span>
+        </h1>
+
+        <p className="mt-4 max-w-xl text-base text-white/80 sm:text-lg">
+          Big savings on beds, bedroom sets, sofas, sectionals and recliners — for a limited time.
+        </p>
+
+        <ul className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-3">
+          {HIGHLIGHTS.map(({ icon: Icon, label }, index) => (
+            <li key={label} className="flex items-center gap-2 text-sm font-semibold text-white sm:text-base">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-gold text-brand-charcoal sm:size-8">
+                <Icon className="size-4" aria-hidden="true" />
+              </span>
+              <span>{label}</span>
+              {index < HIGHLIGHTS.length - 1 && (
+                <span className="ml-3 hidden h-5 w-px bg-white/25 sm:block" aria-hidden="true" />
+              )}
+            </li>
           ))}
-        </div>
+        </ul>
 
-        <div className="relative flex flex-col items-center text-center lg:pl-64 xl:pl-76">
-          <div
-            aria-hidden="true"
-            className="pointer-events-none relative mb-2 w-36 sm:w-44 lg:absolute lg:bottom-[-2.5rem] lg:left-0 lg:mb-0 lg:w-64 xl:w-80"
-          >
-            <Image
-              src="/images/mascot/big-ed-thumbsup.webp"
-              alt=""
-              width={1584}
-              height={993}
-              priority
-              sizes="(max-width: 1279px) 256px, 320px"
-              className="h-auto w-full"
-              style={{
-                WebkitMaskImage: "linear-gradient(to bottom, #000 80%, transparent)",
-                maskImage: "linear-gradient(to bottom, #000 80%, transparent)",
-              }}
-            />
-          </div>
-
-          <p className="text-xs font-extrabold tracking-[0.25em] text-brand-red uppercase italic sm:text-base">
-            ★ Limited Time Only ★
-          </p>
-
-          <h1 className="relative mt-2 inline-block text-[2.4rem] leading-none font-black text-[#0b1b4d] italic sm:mt-3 sm:text-6xl xl:text-7xl">
-            <Sparkles />
-            Grand Opening{" "}
-            <span className="relative inline-block text-brand-red">
-              Sale
-              <span
-                aria-hidden="true"
-                className="absolute -bottom-1 left-0 -z-10 h-2 w-full -rotate-1 rounded-full bg-[#ffd21f] sm:h-3"
-              />
-            </span>
-            <Sparkles flip />
-          </h1>
-
-          <p className="mt-5 max-w-2xl text-base font-bold text-[#14246b] text-balance sm:mt-6 sm:text-xl">
-            Shop all Door Buster deals &ndash; limited time only!
-          </p>
-        </div>
+        <a
+          href="#sale-products-heading"
+          className="mt-8 inline-flex items-center justify-center gap-2 rounded-full bg-brand-red px-6 py-3 text-sm font-bold text-white shadow-md transition-colors hover:bg-brand-red-dark sm:text-base"
+        >
+          Shop The Sale
+        </a>
       </Container>
     </header>
   );

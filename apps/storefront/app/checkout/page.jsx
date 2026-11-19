@@ -139,7 +139,9 @@ export default function CheckoutPage() {
                   you&rsquo;ll be able to track this order afterward.
                 </p>
               </div>
-              <AccountPanel onSignedIn={() => setAuthStatus("signed-in")} />
+              <div className="mt-6">
+                <AccountPanel onSignedIn={() => setAuthStatus("signed-in")} />
+              </div>
             </>
           )}
         </Container>

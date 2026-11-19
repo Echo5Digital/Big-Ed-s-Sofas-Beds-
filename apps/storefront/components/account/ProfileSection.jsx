@@ -18,15 +18,22 @@ function formatMemberSince(value) {
   return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
-function Detail({ label, icon: Icon, children }) {
+function Detail({ label, icon: Icon, tone = "neutral", children, muted = false }) {
+  const toneClass = {
+    neutral: "bg-white text-brand-charcoal/40",
+    red: "bg-brand-red/10 text-brand-red",
+    gold: "bg-brand-gold/20 text-brand-gold-dark",
+  }[tone];
   return (
-    <div className="flex items-start gap-3 rounded-xl border border-brand-charcoal/10 bg-brand-cream/40 p-4">
-      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-white text-brand-charcoal/40">
+    <div className="group flex items-start gap-3 rounded-xl border border-brand-charcoal/10 bg-brand-cream/40 p-3.5 transition-all hover:border-brand-charcoal/20 hover:shadow-sm sm:p-4">
+      <span className={`mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105 ${toneClass}`}>
         <Icon className="size-4" aria-hidden="true" />
       </span>
       <div className="min-w-0">
-        <dt className="text-xs font-semibold uppercase tracking-wide text-brand-charcoal/50">{label}</dt>
-        <dd className="mt-0.5 break-words text-sm font-semibold text-brand-charcoal">{children}</dd>
+        <dt className="text-xs font-semibold tracking-wide text-brand-charcoal/50 uppercase">{label}</dt>
+        <dd className={`mt-0.5 break-words text-sm font-semibold ${muted ? "text-brand-charcoal/50 italic" : "text-brand-charcoal"}`}>
+          {children}
+        </dd>
       </div>
     </div>
   );
@@ -120,7 +127,7 @@ export default function ProfileSection({ onSessionExpired, onProfileSaved }) {
           <button
             type="button"
             onClick={startEditing}
-            className="flex shrink-0 items-center gap-1.5 rounded-full border border-brand-charcoal/15 px-3.5 py-1.5 text-sm font-semibold text-brand-charcoal transition-colors hover:border-brand-red/30 hover:bg-brand-red/5 hover:text-brand-red focus-visible:outline-2 focus-visible:outline-brand-red"
+            className="flex shrink-0 items-center gap-1.5 rounded-full border border-brand-charcoal/15 px-3.5 py-1.5 text-sm font-semibold text-brand-charcoal transition-all hover:border-brand-red/30 hover:bg-brand-red hover:text-white hover:shadow-sm focus-visible:outline-2 focus-visible:outline-brand-red"
           >
             <Pencil className="size-3.5" aria-hidden="true" />
             Edit
@@ -176,31 +183,36 @@ export default function ProfileSection({ onSessionExpired, onProfileSaved }) {
             value={form.phone}
             onChange={setField("phone")}
           />
-          <div className="flex flex-wrap gap-3 pt-1">
-            <button type="submit" disabled={busy} className={smallPrimaryButtonClass}>
+          <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:flex-wrap">
+            <button type="submit" disabled={busy} className={`w-full sm:w-auto ${smallPrimaryButtonClass}`}>
               {busy ? "Saving…" : "Save Changes"}
             </button>
-            <button type="button" onClick={() => setEditing(false)} disabled={busy} className={secondaryButtonClass}>
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              disabled={busy}
+              className={`w-full sm:w-auto ${secondaryButtonClass}`}
+            >
               Cancel
             </button>
           </div>
         </form>
       ) : (
         <dl className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Detail label="First Name" icon={User}>
+          <Detail label="First Name" icon={User} tone="red">
             {profile.firstName || "—"}
           </Detail>
-          <Detail label="Last Name" icon={User}>
+          <Detail label="Last Name" icon={User} tone="red">
             {profile.lastName || "—"}
           </Detail>
-          <Detail label="Email Address" icon={Mail}>
+          <Detail label="Email Address" icon={Mail} tone="red">
             {profile.email}
           </Detail>
-          <Detail label="Phone Number" icon={Phone}>
+          <Detail label="Phone Number" icon={Phone} tone="gold" muted={!profile.phone}>
             {profile.phone || "Not added"}
           </Detail>
           {memberSince ? (
-            <Detail label="Member Since" icon={CalendarDays}>
+            <Detail label="Member Since" icon={CalendarDays} tone="gold">
               {memberSince}
             </Detail>
           ) : null}

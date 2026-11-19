@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
-import { User, Mail } from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import Image from "next/image";
+import { ArrowRight, Lock, Mail, ShieldCheck } from "lucide-react";
+import { siteConfig } from "@/lib/mock-data/site-config";
 import {
   registerCustomer,
   verifyRegistrationCode,
@@ -17,6 +19,7 @@ import {
   PasswordField,
   describeError,
   inputClass,
+  inputGlassClass,
   linkButtonClass,
   primaryButtonClass,
   reasonOf,
@@ -24,15 +27,85 @@ import {
 
 const EMPTY_FORM = { firstName: "", lastName: "", email: "", password: "", code: "" };
 
+// linkButtonClass's brand-red text has too little contrast on glass mode's
+// frosted/dark-photo surface — this panel's own glass-only equivalent, not
+// moved into formParts.jsx since no dashboard form ever renders glass.
+const glassLinkButtonClass =
+  "-my-2 inline-block py-2 text-sm font-semibold text-white/90 underline-offset-2 hover:text-white hover:underline focus-visible:outline-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:text-white/40 disabled:no-underline";
+
+// "Magic card" pointer-tilt + light-sheen that follows the cursor — mouse
+// only (a touch device has no hover position to track, and faking one on
+// tap would just make the card jitter), and skipped under
+// prefers-reduced-motion. Sets CSS custom properties read by the card's
+// inline transform/sheen-gradient styles rather than calling setState per
+// pixel, so this never re-renders the form inputs on every mouse move.
+function useCardTilt(glass) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || !glass) return undefined;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return undefined;
+    if (!window.matchMedia("(pointer: fine)").matches) return undefined;
+
+    function handleMove(event) {
+      const rect = node.getBoundingClientRect();
+      const px = (event.clientX - rect.left) / rect.width;
+      const py = (event.clientY - rect.top) / rect.height;
+      const tiltX = (0.5 - py) * 10;
+      const tiltY = (px - 0.5) * 10;
+      node.style.setProperty("--tilt-x", `${tiltX}deg`);
+      node.style.setProperty("--tilt-y", `${tiltY}deg`);
+      node.style.setProperty("--sheen-x", `${px * 100}%`);
+      node.style.setProperty("--sheen-y", `${py * 100}%`);
+      node.style.setProperty("--sheen-opacity", "1");
+    }
+
+    function handleLeave() {
+      node.style.setProperty("--tilt-x", "0deg");
+      node.style.setProperty("--tilt-y", "0deg");
+      node.style.setProperty("--sheen-opacity", "0");
+    }
+
+    node.addEventListener("mousemove", handleMove);
+    node.addEventListener("mouseleave", handleLeave);
+    return () => {
+      node.removeEventListener("mousemove", handleMove);
+      node.removeEventListener("mouseleave", handleLeave);
+    };
+  }, [glass]);
+
+  return ref;
+}
+
 // onSignedIn is opt-in (default no-op) — fired right after a successful
 // sign-in or just-verified registration, before the dashboard view renders.
 // /account itself doesn't need it; the checkout page's sign-in gate
 // (app/checkout/page.jsx) uses it to resume checkout once the customer is
 // authenticated.
-export default function AccountPanel({ onSignedIn = () => {} }) {
+//
+// onViewChange is also opt-in (default no-op) — fired on every view
+// transition so a parent that wraps this panel differently depending on
+// auth state (AccountHero's photo backdrop only makes sense around the
+// narrow signed-out card, not the wide signed-in dashboard) can react
+// without re-fetching getCurrentCustomer itself.
+//
+// glass swaps the card to a frosted/translucent surface — only looks right
+// over a photo backdrop with real contrast behind it (AccountHero's
+// signed-out view), so it defaults to false: checkout's plain-page embed and
+// /account's flat signed-in fallback both keep the solid white card.
+export default function AccountPanel({ onSignedIn = () => {}, onViewChange = () => {}, glass = false }) {
   const uid = useId();
+  const cardRef = useCardTilt(glass);
   // loading | signin | register | verify | signedin
-  const [view, setView] = useState("loading");
+  const [view, setViewState] = useState("loading");
+  const setView = useCallback(
+    (next) => {
+      setViewState(next);
+      onViewChange(next);
+    },
+    [onViewChange]
+  );
   const [customer, setCustomer] = useState(null);
   const [pending, setPending] = useState(null); // { pendingId, email } while awaiting the emailed code
   const [form, setForm] = useState(EMPTY_FORM);
@@ -226,18 +299,65 @@ export default function AccountPanel({ onSignedIn = () => {} }) {
     verify: ["Check Your Email", pending ? `Enter the 6-digit code we sent to ${pending.email}.` : ""],
   }[view];
 
-  const HeadingIcon = view === "verify" ? Mail : User;
-
   return (
-    <div className="mx-auto mt-6 max-w-md rounded-2xl border border-brand-charcoal/10 bg-white p-6 sm:p-8">
-      <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-brand-red/10 text-brand-red">
-        <HeadingIcon className="size-6" aria-hidden="true" />
+    <div
+      ref={cardRef}
+      style={
+        glass
+          ? {
+              transform: "perspective(1200px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg))",
+              transition: "transform 0.15s ease-out",
+            }
+          : undefined
+      }
+      className={`animate-account-view-in relative mx-auto w-full max-w-md overflow-hidden rounded-2xl p-6 pt-7 sm:p-8 sm:pt-9 ${
+        glass
+          ? "border border-white/30 bg-white/15 shadow-2xl shadow-black/30 backdrop-blur-xl"
+          : "border border-brand-charcoal/10 bg-white shadow-2xl shadow-black/20"
+      }`}
+    >
+      {glass ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 transition-opacity duration-300"
+          style={{
+            opacity: "var(--sheen-opacity, 0)",
+            background:
+              "radial-gradient(circle at var(--sheen-x, 50%) var(--sheen-y, 50%), rgba(255,255,255,0.35), transparent 45%)",
+          }}
+        />
+      ) : null}
+      <span className="absolute inset-x-0 top-0 h-1.5 overflow-hidden bg-gradient-to-r from-brand-gold via-brand-gold-dark to-brand-gold" aria-hidden="true">
+        <span className="animate-account-card-shine absolute inset-y-0 left-0 w-1/4 bg-white/60 blur-[2px]" />
       </span>
-      <h2 className="mt-4 text-center font-display text-2xl font-bold text-brand-charcoal">{heading[0]}</h2>
-      <p className="mt-1 break-words text-center text-sm text-brand-charcoal/60">{heading[1]}</p>
+      {glass ? (
+        <>
+          <div className="pointer-events-none absolute -top-16 -right-16 size-40 rounded-full bg-brand-gold/30 blur-3xl" aria-hidden="true" />
+          <div className="pointer-events-none absolute -bottom-20 -left-16 size-44 rounded-full bg-white/20 blur-3xl" aria-hidden="true" />
+        </>
+      ) : null}
+      <Image
+        src={siteConfig.logo.src}
+        alt={siteConfig.logo.alt}
+        width={siteConfig.logo.width}
+        height={siteConfig.logo.height}
+        className={`relative mx-auto h-20 w-auto sm:h-24 ${glass ? "drop-shadow-lg" : ""}`}
+      />
+      <h2
+        className={`relative mt-5 text-center font-display text-2xl font-bold ${glass ? "text-white drop-shadow-sm" : "text-brand-charcoal"}`}
+      >
+        {heading[0]}
+      </h2>
+      <p className={`relative mt-1.5 break-words text-center text-sm ${glass ? "text-white/75" : "text-brand-charcoal/60"}`}>
+        {heading[1]}
+      </p>
 
       {view === "signin" || view === "register" ? (
-        <div role="tablist" aria-label="Account" className="mt-6 grid grid-cols-2 rounded-full bg-brand-charcoal/5 p-1">
+        <div
+          role="tablist"
+          aria-label="Account"
+          className={`relative mt-6 grid grid-cols-2 rounded-xl p-1 ${glass ? "bg-black/15 backdrop-blur-sm" : "bg-brand-charcoal/5"}`}
+        >
           {[
             ["signin", "Sign In"],
             ["register", "Create Account"],
@@ -248,8 +368,12 @@ export default function AccountPanel({ onSignedIn = () => {} }) {
               role="tab"
               aria-selected={view === key}
               onClick={() => goTo(key)}
-              className={`rounded-full px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-brand-red ${
-                view === key ? "bg-white text-brand-charcoal shadow-sm" : "text-brand-charcoal/60 hover:text-brand-charcoal"
+              className={`rounded-lg px-3 py-2.5 text-sm font-semibold transition-all duration-200 focus-visible:outline-2 focus-visible:outline-brand-red ${
+                view === key
+                  ? "bg-brand-red text-white shadow-md shadow-brand-red/30"
+                  : glass
+                    ? "text-white/70 hover:text-white"
+                    : "text-brand-charcoal/60 hover:text-brand-charcoal"
               }`}
             >
               {label}
@@ -258,19 +382,23 @@ export default function AccountPanel({ onSignedIn = () => {} }) {
         </div>
       ) : null}
 
-      <Notice notice={notice} />
+      <Notice notice={notice} glass={glass} className="relative mt-4" />
 
       {view === "loading" ? (
-        <p role="status" aria-busy="true" className="mt-6 text-center text-sm text-brand-charcoal/60">
-          Loading&hellip;
-        </p>
+        <div role="status" aria-busy="true" aria-label="Loading" className="relative mt-6 flex flex-col gap-4">
+          <div className={`h-11 animate-pulse rounded-lg ${glass ? "bg-white/15" : "bg-brand-charcoal/5"}`} />
+          <div className={`h-11 animate-pulse rounded-lg ${glass ? "bg-white/15" : "bg-brand-charcoal/5"}`} />
+          <div className={`mt-2 h-11 animate-pulse rounded-full ${glass ? "bg-white/15" : "bg-brand-charcoal/5"}`} />
+        </div>
       ) : null}
 
       {view === "signin" ? (
-        <form onSubmit={handleLogin} className="mt-6 flex flex-col gap-4">
+        <form onSubmit={handleLogin} className="animate-account-view-in mt-6 flex flex-col gap-4">
           <Field
             id={`${uid}-email`}
             label="Email Address"
+            icon={Mail}
+            glass={glass}
             type="email"
             autoComplete="email"
             placeholder="you@example.com"
@@ -281,22 +409,32 @@ export default function AccountPanel({ onSignedIn = () => {} }) {
           <PasswordField
             id={`${uid}-password`}
             label="Password"
+            icon={Lock}
+            glass={glass}
             autoComplete="current-password"
             value={form.password}
             onChange={setField("password")}
           />
-          <button type="submit" disabled={busy} className={primaryButtonClass}>
-            {busy ? "Signing in…" : "Sign In"}
+          <button type="submit" disabled={busy} className={`${primaryButtonClass} group flex items-center justify-center gap-2`}>
+            {busy ? (
+              "Signing in…"
+            ) : (
+              <>
+                Sign In
+                <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5" aria-hidden="true" />
+              </>
+            )}
           </button>
         </form>
       ) : null}
 
       {view === "register" ? (
-        <form onSubmit={handleRegister} className="mt-6 flex flex-col gap-4">
+        <form onSubmit={handleRegister} className="animate-account-view-in mt-6 flex flex-col gap-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field
               id={`${uid}-first`}
               label="First Name"
+              glass={glass}
               autoComplete="given-name"
               required
               maxLength={100}
@@ -306,6 +444,7 @@ export default function AccountPanel({ onSignedIn = () => {} }) {
             <Field
               id={`${uid}-last`}
               label="Last Name"
+              glass={glass}
               autoComplete="family-name"
               required
               maxLength={100}
@@ -316,6 +455,8 @@ export default function AccountPanel({ onSignedIn = () => {} }) {
           <Field
             id={`${uid}-email`}
             label="Email Address"
+            icon={Mail}
+            glass={glass}
             type="email"
             autoComplete="email"
             placeholder="you@example.com"
@@ -326,23 +467,36 @@ export default function AccountPanel({ onSignedIn = () => {} }) {
           <PasswordField
             id={`${uid}-password`}
             label="Password"
+            icon={Lock}
+            glass={glass}
             autoComplete="new-password"
             minLength={8}
             hint="At least 8 characters."
             value={form.password}
             onChange={setField("password")}
           />
-          <button type="submit" disabled={busy} className={primaryButtonClass}>
-            {busy ? "Sending code…" : "Create Account"}
+          <button type="submit" disabled={busy} className={`${primaryButtonClass} group flex items-center justify-center gap-2`}>
+            {busy ? (
+              "Sending code…"
+            ) : (
+              <>
+                Create Account
+                <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5" aria-hidden="true" />
+              </>
+            )}
           </button>
         </form>
       ) : null}
 
       {view === "verify" ? (
-        <>
+        <div className="animate-account-view-in">
           <form onSubmit={handleVerify} className="mt-6 flex flex-col gap-4">
             <div>
-              <label htmlFor={`${uid}-code`} className="mb-1.5 block text-sm font-semibold text-brand-charcoal">
+              <label
+                htmlFor={`${uid}-code`}
+                className={`mb-1.5 flex items-center justify-center gap-1.5 text-sm font-semibold ${glass ? "text-white/90" : "text-brand-charcoal"}`}
+              >
+                <ShieldCheck className={`size-4 ${glass ? "text-brand-gold" : "text-brand-gold-dark"}`} aria-hidden="true" />
                 Verification Code
               </label>
               <input
@@ -353,18 +507,34 @@ export default function AccountPanel({ onSignedIn = () => {} }) {
                 maxLength={6}
                 required
                 autoFocus
-                placeholder="123456"
+                placeholder="• • • • • •"
                 value={form.code}
                 onChange={(event) => setField("code")(event.target.value.replace(/\D/g, "").slice(0, 6))}
-                className={`${inputClass} text-center font-mono text-lg tracking-[0.5em]`}
+                className={`${glass ? inputGlassClass : inputClass} text-center font-mono text-xl tracking-[0.6em]`}
               />
             </div>
-            <button type="submit" disabled={busy || form.code.length !== 6} className={primaryButtonClass}>
-              {busy ? "Verifying…" : "Verify & Continue"}
+            <button
+              type="submit"
+              disabled={busy || form.code.length !== 6}
+              className={`${primaryButtonClass} group flex items-center justify-center gap-2`}
+            >
+              {busy ? (
+                "Verifying…"
+              ) : (
+                <>
+                  Verify &amp; Continue
+                  <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5" aria-hidden="true" />
+                </>
+              )}
             </button>
           </form>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-            <button type="button" onClick={handleResend} disabled={busy || secondsUntilResend > 0} className={linkButtonClass}>
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={busy || secondsUntilResend > 0}
+              className={glass ? glassLinkButtonClass : linkButtonClass}
+            >
               {secondsUntilResend > 0 ? `Resend code in ${secondsUntilResend}s` : "Resend code"}
             </button>
             <button
@@ -373,14 +543,13 @@ export default function AccountPanel({ onSignedIn = () => {} }) {
                 setPending(null);
                 goTo("register");
               }}
-              className={linkButtonClass}
+              className={glass ? glassLinkButtonClass : linkButtonClass}
             >
               Use a different email
             </button>
           </div>
-        </>
+        </div>
       ) : null}
-
     </div>
   );
 }

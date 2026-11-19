@@ -634,6 +634,10 @@ enum PaymentStatus {
 enum FulfillmentStatus {
   UNALLOCATED
   RESERVED
+  // Staff-driven manual tracking step for online orders only (see
+  // apps/api/src/services/orderStatus.service.js) — POS orders never pass
+  // through this value, they go straight RESERVED -> READY.
+  PROCESSING
   READY
   PICKED_UP
   DELIVERED
@@ -1192,7 +1196,10 @@ model StatusHistory {
   id        String   @id @default(uuid())
   orderId   String
   order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  field     String // "status" | "paymentStatus" | "fulfillmentStatus"
+  field     String // "status" | "paymentStatus" | "fulfillmentStatus" | "displayStatus" (the
+  // staff-facing unified status set via PATCH /admin/orders/:id/status — see
+  // apps/api/src/services/orderStatus.service.js; a single row here can
+  // represent a change that actually wrote 1-2 of the real fields above)
   fromValue String?
   toValue   String
   note      String?

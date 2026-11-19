@@ -225,11 +225,11 @@ export default function AddressesSection({ onSessionExpired }) {
       {editingId === "new" && addresses.length === 0 ? (
         <p className="text-xs text-brand-charcoal/60">Your first address is saved as your default.</p>
       ) : null}
-      <div className="flex flex-wrap gap-3">
-        <button type="submit" disabled={busy} className={smallPrimaryButtonClass}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <button type="submit" disabled={busy} className={`w-full sm:w-auto ${smallPrimaryButtonClass}`}>
           {busy ? "Saving…" : "Save Address"}
         </button>
-        <button type="button" onClick={closeForm} disabled={busy} className={secondaryButtonClass}>
+        <button type="button" onClick={closeForm} disabled={busy} className={`w-full sm:w-auto ${secondaryButtonClass}`}>
           Cancel
         </button>
       </div>
@@ -251,7 +251,7 @@ export default function AddressesSection({ onSessionExpired }) {
           type="button"
           onClick={() => openForm("new", EMPTY_FORM)}
           disabled={busy}
-          className="flex w-full items-center gap-3 rounded-xl border border-dashed border-brand-charcoal/20 px-5 py-4 text-left text-sm font-semibold text-brand-red transition-colors hover:border-brand-red/30 hover:bg-brand-red/5 focus-visible:outline-2 focus-visible:outline-brand-red disabled:cursor-not-allowed disabled:opacity-60"
+          className="flex w-full items-center gap-3 rounded-xl border border-dashed border-brand-charcoal/20 px-5 py-4 text-left text-sm font-semibold text-brand-red transition-all hover:border-brand-red/40 hover:bg-brand-red/5 hover:shadow-sm focus-visible:outline-2 focus-visible:outline-brand-red disabled:cursor-not-allowed disabled:opacity-60"
         >
           <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-red/10">
             <Plus className="size-4" aria-hidden="true" />
@@ -267,7 +267,7 @@ export default function AddressesSection({ onSessionExpired }) {
           {addresses.map((address) => (
             <li
               key={address.id}
-              className={`rounded-xl border p-5 transition-colors ${
+              className={`rounded-xl border p-4 transition-all hover:shadow-sm sm:p-5 ${
                 address.isDefault ? "border-brand-gold/40 bg-brand-gold/5" : "border-brand-charcoal/15 bg-white"
               }`}
             >
@@ -302,7 +302,7 @@ export default function AddressesSection({ onSessionExpired }) {
                         type="button"
                         onClick={() => handleDelete(address.id)}
                         disabled={busy}
-                        className="rounded-full bg-brand-red px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-full bg-brand-red px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {busy ? "Deleting…" : "Yes, delete"}
                       </button>
@@ -330,7 +330,7 @@ export default function AddressesSection({ onSessionExpired }) {
                           })
                         }
                         disabled={busy}
-                        className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-brand-charcoal/70 transition-colors hover:bg-brand-charcoal/5 hover:text-brand-charcoal focus-visible:outline-2 focus-visible:outline-brand-red disabled:cursor-not-allowed disabled:opacity-60"
+                        className="flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold text-brand-charcoal/70 transition-colors hover:bg-brand-charcoal/5 hover:text-brand-charcoal focus-visible:outline-2 focus-visible:outline-brand-red disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <Pencil className="size-3.5" aria-hidden="true" />
                         Edit
@@ -342,7 +342,7 @@ export default function AddressesSection({ onSessionExpired }) {
                           setConfirmingDeleteId(address.id);
                         }}
                         disabled={busy}
-                        className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-brand-charcoal/70 transition-colors hover:bg-brand-red/10 hover:text-brand-red-dark focus-visible:outline-2 focus-visible:outline-brand-red disabled:cursor-not-allowed disabled:opacity-60"
+                        className="flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold text-brand-charcoal/70 transition-colors hover:bg-brand-red/10 hover:text-brand-red-dark focus-visible:outline-2 focus-visible:outline-brand-red disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <Trash2 className="size-3.5" aria-hidden="true" />
                         Delete
@@ -352,7 +352,7 @@ export default function AddressesSection({ onSessionExpired }) {
                           type="button"
                           onClick={() => handleMakeDefault(address.id)}
                           disabled={busy}
-                          className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold text-brand-charcoal/70 transition-colors hover:bg-brand-gold/15 hover:text-brand-charcoal focus-visible:outline-2 focus-visible:outline-brand-red disabled:cursor-not-allowed disabled:opacity-60"
+                          className="flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold text-brand-charcoal/70 transition-colors hover:bg-brand-gold/15 hover:text-brand-charcoal focus-visible:outline-2 focus-visible:outline-brand-red disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <Star className="size-3.5" aria-hidden="true" />
                           Make default

@@ -517,9 +517,20 @@ async function ringSale({
     const paymentStatus =
       totalTenderedCents >= totalCents ? "PAID" : totalTenderedCents > 0 ? "PARTIALLY_PAID" : "UNPAID";
 
-    // Every POS sale is IN_STORE and stock is already reserved+converted
-    // (sold) at this point, so it's handed over immediately.
-    const fulfillmentStatus = "READY";
+    // Stock is already reserved+converted (sold) at this point regardless of
+    // payment amount (see reserveAndConvertForSale above), but fulfillment
+    // itself — handing the item to the customer — is no longer assumed to
+    // happen in the same motion as ringing the sale. A fresh POS sale (full
+    // payment or a deposit) now lands at RESERVED, the same real
+    // fulfillmentStatus online checkout's post-confirm state uses, so a
+    // manager/admin advances both channels through the same manual
+    // Ordered -> Ready -> Completed status change (see
+    // apps/api/src/services/orderStatus.service.js and
+    // PATCH /admin/orders/:id/status) rather than POS sales skipping
+    // straight to "handed over." paymentStatus (computed just above,
+    // unchanged) is what still distinguishes a full-pay sale ("Ordered")
+    // from a deposit sale ("Draft") at this same fulfillmentStatus value.
+    const fulfillmentStatus = "RESERVED";
 
     const confirmedOrder = await tx.order.update({
       where: { id: order.id },

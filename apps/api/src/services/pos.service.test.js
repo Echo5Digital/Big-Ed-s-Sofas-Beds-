@@ -539,7 +539,10 @@ describe("pos.service", () => {
       });
 
       expect(result.order.fulfillmentMethod).toBe("IN_STORE");
-      expect(result.order.fulfillmentStatus).toBe("READY");
+      // A fresh sale lands at RESERVED regardless of payment amount — see
+      // ringSale's comment on this line; fulfillment is now advanced
+      // manually via PATCH /admin/orders/:id/status, same as online orders.
+      expect(result.order.fulfillmentStatus).toBe("RESERVED");
 
       await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 50000 });
     });

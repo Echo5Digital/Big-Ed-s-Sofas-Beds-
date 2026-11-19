@@ -55,62 +55,61 @@ body {
   }
 }
 
-/* Generic endless image strip (components/sale/PromoMarquee.jsx). Same idea as
-   the ticker: two identical groups, the track slides left by exactly one group.
-   --marquee-duration sets how long one pass takes. */
-@keyframes marquee-scroll {
+/* Account sign-in/create-account/verify card (components/account/AccountPanel.jsx)
+   switching views — a small fade+rise so the form swap reads as a deliberate
+   transition instead of a hard content jump. */
+@keyframes account-view-in {
   from {
-    transform: translate3d(0, 0, 0);
+    opacity: 0;
+    transform: translateY(6px);
   }
   to {
-    transform: translate3d(-50%, 0, 0);
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
+.animate-account-view-in {
+  animation: account-view-in 0.25s ease-out;
+}
+
+/* Slow shine sweep across the account card's top accent bar — same skewed-
+   bar technique as promo-ticker-shine above, just much slower/subtler since
+   this runs continuously behind a form rather than inside a one-off banner. */
+@keyframes account-card-shine {
+  0%,
+  60% {
+    transform: translateX(-120%) skewX(-20deg);
+  }
+  100% {
+    transform: translateX(420%) skewX(-20deg);
+  }
+}
+
+.animate-account-card-shine {
+  animation: account-card-shine 3.5s ease-in-out infinite;
+}
+
+/* Slow breathing glow behind AccountHero's glass card (components/account/
+   AccountHero.jsx) — a gentle size/opacity pulse so the card reads as softly
+   lit rather than static, without being distracting. */
+@keyframes account-glow-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.05);
+  }
+}
+
+.animate-account-glow-pulse {
+  animation: account-glow-pulse 4s ease-in-out infinite;
+}
+
 @layer utilities {
-  .marquee-track {
-    animation: marquee-scroll var(--marquee-duration, 60s) linear infinite;
-    will-change: transform;
-  }
-
-  /* Fade the strip out at both edges. */
-  .marquee-mask {
-    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 3rem, #000 calc(100% - 3rem), transparent 100%);
-    mask-image: linear-gradient(90deg, transparent 0, #000 3rem, #000 calc(100% - 3rem), transparent 100%);
-  }
-
-  /* Pause under a real mouse pointer; skipped on touch screens, where a tap
-     would otherwise leave it stuck paused. */
-  @media (hover: hover) and (pointer: fine) {
-    .marquee-viewport:hover .marquee-track {
-      animation-play-state: paused;
-    }
-  }
-
-  /* Reduced-motion: no animation. One copy of the strip, swipe/scroll sideways. */
-  @media (prefers-reduced-motion: reduce) {
-    .marquee-track {
-      animation: none;
-    }
-
-    .marquee-viewport {
-      overflow-x: auto;
-    }
-
-    .marquee-mask {
-      -webkit-mask-image: none;
-      mask-image: none;
-    }
-
-    .marquee-group {
-      min-width: 0;
-    }
-
-    .marquee-dup {
-      display: none;
-    }
-  }
-
   .promo-ticker-track {
     animation: promo-ticker-scroll 36s linear infinite;
     will-change: transform;

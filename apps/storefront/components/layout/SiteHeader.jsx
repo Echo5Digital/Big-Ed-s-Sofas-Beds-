@@ -187,7 +187,7 @@ export default function SiteHeader({ categories }) {
           <Link
             href="/account"
             aria-label="Account"
-            className="hidden rounded-full p-2.5 text-brand-charcoal hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-brand-red sm:block"
+            className="rounded-full p-2.5 text-brand-charcoal hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-brand-red"
           >
             <User className="size-5" aria-hidden="true" />
           </Link>

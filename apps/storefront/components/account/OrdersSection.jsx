@@ -24,22 +24,18 @@ const PAYMENT_LABEL = {
   REFUNDED: "Refunded",
 };
 
-const FULFILLMENT_LABEL = {
-  UNALLOCATED: "Processing",
-  RESERVED: "Processing",
-  READY: "Ready",
-  PICKED_UP: "Picked up",
-  DELIVERED: "Delivered",
+// Unified status computed server-side (see
+// apps/api/src/services/orderStatus.service.js) from Order.status/
+// paymentStatus/fulfillmentStatus — the storefront only ever sees the
+// online ladder (listOrders scopes to channel: "ONLINE"), so "Draft" never
+// appears here.
+const DISPLAY_STATUS = {
+  Ordered: { label: "Ordered", tone: "neutral" },
+  Processing: { label: "Processing", tone: "neutral" },
+  Ready: { label: "Ready", tone: "warn" },
+  Completed: { label: "Completed", tone: "good" },
+  Canceled: { label: "Canceled", tone: "bad" },
 };
-
-// Order status, payment status and fulfillment status are separate things in
-// the API; the customer sees one label for how the order is progressing and one
-// for how it's been paid.
-function progressLabel(order) {
-  if (order.status === "CANCELED") return "Canceled";
-  if (order.status === "CLOSED") return "Completed";
-  return FULFILLMENT_LABEL[order.fulfillmentStatus] ?? "Processing";
-}
 
 function Badge({ tone, children }) {
   const tones = {
@@ -49,12 +45,6 @@ function Badge({ tone, children }) {
     neutral: "bg-brand-charcoal/10 text-brand-charcoal/80",
   };
   return <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${tones[tone]}`}>{children}</span>;
-}
-
-function progressTone(order) {
-  if (order.status === "CANCELED") return "bad";
-  if (order.status === "CLOSED" || ["DELIVERED", "PICKED_UP"].includes(order.fulfillmentStatus)) return "good";
-  return "neutral";
 }
 
 function paymentTone(order) {
@@ -74,12 +64,12 @@ function OrderCard({ order }) {
   const method = FULFILLMENT_METHOD_LABEL[order.fulfillmentMethod];
 
   return (
-    <li className="rounded-xl border border-brand-charcoal/15 bg-white p-5 transition-shadow hover:shadow-sm">
+    <li className="rounded-xl border border-brand-charcoal/15 bg-white p-4 transition-all hover:border-brand-charcoal/25 hover:shadow-md sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div className="flex min-w-0 items-start gap-3">
           <span
             aria-hidden="true"
-            className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-red/10 text-brand-red"
+            className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-red/10 text-brand-red sm:size-11"
           >
             <Package className="size-5" aria-hidden="true" />
           </span>
@@ -91,17 +81,19 @@ function OrderCard({ order }) {
             </p>
           </div>
         </div>
-        <p className="shrink-0 text-base font-bold text-brand-charcoal">{money(order.totalCents)}</p>
+        <p className="shrink-0 font-display text-lg font-bold text-brand-charcoal">{money(order.totalCents)}</p>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2 pl-13">
-        <Badge tone={progressTone(order)}>{progressLabel(order)}</Badge>
+      <div className="mt-3 flex flex-wrap gap-2 pl-13 sm:pl-14">
+        <Badge tone={DISPLAY_STATUS[order.displayStatus]?.tone ?? "neutral"}>
+          {DISPLAY_STATUS[order.displayStatus]?.label ?? order.displayStatus}
+        </Badge>
         <Badge tone={paymentTone(order)}>{PAYMENT_LABEL[order.paymentStatus] ?? order.paymentStatus}</Badge>
       </div>
 
       {order.lines.length > 0 ? (
         <details className="group mt-4 border-t border-brand-charcoal/10 pt-4">
-          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm font-semibold text-brand-red hover:text-brand-red-dark focus-visible:outline-2 focus-visible:outline-brand-red [&::-webkit-details-marker]:hidden">
+          <summary className="-my-1.5 flex cursor-pointer list-none items-center gap-1.5 py-1.5 text-sm font-semibold text-brand-red hover:text-brand-red-dark focus-visible:outline-2 focus-visible:outline-brand-red [&::-webkit-details-marker]:hidden">
             <span className="group-open:hidden">
               View {itemCount} {itemCount === 1 ? "item" : "items"}
             </span>
@@ -232,9 +224,9 @@ export default function OrdersSection({ onSessionExpired }) {
 
   if (orders.length === 0) {
     return (
-      <div className="flex flex-col items-center py-8 text-center">
-        <span className="flex size-12 items-center justify-center rounded-full bg-brand-red/10 text-brand-red">
-          <Package className="size-6" aria-hidden="true" />
+      <div className="flex flex-col items-center rounded-xl border border-dashed border-brand-charcoal/15 bg-brand-cream/30 py-10 text-center">
+        <span className="flex size-14 items-center justify-center rounded-full bg-brand-red/10 text-brand-red">
+          <Package className="size-7" aria-hidden="true" />
         </span>
         <p className="mt-4 font-display text-lg font-bold text-brand-charcoal">No orders yet</p>
         <p className="mt-1 max-w-sm text-sm text-brand-charcoal/60">
@@ -242,7 +234,7 @@ export default function OrdersSection({ onSessionExpired }) {
         </p>
         <Link
           href="/shop"
-          className="mt-5 rounded-full bg-brand-red px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark"
+          className="mt-5 rounded-full bg-brand-red px-6 py-2.5 text-sm font-semibold text-white transition-all hover:bg-brand-red-dark hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark"
         >
           Start Shopping
         </Link>
@@ -259,7 +251,12 @@ export default function OrdersSection({ onSessionExpired }) {
       </ul>
       {orders.length < total ? (
         <div className="mt-5">
-          <button type="button" onClick={handleLoadMore} disabled={loadingMore} className={secondaryButtonClass}>
+          <button
+            type="button"
+            onClick={handleLoadMore}
+            disabled={loadingMore}
+            className={`w-full sm:w-auto ${secondaryButtonClass}`}
+          >
             {loadingMore ? "Loading…" : "Show more orders"}
           </button>
           <Notice notice={moreError ? { type: "error", message: moreError } : null} />

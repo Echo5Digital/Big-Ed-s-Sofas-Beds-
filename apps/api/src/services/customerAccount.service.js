@@ -1,6 +1,7 @@
 const bcrypt = require("bcryptjs");
 const { prisma } = require("@big-eds/database");
 const { ApiError, NotFoundError, ConflictError } = require("../lib/errors");
+const { computeOrderDisplayStatus } = require("./orderStatus.service");
 
 // What a signed-in storefront customer can see and change about their own
 // account: profile, password, saved addresses, order history. Every function
@@ -207,6 +208,11 @@ function serializeOrder(order) {
     paymentStatus: order.paymentStatus,
     fulfillmentStatus: order.fulfillmentStatus,
     fulfillmentMethod: order.fulfillmentMethod,
+    // Unified staff/customer-facing status (see
+    // apps/api/src/services/orderStatus.service.js) — a computed label, not
+    // stored. listOrders() above scopes every row to channel: "ONLINE", so
+    // this is always derived on the online ladder, never the POS one.
+    displayStatus: computeOrderDisplayStatus(order),
     subtotalCents: order.subtotalCents,
     taxCents: order.taxCents,
     deliveryFeeCents: order.deliveryFeeCents,

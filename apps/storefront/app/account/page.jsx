@@ -1,6 +1,4 @@
-import Container from "@/components/ui/Container";
-import PageHero from "@/components/ui/PageHero";
-import AccountPanel from "@/components/account/AccountPanel";
+import AccountHero from "@/components/account/AccountHero";
 
 export const metadata = {
   title: "Your Account | Big Ed's Sofas & Beds",
@@ -9,13 +7,5 @@ export const metadata = {
 };
 
 export default function AccountPage() {
-  return (
-    <div className="pb-10">
-      <PageHero title="Account" showMascot={false} />
-
-      <Container className="mt-8">
-        <AccountPanel />
-      </Container>
-    </div>
-  );
+  return <AccountHero />;
 }

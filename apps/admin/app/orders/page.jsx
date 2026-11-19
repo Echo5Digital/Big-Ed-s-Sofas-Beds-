@@ -6,20 +6,14 @@ import RequireAuth from "@/components/layout/RequireAuth";
 import PageHeader from "@/components/ui/PageHeader";
 import DataTable from "@/components/ui/DataTable";
 import Badge from "@/components/ui/Badge";
+import OrderStatusDropdown from "@/components/orders/OrderStatusDropdown";
 import { api, ApiClientError } from "@/lib/api/client";
 import { formatCentsAsCurrency } from "@/lib/formatCurrency";
 
 const PAYMENT_TONE = { UNPAID: "danger", PARTIALLY_PAID: "warning", PAID: "success", REFUNDED: "default" };
-const FULFILLMENT_TONE = {
-  UNALLOCATED: "default",
-  RESERVED: "info",
-  READY: "warning",
-  PICKED_UP: "success",
-  DELIVERED: "success",
-};
 
 const ORDER_STATUSES = ["DRAFT", "CONFIRMED", "CANCELED", "CLOSED"];
-const FULFILLMENT_STATUSES = ["UNALLOCATED", "RESERVED", "READY", "PICKED_UP", "DELIVERED"];
+const FULFILLMENT_STATUSES = ["UNALLOCATED", "RESERVED", "PROCESSING", "READY", "PICKED_UP", "DELIVERED"];
 const CHANNEL_TABS = [
   { value: "", label: "All" },
   { value: "POS", label: "POS" },
@@ -84,9 +78,14 @@ function OrdersContent() {
     { key: "total", header: "Total", render: (o) => formatCentsAsCurrency(o.totalCents) },
     { key: "paymentStatus", header: "Payment", render: (o) => <Badge tone={PAYMENT_TONE[o.paymentStatus]}>{o.paymentStatus.replaceAll("_", " ")}</Badge> },
     {
-      key: "fulfillmentStatus",
-      header: "Fulfillment",
-      render: (o) => <Badge tone={FULFILLMENT_TONE[o.fulfillmentStatus]}>{o.fulfillmentStatus.replaceAll("_", " ")}</Badge>,
+      key: "status",
+      header: "Status",
+      render: (o) => (
+        <OrderStatusDropdown
+          order={o}
+          onUpdated={(updated) => setOrders((prev) => prev.map((row) => (row.id === updated.id ? { ...row, ...updated } : row)))}
+        />
+      ),
     },
     { key: "createdAt", header: "Placed", render: (o) => new Date(o.createdAt).toLocaleDateString() },
   ];

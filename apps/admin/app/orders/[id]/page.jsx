@@ -9,18 +9,12 @@ import PageHeader from "@/components/ui/PageHeader";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import DataTable from "@/components/ui/DataTable";
+import OrderStatusDropdown from "@/components/orders/OrderStatusDropdown";
 import { api, ApiClientError } from "@/lib/api/client";
 import { formatCentsAsCurrency } from "@/lib/formatCurrency";
 
 const STATUS_TONE = { DRAFT: "default", CONFIRMED: "info", CANCELED: "danger", CLOSED: "success" };
 const PAYMENT_TONE = { UNPAID: "danger", PARTIALLY_PAID: "warning", PAID: "success", REFUNDED: "default" };
-const FULFILLMENT_TONE = {
-  UNALLOCATED: "default",
-  RESERVED: "info",
-  READY: "warning",
-  PICKED_UP: "success",
-  DELIVERED: "success",
-};
 const PAYMENT_DETAIL_TONE = { PENDING: "warning", SUCCEEDED: "success", FAILED: "danger", VOIDED: "default" };
 
 function label(value) {
@@ -186,7 +180,7 @@ function OrderDetailContent() {
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={STATUS_TONE[order.status]}>{label(order.status)}</Badge>
             <Badge tone={PAYMENT_TONE[order.paymentStatus]}>{label(order.paymentStatus)}</Badge>
-            <Badge tone={FULFILLMENT_TONE[order.fulfillmentStatus]}>{label(order.fulfillmentStatus)}</Badge>
+            <OrderStatusDropdown order={order} onUpdated={load} />
           </div>
         }
       />

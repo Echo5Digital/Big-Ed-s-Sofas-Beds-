@@ -15,16 +15,17 @@ function WhatsAppIcon(props) {
   );
 }
 
-// Fixed Call + WhatsApp buttons, always reachable regardless of scroll
-// position — replaces the plain phone number/link that used to live in the
-// top AnnouncementBar strip (now gone from there entirely, see that
-// component). Mounted once in app/layout.js so it appears on every page.
+// Fixed Call + WhatsApp buttons, desktop/tablet only (sm and up) — replaces
+// the plain phone number/link that used to live in the top AnnouncementBar
+// strip (now gone from there entirely, see that component). Mounted once in
+// app/layout.js so it appears on every page.
 //
-// bottom-20 on mobile (sm:bottom-4 above that breakpoint) clears the product
-// detail page's own fixed sticky "Add to Cart" bar (ProductPurchasePanel.jsx,
-// also bottom-0 and also only shown below sm) so the two don't overlap —
-// that bar is roughly 64px tall there (see its own h-16 spacer), so these
-// buttons sit above it with a small gap instead of underneath/behind it.
+// Hidden below sm: a fixed bar here would sit on top of (or compete for the
+// same bottom-of-screen real estate as) the product detail page's own fixed
+// sticky "Add to Cart" bar (ProductPurchasePanel.jsx, bottom-0, also
+// mobile-only) and the site's other mobile-only fixed UI. Call/WhatsApp are
+// still reachable on mobile via the header's Account/contact links and the
+// footer.
 export default function FloatingContactButtons() {
   // Once the footer scrolls into view, these switch from fixed (pinned to
   // the viewport) to absolute, positioned against the shared `relative`
@@ -41,6 +42,8 @@ export default function FloatingContactButtons() {
     return () => observer.disconnect();
   }, []);
 
+  const positionClass = dockedAtFooter ? "absolute top-0 -translate-y-full" : "fixed bottom-4";
+
   return (
     <div
       // Anchored with right-0 (not inset-x-0 + justify-end) — the old
@@ -51,25 +54,23 @@ export default function FloatingContactButtons() {
       // even though nothing was visibly drawn. right-0 shrinks the box down
       // to just its content (the two buttons + their padding), so there's
       // nothing left to block.
-      className={`right-0 z-40 flex gap-3 px-4 pb-4 sm:px-6 lg:px-10 ${
-        dockedAtFooter ? "absolute top-0 -translate-y-full" : "fixed bottom-20 sm:bottom-4"
-      }`}
+      className={`right-0 z-40 hidden gap-3 px-6 sm:flex lg:px-10 ${positionClass}`}
     >
       <a
         href={siteConfig.phoneHref}
         aria-label={`Call us at ${siteConfig.phone}`}
-        className="flex size-12 items-center justify-center rounded-full bg-brand-red text-white shadow-lg transition-transform hover:scale-105 hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark sm:size-14"
+        className="flex size-14 items-center justify-center rounded-full bg-brand-red text-white shadow-lg transition-transform hover:scale-105 hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark"
       >
-        <Phone className="size-5 sm:size-6" aria-hidden="true" />
+        <Phone className="size-6" aria-hidden="true" />
       </a>
       <a
         href={siteConfig.whatsappHref}
         target="_blank"
         rel="noopener noreferrer"
         aria-label="Chat with us on WhatsApp"
-        className="flex size-12 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg transition-transform hover:scale-105 hover:bg-[#1ebe5a] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1ebe5a] sm:size-14"
+        className="flex size-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg transition-transform hover:scale-105 hover:bg-[#1ebe5a] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1ebe5a]"
       >
-        <WhatsAppIcon className="size-6 sm:size-7" />
+        <WhatsAppIcon className="size-7" />
       </a>
     </div>
   );

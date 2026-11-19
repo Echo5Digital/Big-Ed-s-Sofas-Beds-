@@ -11,11 +11,34 @@ linked function changes shape, update this doc in the same PR.
 |---|---|---|
 | `Order.status` | `DRAFT` → `CONFIRMED` → `CLOSED` (or `CANCELED`) | payment or fulfillment state |
 | `Order.paymentStatus` | `UNPAID` → `PARTIALLY_PAID` → `PAID` → `REFUNDED` | order or fulfillment state |
-| `Order.fulfillmentStatus` | `UNALLOCATED` → `RESERVED` → `READY` → `PICKED_UP`/`DELIVERED` | order or payment state |
+| `Order.fulfillmentStatus` | `UNALLOCATED` → `RESERVED` → `PROCESSING` (online only) → `READY` → `PICKED_UP`/`DELIVERED` | order or payment state |
 
 A `CONFIRMED` order can be `UNPAID` (this build's current checkout — see
 below) or `PAID` (once a payment provider exists). Nothing in the codebase
-infers one status from another.
+infers one of these three real fields from another.
+
+### Unified display status (the one deliberate exception)
+
+`apps/api/src/services/orderStatus.service.js`'s `computeOrderDisplayStatus(order)`
+is a pure, read-only function that *does* read all three fields (plus
+`channel`) to produce a single staff/customer-facing label — `Draft` (POS
+deposits only) / `Ordered` / `Processing` (online only) / `Ready` /
+`Completed`, or `Canceled` as an override. This label is never stored; it's
+computed fresh on every serialization and shipped as `order.displayStatus`
+by `orders.routes.js`'s and `customerAccount.service.js`'s `serializeOrder*`
+functions, so admin and the storefront never maintain two separate copies of
+the mapping.
+
+Staff (admin/manager only, via the `orders:write` permission) change it with
+`PATCH /api/admin/orders/:id/status`, which translates the chosen label back
+into the real `fulfillmentStatus`/`paymentStatus` writes via the same
+module's `resolveOrderStatusFieldWrites`, and records the change as a
+`StatusHistory` row (`field: "displayStatus"`). `Draft` and `Canceled` are
+display-only — never a valid request body for this endpoint. By the time an
+order reaches any `fulfillmentStatus` this endpoint can set, the sale's stock
+conversion has already happened (checkout-confirm's reserve, or POS
+`ringSale`'s reserve+convert — see below), so this endpoint never touches
+stock.
 
 ## Online checkout (implemented, payment step deferred)
 
@@ -74,6 +97,12 @@ displayed success").
    session (type `SALE` or `DEPOSIT`), and a `Receipt`. `paymentStatus`
    becomes `PAID` (full tender) or `PARTIALLY_PAID` (deposit less than the
    order total) — never inferred from `status` or `fulfillmentStatus`.
+   `fulfillmentStatus` always lands at `RESERVED` regardless of tender
+   amount (stock is already sold at this point either way) — a manager then
+   advances it manually via `PATCH /admin/orders/:id/status`, same as an
+   online order. The customer-facing unified status distinguishes a deposit
+   from a full-pay sale at this same `fulfillmentStatus` value purely via
+   `paymentStatus` (`Draft` vs `Ordered` — see "Unified display status" above).
 
 Register sessions (`POST /api/pos/registers/open`,
 `POST /api/pos/sessions/:id/close`) and refunds (`POST /api/pos/refunds`)

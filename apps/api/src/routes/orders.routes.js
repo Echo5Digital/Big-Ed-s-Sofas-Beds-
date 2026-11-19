@@ -1,12 +1,17 @@
 const express = require("express");
 const { prisma } = require("@big-eds/database");
-const { checkoutCreateSchema } = require("@big-eds/validation");
+const { checkoutCreateSchema, orderStatusUpdateSchema } = require("@big-eds/validation");
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
 const { NotFoundError, ConflictError } = require("../lib/errors");
 const inventoryService = require("../services/inventory.service");
 const { saveCheckoutDeliveryAddress } = require("../services/orders.service");
+const {
+  computeOrderDisplayStatus,
+  legalTargetStatusesForChannel,
+  resolveOrderStatusFieldWrites,
+} = require("../services/orderStatus.service");
 const { stripe } = require("../lib/stripe");
 const { nextSequenceValue } = require("../lib/sequentialNumber");
 
@@ -29,6 +34,10 @@ function serializeOrder(order) {
     paymentStatus: order.paymentStatus,
     fulfillmentStatus: order.fulfillmentStatus,
     fulfillmentMethod: order.fulfillmentMethod,
+    // Staff-facing unified status (see apps/api/src/services/orderStatus.service.js)
+    // — a computed label, never stored, derived fresh from the three real
+    // fields above on every serialization.
+    displayStatus: computeOrderDisplayStatus(order),
     subtotalCents: order.subtotalCents,
     taxCents: order.taxCents,
     deliveryFeeCents: order.deliveryFeeCents,
@@ -292,6 +301,7 @@ function serializeAdminOrderDetail(order, addressById) {
     paymentStatus: order.paymentStatus,
     fulfillmentStatus: order.fulfillmentStatus,
     fulfillmentMethod: order.fulfillmentMethod,
+    displayStatus: computeOrderDisplayStatus(order),
     subtotalCents: order.subtotalCents,
     taxCents: order.taxCents,
     deliveryFeeCents: order.deliveryFeeCents,
@@ -403,6 +413,76 @@ router.get(
     const addressById = new Map(addresses.map((a) => [a.id, a]));
 
     res.json({ order: serializeAdminOrderDetail(order, addressById) });
+  })
+);
+
+// Staff-initiated change to the unified display status (see
+// orderStatus.service.js) — the one deliberate writer of StatusHistory rows
+// today. "Draft" and "Canceled" are display-only and rejected by the Zod
+// schema itself (orderDisplayStatusSchema has no such members), so this
+// handler only ever has to reject an otherwise-legal label that doesn't fit
+// *this* order's channel (e.g. "Processing" on a POS order) or an order
+// that's already canceled. No stock/inventory involvement: by the time an
+// order reaches any fulfillmentStatus this endpoint can set, the sale's
+// stock conversion already happened earlier (checkout-confirm's reserve, or
+// POS ringSale's reserve+convert) — this is a pure status/audit write, so
+// the transaction below is just for atomicity between the two writes, not
+// for stock locking.
+router.patch(
+  "/admin/orders/:id/status",
+  requireAuth,
+  requirePermission("orders:write"),
+  validateBody(orderStatusUpdateSchema),
+  asyncHandler(async (req, res) => {
+    const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+    if (!order) throw new NotFoundError("Order not found");
+
+    if (order.status === "CANCELED") {
+      throw new ConflictError("This order is canceled and its status can no longer be changed");
+    }
+
+    const legalTargets = legalTargetStatusesForChannel(order.channel);
+    if (!legalTargets.includes(req.body.displayStatus)) {
+      throw new ConflictError(`"${req.body.displayStatus}" is not a valid status for a ${order.channel} order`, {
+        legalTargets,
+      });
+    }
+
+    const fromDisplayStatus = computeOrderDisplayStatus(order);
+    const fieldWrites = resolveOrderStatusFieldWrites(order, req.body.displayStatus);
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedOrder = await tx.order.update({ where: { id: order.id }, data: fieldWrites });
+      await tx.statusHistory.create({
+        data: {
+          orderId: order.id,
+          field: "displayStatus",
+          fromValue: fromDisplayStatus,
+          toValue: req.body.displayStatus,
+          note: req.body.note ?? null,
+        },
+      });
+      return updatedOrder;
+    });
+
+    // Deliberately a narrow, explicit shape — NOT serializeOrder(updated) —
+    // since `updated` is a bare Order row with no `lines`/`customer`
+    // include. A caller that naively spread a serializeOrder-shaped
+    // response onto its existing row data (e.g. the admin list page
+    // patching one row in place) would otherwise clobber those already-
+    // loaded relations with null/undefined. Only the fields that actually
+    // changed are returned; the admin detail page separately re-fetches the
+    // full record after a successful change to refresh its Status History
+    // table.
+    res.json({
+      order: {
+        id: updated.id,
+        status: updated.status,
+        paymentStatus: updated.paymentStatus,
+        fulfillmentStatus: updated.fulfillmentStatus,
+        displayStatus: computeOrderDisplayStatus(updated),
+      },
+    });
   })
 );
 
