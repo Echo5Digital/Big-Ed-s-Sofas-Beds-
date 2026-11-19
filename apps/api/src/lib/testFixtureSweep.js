@@ -124,10 +124,13 @@ async function sweepLeakedTestFixtures() {
     });
     const sessionIds = sessions.map((s) => s.id);
     if (sessionIds.length) {
+      // Payment has no registerSessionId of its own — it only relates to
+      // Order. A session's receipts are each tied to at most one order
+      // (Receipt.orderId), so that's the only path from session to payment.
       await prisma.cashMovement.deleteMany({ where: { registerSessionId: { in: sessionIds } } });
+      await prisma.payment.deleteMany({ where: { order: { receipts: { some: { registerSessionId: { in: sessionIds } } } } } });
       await prisma.receipt.deleteMany({ where: { registerSessionId: { in: sessionIds } } });
       await prisma.returnTransaction.deleteMany({ where: { registerSessionId: { in: sessionIds } } });
-      await prisma.payment.deleteMany({ where: { registerSessionId: { in: sessionIds } } });
     }
     await prisma.registerSession.deleteMany({ where: { registerId: { in: registerIds } } });
     await prisma.register.deleteMany({ where: { id: { in: registerIds } } });
