@@ -1,19 +1,17 @@
+import Image from "next/image";
 import { BedDouble, Flame, Sofa, Tag } from "lucide-react";
-import Container from "@/components/ui/Container";
 
-// /grand-opening-sale's own hero — dark charcoal, matching the calm,
-// professional tone PageHero.jsx uses site-wide (cart, checkout, account)
-// rather than this page's former carnival-flyer look (confetti, italic
-// Montserrat, hand-drawn sparkle marks). No mascot here (dropped per
-// feedback) — centered copy block instead of the old side-by-side layout.
-//
-// Reads as a SALE page rather than a generic page banner: a red "doorbuster"
-// pill (same badge convention DealsCarousel uses for its savings corner-tag),
-// a two-tone gradient headline (same technique as the homepage HeroBanner's
-// "Grand Opening / Doorbusters!" treatment), and a row of icon-chip
-// highlights (HeroBanner's FEATURES pattern) plus a CTA that jumps straight
-// to the specials grid below — so there's an actual reason to scroll, not
-// just a mood-setting banner.
+// /grand-opening-sale's own hero — the real promo artwork
+// (public/Grand_Opening_Doorbusters.webp, 1828x860) as a true full-bleed
+// background, shown at its own aspect ratio so it's never cropped (no
+// `object-cover`, no forced min-height — the section's height IS the
+// image's height at the current width). Copy sits directly on top, pinned
+// to the plain-wall band the art leaves open above the sofa (roughly
+// x:28-98%, y:0-62% of the source) — expressed as % insets so it tracks
+// that same spot at every width instead of a fixed-pixel position, and
+// vertically centered within that band rather than hugging its top edge.
+// No overlay: that band is already light and empty, so dark text reads
+// cleanly straight on the image.
 const HIGHLIGHTS = [
   { icon: BedDouble, label: "Bedroom Sets" },
   { icon: Sofa, label: "Sofas & Sectionals" },
@@ -22,50 +20,54 @@ const HIGHLIGHTS = [
 
 export default function SaleHeader() {
   return (
-    <header className="relative overflow-hidden bg-brand-charcoal py-14 sm:py-20">
-      <div
-        aria-hidden="true"
-        className="absolute inset-x-0 top-0 h-full bg-[radial-gradient(ellipse_at_50%_0%,rgba(247,191,50,0.14),transparent_70%)]"
-      />
+    <header className="relative w-full">
+      <div className="relative aspect-[1828/860] w-full">
+        <Image
+          src="/Grand_Opening_Doorbusters.webp"
+          alt="Big Ed's Sofas & Beds mascot with grand opening furniture — bedroom and living room sets"
+          fill
+          priority
+          sizes="100vw"
+          className="object-contain"
+        />
 
-      <Container className="relative flex flex-col items-center text-center">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-red px-3.5 py-1 text-xs font-extrabold tracking-wide text-white uppercase shadow-md">
-          <Flame className="size-3.5" strokeWidth={2.5} aria-hidden="true" />
-          Limited Time Only
-        </span>
-
-        <h1 className="mt-4 font-display text-4xl leading-[1.05] font-bold tracking-tight sm:text-5xl lg:text-6xl">
-          <span className="block text-white">Grand Opening</span>
-          <span className="block bg-linear-to-b from-[#ffe9a8] via-brand-gold to-[#b8790f] bg-clip-text text-transparent">
-            Sale
+        <div className="absolute inset-[4%_2%_26%_26%] flex flex-col items-start justify-center sm:inset-[1%_2%_30%_28%] sm:items-start sm:text-left">
+          <span className="inline-flex items-center gap-1 rounded-full bg-brand-red px-1.5 py-0.5 text-[8px] font-extrabold tracking-wide text-white uppercase shadow-md sm:gap-2 sm:px-4 sm:py-1.5 sm:text-sm lg:text-base">
+            <Flame className="size-2.5 sm:size-4 lg:size-5" strokeWidth={2.5} aria-hidden="true" />
+            Limited Time Only
           </span>
-        </h1>
 
-        <p className="mt-4 max-w-xl text-base text-white/80 sm:text-lg">
-          Big savings on beds, bedroom sets, sofas, sectionals and recliners — for a limited time.
-        </p>
+          <h1 className="mt-1 font-display text-sm leading-[1.1] font-bold tracking-tight text-brand-charcoal sm:mt-4 sm:text-4xl sm:leading-[1.15] lg:text-5xl xl:text-6xl">
+            <span className="block">Grand Opening</span>
+            <span className="text-3d-gold block">Sale</span>
+          </h1>
 
-        <ul className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-3">
-          {HIGHLIGHTS.map(({ icon: Icon, label }, index) => (
-            <li key={label} className="flex items-center gap-2 text-sm font-semibold text-white sm:text-base">
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-gold text-brand-charcoal sm:size-8">
-                <Icon className="size-4" aria-hidden="true" />
-              </span>
-              <span>{label}</span>
-              {index < HIGHLIGHTS.length - 1 && (
-                <span className="ml-3 hidden h-5 w-px bg-white/25 sm:block" aria-hidden="true" />
-              )}
-            </li>
-          ))}
-        </ul>
+          <p className="mt-1 max-w-[12rem] text-[8px] leading-snug text-brand-charcoal/70 sm:mt-3 sm:max-w-sm sm:text-lg lg:max-w-md lg:text-xl">
+            Big savings on beds, bedroom sets, sofas, sectionals and recliners for a limited time.
+          </p>
 
-        <a
-          href="#sale-products-heading"
-          className="mt-8 inline-flex items-center justify-center gap-2 rounded-full bg-brand-red px-6 py-3 text-sm font-bold text-white shadow-md transition-colors hover:bg-brand-red-dark sm:text-base"
-        >
-          Shop The Sale
-        </a>
-      </Container>
+          <ul className="mt-1 flex flex-col items-start gap-0.5 sm:mt-5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5 sm:gap-y-2.5">
+            {HIGHLIGHTS.map(({ icon: Icon, label }) => (
+              <li
+                key={label}
+                className="flex items-center gap-1 text-[7px] font-semibold text-brand-charcoal sm:gap-2 sm:text-base lg:text-lg"
+              >
+                <span className="flex size-3 shrink-0 items-center justify-center rounded-full bg-brand-gold text-brand-charcoal sm:size-7 lg:size-8">
+                  <Icon className="size-2 sm:size-4 lg:size-4.5" aria-hidden="true" />
+                </span>
+                <span>{label}</span>
+              </li>
+            ))}
+          </ul>
+
+          <a
+            href="#sale-products-heading"
+            className="mt-1.5 inline-flex items-center justify-center gap-1.5 rounded-full bg-brand-red px-2.5 py-1 text-[8px] font-bold text-white shadow-md transition-colors hover:bg-brand-red-dark sm:mt-6 sm:px-8 sm:py-3.5 sm:text-lg lg:text-xl"
+          >
+            Shop The Sale
+          </a>
+        </div>
+      </div>
     </header>
   );
 }

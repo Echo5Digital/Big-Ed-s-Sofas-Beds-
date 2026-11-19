@@ -200,6 +200,23 @@ body {
     paint-order: stroke fill;
   }
 
+  /* Extruded, shining gold "SALE"-style treatment — a gold gradient fill
+     plus a stacked text-shadow that steps through darker ambers to fake a
+     3D extrusion, topped with a soft dark shadow for lift off the page.
+     Used on the grand-opening-sale hero's "Sale" line (SaleHeader.jsx). */
+  .text-3d-gold {
+    background: linear-gradient(180deg, #fff6d9 0%, #ffd43b 35%, #f7a900 70%, #c97c00 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow:
+      1px 1px 0 #c97c00,
+      2px 2px 0 #b86f00,
+      3px 3px 0 #a66300,
+      4px 4px 0 #945700,
+      5px 5px 8px rgba(0, 0, 0, 0.35);
+  }
+
   .scrollbar-hide {
     scrollbar-width: none;
     -ms-overflow-style: none;
