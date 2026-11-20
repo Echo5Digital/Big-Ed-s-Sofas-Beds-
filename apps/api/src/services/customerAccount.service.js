@@ -199,6 +199,38 @@ async function deleteAddress(customerId, addressId) {
 // abandoned payment step) are shown, labelled by their payment status.
 const VISIBLE_ORDERS = { status: { not: "DRAFT" } };
 
+// Same per-line thumbnail join the admin order-detail view uses (see
+// apps/api/src/routes/orders.routes.js ADMIN_ORDER_DETAIL_INCLUDE) — one
+// product image per line, nothing a customer couldn't already see on the
+// product page.
+const ORDER_INCLUDE = {
+  lines: {
+    orderBy: { createdAt: "asc" },
+    include: {
+      variant: {
+        include: {
+          product: { include: { images: { orderBy: { sortOrder: "asc" }, take: 1, select: { url: true } } } },
+        },
+      },
+    },
+  },
+  shippingAddress: true,
+  billingAddress: true,
+  payments: { orderBy: { createdAt: "asc" } },
+};
+
+function serializeOrderAddress(address) {
+  if (!address) return null;
+  return {
+    line1: address.line1,
+    line2: address.line2,
+    city: address.city,
+    state: address.state,
+    postalCode: address.postalCode,
+    country: address.country,
+  };
+}
+
 function serializeOrder(order) {
   return {
     id: order.id,
@@ -218,10 +250,23 @@ function serializeOrder(order) {
     deliveryFeeCents: order.deliveryFeeCents,
     discountCents: order.discountCents,
     totalCents: order.totalCents,
+    shippingAddress: serializeOrderAddress(order.shippingAddress),
+    billingAddress: serializeOrderAddress(order.billingAddress),
+    // A customer-facing read of the payment ledger — method and status only,
+    // never providerRef/providerEventId/performedById (staff/processor
+    // internals, not this customer's business).
+    payments: order.payments.map((payment) => ({
+      id: payment.id,
+      method: payment.method,
+      status: payment.status,
+      amountCents: payment.amountCents,
+      createdAt: payment.createdAt,
+    })),
     lines: order.lines.map((line) => ({
       id: line.id,
       name: line.nameSnapshot,
       sku: line.skuSnapshot,
+      imageUrl: line.variant?.product?.images?.[0]?.url ?? null,
       quantity: line.quantity,
       unitPriceCents: line.unitPriceCents,
       lineTotalCents: line.lineTotalCents,
@@ -243,7 +288,7 @@ async function listOrders(customerId, { page, pageSize } = {}) {
   const [orders, total] = await Promise.all([
     prisma.order.findMany({
       where,
-      include: { lines: { orderBy: { createdAt: "asc" } } },
+      include: ORDER_INCLUDE,
       // id breaks ties so paging stays stable when orders share a timestamp.
       orderBy: [{ createdAt: "desc" }, { id: "asc" }],
       skip: (currentPage - 1) * take,

@@ -8,7 +8,6 @@ import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-
 import { Truck, Store, ClipboardCheck, ShoppingBag, LogIn } from "lucide-react";
 import Container from "@/components/ui/Container";
 import EmptyState from "@/components/ui/EmptyState";
-import PageHero from "@/components/ui/PageHero";
 import AccountPanel from "@/components/account/AccountPanel";
 import { useDemoCart } from "@/components/layout/DemoCartProvider";
 import { formatCurrency } from "@/utils/formatCurrency";
@@ -100,8 +99,8 @@ export default function CheckoutPage() {
   if (cartItems.length === 0 && checkoutState === "form") {
     return (
       <div className="pb-10">
-        <PageHero title="Checkout" showMascot={false} />
         <Container className="mt-8">
+          <h1 className="font-display text-2xl font-bold text-brand-charcoal sm:text-3xl">Checkout</h1>
           <div className="mt-8">
             <EmptyState
               icon={ShoppingBag}
@@ -119,8 +118,8 @@ export default function CheckoutPage() {
   if (checkoutState === "form" && authStatus !== "signed-in") {
     return (
       <div className="pb-10">
-        <PageHero title="Checkout" showMascot={false} />
         <Container className="mt-8">
+          <h1 className="font-display text-2xl font-bold text-brand-charcoal sm:text-3xl">Checkout</h1>
           {authStatus === "checking" ? (
             <p role="status" aria-busy="true" className="mt-8 text-center text-sm text-brand-charcoal/60">
               Loading&hellip;
@@ -131,9 +130,9 @@ export default function CheckoutPage() {
                 <span className="flex size-12 items-center justify-center rounded-full bg-brand-red/10 text-brand-red">
                   <LogIn className="size-6" aria-hidden="true" />
                 </span>
-                <h1 className="font-display text-xl font-bold text-brand-charcoal">
+                <h2 className="font-display text-xl font-bold text-brand-charcoal">
                   Sign In to Complete Your Order
-                </h1>
+                </h2>
                 <p className="text-sm text-brand-charcoal/60">
                   Create a free account or sign in to place your order — it only takes a minute, and
                   you&rsquo;ll be able to track this order afterward.
@@ -179,12 +178,11 @@ export default function CheckoutPage() {
   if (checkoutState === "payment" && clientSecret) {
     return (
       <div className="pb-10">
-        <PageHero
-          title="Payment"
-          subtitle={`Order ${order?.orderNumber} — ${formatCurrency((order?.totalCents ?? 0) / 100)}`}
-          showMascot={false}
-        />
         <Container className="mt-8">
+          <h1 className="font-display text-2xl font-bold text-brand-charcoal sm:text-3xl">Payment</h1>
+          <p className="mt-1.5 text-sm text-brand-charcoal/60">
+            Order {order?.orderNumber} — {formatCurrency((order?.totalCents ?? 0) / 100)}
+          </p>
           <div className="mt-6 max-w-lg">
             {stripePromise ? (
               <Elements stripe={stripePromise} options={{ clientSecret }}>
@@ -209,8 +207,8 @@ export default function CheckoutPage() {
 
   return (
     <div className="pb-24">
-      <PageHero title="Checkout" showMascot={false} />
       <Container className="mt-8">
+        <h1 className="font-display text-2xl font-bold text-brand-charcoal sm:text-3xl">Checkout</h1>
         {error && (
           <p role="alert" className="mt-3 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}

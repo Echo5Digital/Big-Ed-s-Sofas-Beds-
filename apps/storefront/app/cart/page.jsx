@@ -6,7 +6,6 @@ import { Minus, Plus, Trash2, ShoppingBag, ArrowRight } from "lucide-react";
 import Container from "@/components/ui/Container";
 import EmptyState from "@/components/ui/EmptyState";
 import Button from "@/components/ui/Button";
-import PageHero from "@/components/ui/PageHero";
 import { useDemoCart } from "@/components/layout/DemoCartProvider";
 import { formatCurrency } from "@/utils/formatCurrency";
 import Price from "@/components/ui/Price";
@@ -16,9 +15,9 @@ export default function CartPage() {
 
   return (
     <div className="pb-10">
-      <PageHero title="Your Cart" showMascot={false} />
-
       <Container className="mt-8">
+        <h1 className="font-display text-2xl font-bold text-brand-charcoal sm:text-3xl">Your Cart</h1>
+
         {cartItems.length === 0 ? (
           <div className="mt-8">
             <EmptyState
