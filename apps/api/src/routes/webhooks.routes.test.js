@@ -1,14 +1,21 @@
 const { prisma } = require("@big-eds/database");
-const { handlePaymentSucceeded, handlePaymentFailed } = require("./webhooks.routes");
+const { handlePaymentUpdated } = require("./webhooks.routes");
 const inventoryService = require("../services/inventory.service");
 
-// Runs against the real dev database (same convention as pos.service.test.js
-// — no Prisma mock layer). Exercises the webhook *handlers* directly rather
-// than over HTTP: signature verification and raw-body parsing are Express/
-// Stripe-SDK plumbing, already covered by Stripe's own test suite — what
-// this repo owns and must verify is the idempotency + stock-reconciliation
-// behavior once an event is trusted.
-describe("webhooks.routes — Stripe payment handlers", () => {
+// Runs against the real dev database (this repo's convention — no Prisma or
+// Square mock layer). Exercises the webhook *handler* directly rather than
+// over HTTP: signature verification and raw-body parsing are Express /
+// Square-SDK plumbing already covered by Square's own test suite — what this
+// repo owns and must verify is the idempotency + stock-reconciliation
+// behaviour once an event is trusted.
+//
+// Square's payment.updated event carries a single Payment object whose
+// `status` field drives every branch:
+//   COMPLETED  → markPaymentSucceeded
+//   FAILED     → markPaymentFailed
+//   CANCELED   → markPaymentFailed
+// APPROVED / PENDING are intentional no-ops (not yet a final outcome).
+describe("webhooks.routes — Square payment.updated handler", () => {
   let location;
   let category;
   let product;
@@ -69,23 +76,26 @@ describe("webhooks.routes — Stripe payment handlers", () => {
       quantity: 1,
       orderId: order.id,
     });
+    // Square payment IDs look like "sq_..." — use a unique test prefix so
+    // handlePaymentUpdated can find it via Payment.providerRef.
+    const squarePaymentId = `sq_test_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const payment = await prisma.payment.create({
       data: {
         orderId: order.id,
         method: "CARD",
         status: "PENDING",
         amountCents: 10000,
-        providerName: "stripe",
-        providerRef: `pi_test_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        providerName: "square",
+        providerRef: squarePaymentId,
       },
     });
-    return { order, reservation, payment };
+    return { order, reservation, payment, squarePaymentId };
   }
 
-  it("payment_intent.succeeded converts the reservation to a sale and marks the order paid", async () => {
-    const { order, reservation, payment } = await createOrderWithReservation();
+  it("COMPLETED converts the reservation to a sale and marks the order paid", async () => {
+    const { order, reservation, payment, squarePaymentId } = await createOrderWithReservation();
 
-    await handlePaymentSucceeded({ id: payment.providerRef });
+    await handlePaymentUpdated({ id: squarePaymentId, status: "COMPLETED" });
 
     const updatedOrder = await prisma.order.findUnique({ where: { id: order.id } });
     expect(updatedOrder.paymentStatus).toBe("PAID");
@@ -103,17 +113,17 @@ describe("webhooks.routes — Stripe payment handlers", () => {
     expect(balance.reserved).toBe(0);
   });
 
-  it("payment_intent.payment_failed releases the reservation and cancels the order", async () => {
-    const { order, reservation, payment } = await createOrderWithReservation();
+  it("FAILED releases the reservation and cancels the order", async () => {
+    const { order, reservation, payment, squarePaymentId } = await createOrderWithReservation();
 
-    await handlePaymentFailed({ id: payment.providerRef, last_payment_error: { message: "Your card was declined." } });
+    await handlePaymentUpdated({ id: squarePaymentId, status: "FAILED" });
 
     const updatedOrder = await prisma.order.findUnique({ where: { id: order.id } });
     expect(updatedOrder.status).toBe("CANCELED");
 
     const updatedPayment = await prisma.payment.findUnique({ where: { id: payment.id } });
     expect(updatedPayment.status).toBe("FAILED");
-    expect(updatedPayment.failureReason).toBe("Your card was declined.");
+    expect(updatedPayment.failureReason).toBe("Payment failed");
 
     const updatedReservation = await prisma.reservation.findUnique({ where: { id: reservation.id } });
     expect(updatedReservation.status).toBe("RELEASED");
@@ -124,20 +134,47 @@ describe("webhooks.routes — Stripe payment handlers", () => {
     expect(balance.reserved).toBe(0);
   });
 
-  it("is a no-op when no Payment matches the PaymentIntent id (e.g. unrelated/test event)", async () => {
-    await expect(handlePaymentSucceeded({ id: "pi_does_not_exist" })).resolves.toBeUndefined();
-    await expect(handlePaymentFailed({ id: "pi_does_not_exist" })).resolves.toBeUndefined();
+  it("CANCELED releases the reservation and cancels the order (same as FAILED)", async () => {
+    const { order, reservation, payment, squarePaymentId } = await createOrderWithReservation();
+
+    await handlePaymentUpdated({ id: squarePaymentId, status: "CANCELED" });
+
+    const updatedOrder = await prisma.order.findUnique({ where: { id: order.id } });
+    expect(updatedOrder.status).toBe("CANCELED");
+
+    const updatedPayment = await prisma.payment.findUnique({ where: { id: payment.id } });
+    expect(updatedPayment.status).toBe("FAILED");
+
+    const updatedReservation = await prisma.reservation.findUnique({ where: { id: reservation.id } });
+    expect(updatedReservation.status).toBe("RELEASED");
+  });
+
+  it("APPROVED / PENDING are no-ops (not a final outcome)", async () => {
+    const { payment, squarePaymentId } = await createOrderWithReservation();
+
+    await handlePaymentUpdated({ id: squarePaymentId, status: "APPROVED" });
+    const afterApproved = await prisma.payment.findUnique({ where: { id: payment.id } });
+    expect(afterApproved.status).toBe("PENDING");
+
+    await handlePaymentUpdated({ id: squarePaymentId, status: "PENDING" });
+    const afterPending = await prisma.payment.findUnique({ where: { id: payment.id } });
+    expect(afterPending.status).toBe("PENDING");
+  });
+
+  it("is a no-op when no Payment row matches the Square payment id (e.g. unrelated/test event)", async () => {
+    await expect(handlePaymentUpdated({ id: "sq_does_not_exist", status: "COMPLETED" })).resolves.toBeUndefined();
+    await expect(handlePaymentUpdated({ id: "sq_does_not_exist", status: "FAILED" })).resolves.toBeUndefined();
   });
 
   it("ProviderEvent.eventId uniqueness makes a duplicate webhook delivery a no-op at the database layer", async () => {
-    const eventId = `evt_test_${Date.now()}`;
+    const eventId = `sq_evt_test_${Date.now()}`;
     await prisma.providerEvent.create({
-      data: { providerName: "stripe", eventId, eventType: "payment_intent.succeeded", payload: { id: eventId } },
+      data: { providerName: "square", eventId, eventType: "payment.updated", payload: { event_id: eventId } },
     });
 
     await expect(
       prisma.providerEvent.create({
-        data: { providerName: "stripe", eventId, eventType: "payment_intent.succeeded", payload: { id: eventId } },
+        data: { providerName: "square", eventId, eventType: "payment.updated", payload: { event_id: eventId } },
       })
     ).rejects.toMatchObject({ code: "P2002" });
 

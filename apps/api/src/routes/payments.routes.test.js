@@ -66,7 +66,7 @@ describe("payments.routes", () => {
       const posOrder = await makeOrder({ channel: "POS" });
 
       const cardOnline = await prisma.payment.create({
-        data: { orderId: onlineOrder.id, method: "CARD", status: "SUCCEEDED", amountCents: 100000, providerName: "stripe", providerRef: `pi_test_${Date.now()}` },
+        data: { orderId: onlineOrder.id, method: "CARD", status: "SUCCEEDED", amountCents: 100000, providerName: "square", providerRef: `sq_test_${Date.now()}` },
       });
       const cashPos = await prisma.payment.create({
         data: { orderId: posOrder.id, method: "CASH", status: "SUCCEEDED", amountCents: 100000 },
@@ -155,7 +155,7 @@ describe("payments.routes", () => {
 
       const order = await makeOrder({ channel: "ONLINE", totalCents: 60000 });
       const pending = await prisma.payment.create({
-        data: { orderId: order.id, method: "CARD", status: "PENDING", amountCents: 60000, providerName: "stripe" },
+        data: { orderId: order.id, method: "CARD", status: "PENDING", amountCents: 60000, providerName: "square" },
       });
       await prisma.payment.update({ where: { id: pending.id }, data: { status: "FAILED", failureReason: "card_declined" } });
 

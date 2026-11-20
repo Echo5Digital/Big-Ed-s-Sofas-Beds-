@@ -262,6 +262,37 @@ model Review {
   @@index([status])
 }
 
+enum ContactMessageStatus {
+  // Just submitted, nobody on staff has opened it yet — the "unread" count
+  // on the admin dashboard/sidebar badge.
+  NEW
+  READ
+  // Staff-dismissed, kept for the record but excluded from the default admin
+  // list view — mirrors Review's PENDING/APPROVED split in spirit (a status
+  // that changes what's surfaced by default), though Messages has no
+  // storefront-visibility angle, only an admin inbox-triage one.
+  ARCHIVED
+}
+
+// A guest-submitted inquiry from the storefront's /contact page — same
+// free-text-author convention as Review (no signed-in Customer tie-in; the
+// contact form only ever asks for a name/email). isImportant is independent
+// of status: staff can flag a NEW or READ message as important, and
+// unflag it, without that affecting whether it's still unread.
+model ContactMessage {
+  id          String               @id @default(uuid())
+  name        String
+  email       String
+  message     String
+  status      ContactMessageStatus @default(NEW)
+  isImportant Boolean              @default(false)
+  createdAt   DateTime             @default(now())
+
+  @@index([status])
+  @@index([isImportant])
+  @@index([createdAt])
+}
+
 model Variant {
   id                        String          @id @default(uuid())
   productId                 String

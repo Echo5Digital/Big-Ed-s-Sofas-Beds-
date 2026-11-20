@@ -32,6 +32,9 @@ router.get(
       poByStatus,
       activeProductCount,
       categoryCount,
+      unreadMessageCount,
+      importantMessageCount,
+      totalMessageCount,
       registerSessionsToday,
       recentOrders,
     ] = await Promise.all([
@@ -69,6 +72,9 @@ router.get(
       prisma.purchaseOrder.groupBy({ by: ["status"], _count: { _all: true } }),
       prisma.product.count({ where: { status: "ACTIVE" } }),
       prisma.category.count(),
+      prisma.contactMessage.count({ where: { status: "NEW" } }),
+      prisma.contactMessage.count({ where: { isImportant: true, status: { not: "ARCHIVED" } } }),
+      prisma.contactMessage.count(),
       prisma.registerSession.findMany({
         where: { openedAt: { gte: startOfToday } },
         include: { cashMovements: true },
@@ -116,6 +122,7 @@ router.get(
       ordersByStatus: ordersByStatus.map((g) => ({ status: g.status, count: g._count._all })),
       purchaseOrdersByStatus: poByStatus.map((g) => ({ status: g.status, count: g._count._all })),
       catalog: { activeProducts: activeProductCount, categories: categoryCount },
+      messages: { unread: unreadMessageCount, important: importantMessageCount, total: totalMessageCount },
       registerActivityToday: {
         openCount: registerSessionsToday.filter((s) => s.status === "OPEN").length,
         closedCount: registerSessionsToday.filter((s) => s.status === "CLOSED").length,

@@ -13,6 +13,7 @@ import {
   Package,
   LayoutGrid,
   Wallet,
+  Mail,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -223,6 +224,13 @@ function DashboardContent({ overview, trend, error }) {
           value={overview ? overview.catalog.categories : "—"}
           icon={LayoutGrid}
           tone="default"
+        />
+        <StatCard
+          label="New Messages"
+          value={overview ? overview.messages.unread : "—"}
+          hint={overview ? `${overview.messages.important} important · ${overview.messages.total} total` : undefined}
+          icon={Mail}
+          tone={overview?.messages.unread > 0 ? "warning" : "default"}
         />
       </div>
 

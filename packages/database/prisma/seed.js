@@ -17,6 +17,8 @@ const PERMISSIONS = [
   { key: "orders:write", description: "Edit/cancel customer orders" },
   { key: "users:manage", description: "Manage staff users and roles" },
   { key: "reports:read", description: "View reports" },
+  { key: "messages:read", description: "View contact form messages" },
+  { key: "messages:write", description: "Mark messages read/important, delete messages" },
   { key: "pos:register:open", description: "Open a POS register session" },
   { key: "pos:register:close", description: "Close out a POS register session" },
   { key: "pos:register:approve-reopen", description: "Approve or deny a stuck register's reopen request" },
@@ -40,6 +42,8 @@ const ROLE_PERMISSIONS = {
     "orders:read",
     "orders:write",
     "reports:read",
+    "messages:read",
+    "messages:write",
     "pos:register:approve-reopen",
   ],
   SALESMAN: [

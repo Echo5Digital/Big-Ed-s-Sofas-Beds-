@@ -1,10 +1,10 @@
 const express = require("express");
 const { prisma } = require("@big-eds/database");
-const { checkoutCreateSchema, orderStatusUpdateSchema } = require("@big-eds/validation");
+const { checkoutCreateSchema, checkoutPaySchema, orderStatusUpdateSchema } = require("@big-eds/validation");
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
-const { NotFoundError, ConflictError } = require("../lib/errors");
+const { NotFoundError, ConflictError, ApiError } = require("../lib/errors");
 const inventoryService = require("../services/inventory.service");
 const { saveCheckoutDeliveryAddress } = require("../services/orders.service");
 const {
@@ -12,7 +12,10 @@ const {
   legalTargetStatusesForChannel,
   resolveOrderStatusFieldWrites,
 } = require("../services/orderStatus.service");
-const { stripe } = require("../lib/stripe");
+const { square } = require("../lib/square");
+const { SquareError } = require("square");
+const { env } = require("../lib/env");
+const { markPaymentSucceeded, markPaymentFailed } = require("../services/payments.service");
 const { nextSequenceValue } = require("../lib/sequentialNumber");
 
 const router = express.Router();
@@ -60,12 +63,23 @@ function serializeOrder(order) {
 
 // --- Public checkout (storefront) -----------------------------------------
 //
-// Builds a priced, inventory-reserved order and creates a Stripe PaymentIntent
-// for it. The order stays UNPAID (and the reservation stays ACTIVE, not yet
-// converted to a sale) until the Stripe webhook confirms payment — a
-// client-side "payment succeeded" callback is never trusted on its own, per
-// the kickoff plan's "never assume terminal pending means paid" rule. See
-// src/routes/webhooks.routes.js for the confirmation path.
+// Two-step flow, because Square's CreatePayment needs a card token the
+// client can only produce *after* it knows the final amount (the Web
+// Payments SDK tokenizes in the browser, then this backend charges that
+// token) — the Web Payments SDK tokenizes in the browser once the final
+// amount is known, then this backend charges that token:
+//   1. POST /checkout        — build the priced, inventory-reserved order and
+//      a PENDING Payment placeholder row. No money moves yet.
+//   2. POST /checkout/:id/pay — the storefront submits the card token
+//      (sourceId) it just tokenized via the Web Payments SDK; this route
+//      calls Square's CreatePayment and marks the order Paid only once
+//      Square's response itself says COMPLETED (see handler below) — never
+//      inferred from a client-side "it looked fine" callback alone, per the
+//      kickoff plan's "never assume terminal pending means paid" rule.
+// The Square webhook (src/routes/webhooks.routes.js) is a second,
+// independently-idempotent confirmation path for the same event, in case
+// the synchronous CreatePayment call above times out before this process
+// sees its own response.
 router.post(
   "/checkout",
   validateBody(checkoutCreateSchema),
@@ -185,29 +199,28 @@ router.post(
       include: { lines: true, customer: true },
     });
 
-    // If PaymentIntent creation (or recording it) fails, the order must not
-    // be left CONFIRMED/RESERVED with stock held hostage and no way to pay —
-    // release every reservation just created and cancel the order, same as
-    // the out-of-stock rollback above.
-    let paymentIntent;
+    // No money moves here — this Payment row just reserves the slot the
+    // storefront will charge against in POST /checkout/:id/pay once it has
+    // tokenized a card. Its own id doubles as the Square idempotency key for
+    // that charge (see the /pay handler below): stable across a client
+    // retrying the same attempt, but a genuinely new attempt (new Payment
+    // row) would get its own key.
+    let payment;
     try {
-      paymentIntent = await stripe.paymentIntents.create({
-        amount: confirmed.totalCents,
-        currency: "usd",
-        metadata: { orderId: confirmed.id, orderNumber: confirmed.orderNumber },
-      });
-
-      await prisma.payment.create({
+      payment = await prisma.payment.create({
         data: {
           orderId: confirmed.id,
           method: "CARD",
           status: "PENDING",
           amountCents: confirmed.totalCents,
-          providerName: "stripe",
-          providerRef: paymentIntent.id,
+          providerName: "square",
         },
       });
     } catch (err) {
+      // If even recording the placeholder fails, the order must not be left
+      // CONFIRMED/RESERVED with stock held hostage and no way to pay —
+      // release every reservation just created and cancel the order, same
+      // as the out-of-stock rollback above.
       const activeReservations = await prisma.reservation.findMany({
         where: { orderId: confirmed.id, status: "ACTIVE" },
       });
@@ -220,8 +233,100 @@ router.post(
 
     res.status(201).json({
       order: serializeOrder(confirmed),
-      clientSecret: paymentIntent.client_secret,
+      paymentId: payment.id,
+      amountCents: confirmed.totalCents,
     });
+  })
+);
+
+// Square error codes (see https://developer.squareup.com/reference/square/objects/ErrorCode)
+// that mean "the card was declined" in some form, as opposed to a request
+// shape problem or a transient Square-side failure — used only to decide the
+// customer-facing message, not to change what gets persisted (every
+// non-COMPLETED outcome is handled identically: Payment -> FAILED, order's
+// reservations released, Order -> CANCELED).
+const DECLINE_ERROR_CODES = new Set([
+  "CARD_DECLINED",
+  "CARD_DECLINED_CALL_ISSUER",
+  "CARD_DECLINED_VERIFICATION_REQUIRED",
+  "CVV_FAILURE",
+  "ADDRESS_VERIFICATION_FAILURE",
+  "INSUFFICIENT_FUNDS",
+  "INVALID_EXPIRATION",
+  "CARD_EXPIRED",
+  "TRANSACTION_LIMIT",
+]);
+
+// The storefront calls this once per payment attempt, right after
+// card.tokenize() resolves. Looks the pending Payment back up by id (never
+// trusts a client-supplied amount/orderId pair) so the charge is always for
+// exactly what checkout already priced and reserved stock for.
+router.post(
+  "/checkout/:id/pay",
+  validateBody(checkoutPaySchema),
+  asyncHandler(async (req, res) => {
+    const order = await prisma.order.findUnique({
+      where: { id: req.params.id },
+      include: { lines: true, customer: true, payments: { orderBy: { createdAt: "desc" } } },
+    });
+    if (!order) throw new NotFoundError("Order not found");
+
+    const payment = order.payments[0];
+    if (!payment || payment.status !== "PENDING") {
+      // Either this order never got a pending Payment row (shouldn't happen
+      // — created in POST /checkout), or it's already been paid/failed —
+      // either way there's nothing left here for this endpoint to do safely.
+      throw new ConflictError("This order has no payment awaiting charge");
+    }
+
+    let result;
+    try {
+      // idempotencyKey = payment.id: a client double-click or network-retry
+      // resubmitting the same sourceId reuses this same key, so Square
+      // returns the original payment instead of creating a second charge
+      // (see docs/requirements/open-questions.md's three required tests).
+      result = await square.payments.create({
+        idempotencyKey: payment.id,
+        sourceId: req.body.sourceId,
+        amountMoney: { amount: BigInt(payment.amountCents), currency: "USD" },
+        locationId: env.squareLocationId,
+        referenceId: order.id,
+        note: `Order ${order.orderNumber}`,
+      });
+    } catch (err) {
+      if (err instanceof SquareError) {
+        const declineError = err.errors?.find((e) => DECLINE_ERROR_CODES.has(e.code));
+        await markPaymentFailed(payment.id, order.id, declineError?.detail || err.message || "Payment failed");
+        throw new ApiError(402, declineError?.detail || "Your card was declined. Please try a different card.", {
+          code: declineError?.code,
+        });
+      }
+      throw err;
+    }
+
+    const squarePayment = result.payment;
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: { providerRef: squarePayment.id },
+    });
+
+    if (squarePayment.status === "COMPLETED") {
+      await markPaymentSucceeded(payment.id, order.id);
+      const paid = await prisma.order.findUnique({ where: { id: order.id }, include: { lines: true, customer: true } });
+      return res.json({ order: serializeOrder(paid), paymentStatus: "COMPLETED" });
+    }
+
+    // APPROVED (delayed capture) and PENDING both mean "not yet a final
+    // decline, but not confirmed paid either" — left PENDING here rather
+    // than guessed at; the webhook will resolve it to COMPLETED or FAILED
+    // once Square finishes. FAILED/CANCELED from a 200 response (rather than
+    // a thrown SquareError) are treated the same as a thrown decline.
+    if (squarePayment.status === "FAILED" || squarePayment.status === "CANCELED") {
+      await markPaymentFailed(payment.id, order.id, "Payment failed");
+      throw new ApiError(402, "Your card was declined. Please try a different card.");
+    }
+
+    res.json({ order: serializeOrder(order), paymentStatus: squarePayment.status });
   })
 );
 

@@ -5,19 +5,21 @@ import { MapPin, Phone, Clock, Mail } from "lucide-react";
 import Container from "@/components/ui/Container";
 import PageHero from "@/components/ui/PageHero";
 import { siteConfig } from "@/lib/mock-data/site-config";
+import { api, ApiClientError } from "@/lib/api/client";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function ContactPage() {
   const [form, setForm] = useState({ name: "", email: "", message: "" });
   const [status, setStatus] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
   const messageId = useId();
 
   function handleChange(field) {
     return (event) => setForm((f) => ({ ...f, [field]: event.target.value }));
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
 
     if (!form.name.trim() || !form.message.trim()) {
@@ -29,12 +31,27 @@ export default function ContactPage() {
       return;
     }
 
-    // Demo-only: no contact/email backend is wired up yet.
-    setStatus({
-      type: "success",
-      message: "Thanks for reaching out! This is a demo only for now — message submission isn't connected to a real inbox yet.",
-    });
-    setForm({ name: "", email: "", message: "" });
+    setSubmitting(true);
+    setStatus(null);
+    try {
+      await api.post("/messages", {
+        name: form.name.trim(),
+        email: form.email.trim(),
+        message: form.message.trim(),
+      });
+      setStatus({ type: "success", message: "Thanks for reaching out! We'll get back to you soon." });
+      setForm({ name: "", email: "", message: "" });
+    } catch (error) {
+      setStatus({
+        type: "error",
+        message:
+          error instanceof ApiClientError
+            ? error.message
+            : "Something went wrong sending your message. Please try again.",
+      });
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -94,9 +111,10 @@ export default function ContactPage() {
 
               <button
                 type="submit"
-                className="mt-1 w-full rounded-full bg-brand-red px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark sm:w-auto"
+                disabled={submitting}
+                className="mt-1 w-full rounded-full bg-brand-red px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red-dark disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
               >
-                Send Message
+                {submitting ? "Sending…" : "Send Message"}
               </button>
 
               {status && (

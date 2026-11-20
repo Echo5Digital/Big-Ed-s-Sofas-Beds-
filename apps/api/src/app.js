@@ -18,6 +18,7 @@ const dashboardRoutes = require("./routes/dashboard.routes");
 const posRoutes = require("./routes/pos.routes");
 const reportsRoutes = require("./routes/reports.routes");
 const paymentsRoutes = require("./routes/payments.routes");
+const messagesRoutes = require("./routes/messages.routes");
 const webhooksRoutes = require("./routes/webhooks.routes");
 
 function createApp() {
@@ -30,7 +31,7 @@ function createApp() {
       credentials: true,
     })
   );
-  // Mounted before the global JSON body parser: Stripe webhook signature
+  // Mounted before the global JSON body parser: Square webhook signature
   // verification needs the raw, untouched request body, not a parsed object.
   app.use("/api/webhooks", webhooksRoutes);
 
@@ -54,6 +55,7 @@ function createApp() {
   app.use("/api/pos", posRoutes);
   app.use("/api/reports", reportsRoutes);
   app.use("/api/payments", paymentsRoutes);
+  app.use("/api/messages", messagesRoutes);
 
   app.use((req, res) => {
     res.status(404).json({ error: { message: "Not found" } });

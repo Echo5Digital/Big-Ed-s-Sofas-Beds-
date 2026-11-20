@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Package,
   MessageSquare,
+  Mail,
   Boxes,
   ClipboardList,
   Users,
@@ -27,12 +28,14 @@ import NotificationBell from "./NotificationBell";
 // Same poll-for-a-count approach as NotificationBell's register-reopen
 // badge — this app has no websocket/SSE infrastructure, so a short interval
 // is how a newly-submitted low-rated review (1-3 stars, held for moderation)
-// surfaces on the Products nav item without a full page reload.
+// surfaces on the Products nav item without a full page reload. Also used
+// for the Messages nav item's unread count (new /contact submissions).
 const REVIEW_POLL_MS = 20000;
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard, permission: "reports:read" },
   { label: "Products", href: "/products", icon: Package, permission: "catalog:read", countKey: "pendingReviews" },
+  { label: "Messages", href: "/messages", icon: Mail, permission: "messages:read", countKey: "unreadMessages" },
   { label: "Inventory", href: "/inventory", icon: Boxes, permission: "inventory:read" },
   { label: "Purchase Orders", href: "/purchasing", icon: ClipboardList, permission: "purchasing:read" },
   { label: "Suppliers", href: "/suppliers", icon: Users, permission: "purchasing:read" },
@@ -51,9 +54,11 @@ function NavLink({ item, pathname, onClick, count }) {
   // icon with the pending count fused directly onto it — not a separate
   // floating pill next to the label — so the icon itself reads as "reviews
   // need attention" at a glance. Reverts to the plain Package icon (no
-  // badge at all) once nothing is pending.
+  // badge at all) once nothing is pending. This icon swap is specific to
+  // Products (countKey "pendingReviews") — every other badge-carrying item
+  // (e.g. Messages) just gets the small count pill next to its own icon.
   const hasAlert = count > 0;
-  const Icon = hasAlert ? MessageSquare : item.icon;
+  const Icon = hasAlert && item.countKey === "pendingReviews" ? MessageSquare : item.icon;
   const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
 
   return (
@@ -81,6 +86,8 @@ function SidebarContent({ pathname, onNavigate }) {
   const { user, logout, hasPermission } = useAuth();
   const router = useRouter();
   const [pendingReviewCount, setPendingReviewCount] = useState(0);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const canReadMessages = hasPermission("messages:read");
 
   const loadPendingReviewCount = useCallback(() => {
     api
@@ -92,11 +99,27 @@ function SidebarContent({ pathname, onNavigate }) {
       });
   }, []);
 
+  const loadUnreadMessageCount = useCallback(() => {
+    if (!canReadMessages) return;
+    api
+      .get("/messages/counts")
+      .then((data) => setUnreadMessageCount(data.unread))
+      .catch(() => {
+        // Silent — same reasoning as loadPendingReviewCount above.
+      });
+  }, [canReadMessages]);
+
   useEffect(() => {
     loadPendingReviewCount();
     const interval = setInterval(loadPendingReviewCount, REVIEW_POLL_MS);
     return () => clearInterval(interval);
   }, [loadPendingReviewCount]);
+
+  useEffect(() => {
+    loadUnreadMessageCount();
+    const interval = setInterval(loadUnreadMessageCount, REVIEW_POLL_MS);
+    return () => clearInterval(interval);
+  }, [loadUnreadMessageCount]);
 
   async function handleLogout() {
     await logout();
@@ -104,7 +127,7 @@ function SidebarContent({ pathname, onNavigate }) {
   }
 
   const visibleItems = NAV_ITEMS.filter((item) => !item.permission || hasPermission(item.permission));
-  const countsByKey = { pendingReviews: pendingReviewCount };
+  const countsByKey = { pendingReviews: pendingReviewCount, unreadMessages: unreadMessageCount };
 
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto bg-brand-navy p-4">

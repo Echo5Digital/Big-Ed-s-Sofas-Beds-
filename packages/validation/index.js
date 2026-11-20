@@ -261,6 +261,13 @@ const reviewCreateSchema = z.object({
   authorEmail: z.string().trim().email().max(200),
 });
 
+// Storefront /contact page — public, unauthenticated submission.
+const contactMessageCreateSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  email: z.string().trim().email().max(200),
+  message: z.string().trim().min(1).max(5000),
+});
+
 // ---------------------------------------------------------------------------
 // Inventory
 // ---------------------------------------------------------------------------
@@ -421,6 +428,14 @@ const checkoutCreateSchema = z.object({
     })
     .optional()
     .nullable(),
+});
+
+// POST /checkout/:id/pay — the Square Web Payments SDK's card.tokenize()
+// result's `token` field, submitted once the order itself already exists
+// (see POST /checkout above). sourceId is Square's name for this value
+// (a single-use token, or "cnon:..." for a card nonce) in CreatePayment.
+const checkoutPaySchema = z.object({
+  sourceId: z.string().min(1).max(255),
 });
 
 // Mirrors the unified display-status ladder computeOrderDisplayStatus()
@@ -646,6 +661,7 @@ module.exports = {
   productCreateSchema,
   productUpdateSchema,
   reviewCreateSchema,
+  contactMessageCreateSchema,
   stockAdjustSchema,
   stockTransferSchema,
   countCreateSchema,
@@ -658,6 +674,7 @@ module.exports = {
   goodsReceiptCreateSchema,
   cartLineSchema,
   checkoutCreateSchema,
+  checkoutPaySchema,
   orderDisplayStatusSchema,
   orderStatusUpdateSchema,
   registerOpenSchema,

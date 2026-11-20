@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { loadStripe } from "@stripe/stripe-js";
-import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { Truck, Store, ClipboardCheck, ShoppingBag, LogIn } from "lucide-react";
 import Container from "@/components/ui/Container";
 import EmptyState from "@/components/ui/EmptyState";
@@ -15,18 +13,14 @@ import { api, ApiClientError } from "@/lib/api/client";
 import { getCurrentCustomer } from "@/lib/api/customerAuth";
 import { siteConfig } from "@/lib/mock-data/site-config";
 
-const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-  ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
-  : null;
-
 export default function CheckoutPage() {
   const { cartItems, cartSubtotal, clearCart } = useDemoCart();
   const [fulfillment, setFulfillment] = useState("delivery");
   const [contact, setContact] = useState({ fullName: "", phone: "", email: "" });
   const [address, setAddress] = useState({ address1: "", address2: "", city: "", state: "", zip: "" });
   const [checkoutState, setCheckoutState] = useState("form"); // "form" | "payment" | "complete"
-  const [clientSecret, setClientSecret] = useState(null);
   const [order, setOrder] = useState(null);
+  const [paymentId, setPaymentId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [unavailableVariantIds, setUnavailableVariantIds] = useState([]);
@@ -60,7 +54,7 @@ export default function CheckoutPage() {
     const lastName = rest.join(" ") || firstName;
 
     try {
-      const { order: createdOrder, clientSecret: secret } = await api.post("/checkout", {
+      const { order: createdOrder, paymentId: createdPaymentId } = await api.post("/checkout", {
         lines: cartItems.map((item) => ({ variantId: item.variantId, quantity: item.quantity })),
         fulfillmentMethod: fulfillment === "delivery" ? "DELIVERY" : "PICKUP",
         customer: {
@@ -82,7 +76,7 @@ export default function CheckoutPage() {
       });
 
       setOrder(createdOrder);
-      setClientSecret(secret);
+      setPaymentId(createdPaymentId);
       setCheckoutState("payment");
     } catch (err) {
       if (err instanceof ApiClientError) {
@@ -175,7 +169,7 @@ export default function CheckoutPage() {
     );
   }
 
-  if (checkoutState === "payment" && clientSecret) {
+  if (checkoutState === "payment" && order && paymentId) {
     return (
       <div className="pb-10">
         <Container className="mt-8">
@@ -184,22 +178,28 @@ export default function CheckoutPage() {
             Order {order?.orderNumber} — {formatCurrency((order?.totalCents ?? 0) / 100)}
           </p>
           <div className="mt-6 max-w-lg">
-            {stripePromise ? (
-              <Elements stripe={stripePromise} options={{ clientSecret }}>
-                <PaymentForm
-                  onComplete={() => {
-                    clearCart();
-                    setCheckoutState("complete");
-                  }}
-                />
-              </Elements>
+            {process.env.NEXT_PUBLIC_SQUARE_APPLICATION_ID ? (
+              <PaymentForm
+                orderId={order.id}
+                paymentId={paymentId}
+                onComplete={() => {
+                  clearCart();
+                  setCheckoutState("complete");
+                }}
+                onError={(msg) => setError(msg)}
+              />
             ) : (
               <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
                 Payment collection isn&rsquo;t configured on this environment
-                (NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is missing).
+                (NEXT_PUBLIC_SQUARE_APPLICATION_ID is missing).
               </p>
             )}
           </div>
+          {error && (
+            <p role="alert" className="mt-3 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </p>
+          )}
         </Container>
       </div>
     );
@@ -396,43 +396,130 @@ export default function CheckoutPage() {
   );
 }
 
-function PaymentForm({ onComplete }) {
-  const stripe = useStripe();
-  const elements = useElements();
+// Square Web Payments SDK is loaded via a <script> tag injected at runtime.
+// We dynamically import it here on the client so SSR never tries to execute
+// browser-only Square globals. The card payment form is mounted into a div
+// that Square's SDK owns — we keep a ref to that container div and call
+// card.attach() once the SDK has loaded.
+function PaymentForm({ orderId, paymentId, onComplete, onError }) {
+  const cardContainerRef = useRef(null);
+  const cardRef = useRef(null);
+  const paymentsRef = useRef(null);
+  const [sdkReady, setSdkReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
+  const [localError, setLocalError] = useState(null);
+
+  useEffect(() => {
+    let destroyed = false;
+
+    async function initSquare() {
+      // Square Web Payments SDK must be loaded via their CDN script.
+      // Load it programmatically if not already present.
+      if (!window.Square) {
+        await new Promise((resolve, reject) => {
+          const existing = document.getElementById("square-web-payments-sdk");
+          if (existing) {
+            resolve();
+            return;
+          }
+          const script = document.createElement("script");
+          script.id = "square-web-payments-sdk";
+          script.src =
+            process.env.NEXT_PUBLIC_SQUARE_ENVIRONMENT === "production"
+              ? "https://web.squarecdn.com/v1/square.js"
+              : "https://sandbox.web.squarecdn.com/v1/square.js";
+          script.onload = resolve;
+          script.onerror = () => reject(new Error("Failed to load Square Web Payments SDK"));
+          document.head.appendChild(script);
+        });
+      }
+
+      if (destroyed) return;
+
+      const payments = window.Square.payments(
+        process.env.NEXT_PUBLIC_SQUARE_APPLICATION_ID,
+        process.env.NEXT_PUBLIC_SQUARE_LOCATION_ID
+      );
+      paymentsRef.current = payments;
+
+      const card = await payments.card();
+      if (destroyed) {
+        await card.destroy();
+        return;
+      }
+      cardRef.current = card;
+      await card.attach(cardContainerRef.current);
+      setSdkReady(true);
+    }
+
+    initSquare().catch((err) => {
+      if (!destroyed) {
+        setLocalError(err.message || "Failed to initialize payment form.");
+      }
+    });
+
+    return () => {
+      destroyed = true;
+      if (cardRef.current) {
+        cardRef.current.destroy().catch(() => {});
+        cardRef.current = null;
+      }
+    };
+  }, []);
 
   async function handlePaymentSubmit(event) {
     event.preventDefault();
-    if (!stripe || !elements) return;
+    if (!cardRef.current || submitting) return;
     setSubmitting(true);
-    setError(null);
+    setLocalError(null);
 
-    const { error: confirmError } = await stripe.confirmPayment({
-      elements,
-      redirect: "if_required",
-    });
-
-    if (confirmError) {
-      setError(confirmError.message || "Payment failed. Please check your card details and try again.");
+    let tokenResult;
+    try {
+      tokenResult = await cardRef.current.tokenize();
+    } catch (err) {
+      setLocalError(err.message || "Card tokenization failed. Please try again.");
       setSubmitting(false);
       return;
     }
 
-    onComplete();
+    if (tokenResult.status !== "OK") {
+      const msg =
+        tokenResult.errors?.map((e) => e.message).join(" ") ||
+        "Card tokenization failed. Please check your card details.";
+      setLocalError(msg);
+      setSubmitting(false);
+      return;
+    }
+
+    try {
+      await api.post(`/checkout/${orderId}/pay`, { sourceId: tokenResult.token });
+      onComplete();
+    } catch (err) {
+      const msg =
+        err instanceof ApiClientError
+          ? err.message
+          : "Payment failed. Please try again.";
+      setLocalError(msg);
+      onError(msg);
+      setSubmitting(false);
+    }
   }
 
   return (
     <form onSubmit={handlePaymentSubmit} className="flex flex-col gap-4">
-      <PaymentElement />
-      {error && (
+      {/* Square mounts its card fields into this div */}
+      <div ref={cardContainerRef} id="square-card-container" />
+      {!sdkReady && !localError && (
+        <p className="text-sm text-brand-charcoal/50">Loading payment form…</p>
+      )}
+      {localError && (
         <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
+          {localError}
         </p>
       )}
       <button
         type="submit"
-        disabled={!stripe || submitting}
+        disabled={!sdkReady || submitting}
         className="w-full rounded-full bg-brand-red px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark disabled:opacity-60"
       >
         {submitting ? "Processing…" : "Pay Now"}

@@ -2,8 +2,8 @@ const request = require("supertest");
 const { prisma } = require("@big-eds/database");
 const { createApp } = require("../app");
 
-// Runs against the real dev database and a real Stripe test-mode API call
-// (same conventions as pos.service.test.js — no Prisma or Stripe mock layer
+// Runs against the real dev database and a real Square Sandbox API call
+// (same conventions as pos.service.test.js — no Prisma or Square mock layer
 // exists in this repo). Each test creates its own fixtures and tears them
 // down in afterAll.
 describe("orders.routes — POST /checkout tax", () => {
@@ -66,7 +66,7 @@ describe("orders.routes — POST /checkout tax", () => {
     };
   }
 
-  it("charges the variant's flat tax rate on top of the subtotal, reflected in the Stripe PaymentIntent amount", async () => {
+  it("charges the variant's flat tax rate on top of the subtotal, reflected in the Square payment amount", async () => {
     const res = await request(app)
       .post("/api/checkout")
       .send(checkoutPayload([{ variantId: taxedVariant.id, quantity: 1 }]));
@@ -80,8 +80,8 @@ describe("orders.routes — POST /checkout tax", () => {
     expect(res.body.order.lines[0].lineTotalCents).toBe(54125);
 
     const payment = await prisma.payment.findFirst({ where: { orderId: res.body.order.id } });
-    // The real Stripe PaymentIntent is created for the tax-inclusive total —
-    // this is the figure Stripe will actually attempt to collect.
+    // The real Square payment is created for the tax-inclusive total —
+    // this is the figure Square will actually attempt to collect.
     expect(payment.amountCents).toBe(54125);
   });
 

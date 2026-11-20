@@ -134,7 +134,7 @@ function PaymentDetailPanel({ paymentId, onClose }) {
               label="Status"
               value={<Badge tone={STATUS_TONE[payment.status]}>{payment.status}</Badge>}
             />
-            <DetailRow label="Stripe reference" value={payment.providerRef || "—"} mono />
+            <DetailRow label="Square reference" value={payment.providerRef || "—"} mono />
             {payment.failureReason && <DetailRow label="Failure reason" value={payment.failureReason} />}
             <DetailRow label="Recorded by" value={payment.recordedBy} />
             <DetailRow label="Date & time" value={new Date(payment.createdAt).toLocaleString()} />
@@ -265,7 +265,7 @@ function PaymentsContent() {
         header: "Status",
         render: (p) => <Badge tone={STATUS_TONE[p.status]}>{p.status}</Badge>,
       },
-      { key: "providerRef", header: "Stripe Ref", render: (p) => p.providerRef || "—" },
+      { key: "providerRef", header: "Square Ref", render: (p) => p.providerRef || "—" },
       { key: "recordedBy", header: "Recorded By" },
       { key: "createdAt", header: "Date", render: (p) => new Date(p.createdAt).toLocaleString() },
       {

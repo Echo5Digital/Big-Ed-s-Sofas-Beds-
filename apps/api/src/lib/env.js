@@ -30,9 +30,15 @@ const env = {
     ? process.env.COOKIE_SECURE === "true"
     : process.env.NODE_ENV === "production",
   cookieSameSite: process.env.COOKIE_SAME_SITE || (process.env.NODE_ENV === "production" ? "none" : "lax"),
-  stripeSecretKey: required("STRIPE_SECRET_KEY"),
-  stripeWebhookSecret: required("STRIPE_WEBHOOK_SECRET"),
-  stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || "",
+  squareAccessToken: required("SQUARE_ACCESS_TOKEN"),
+  squareWebhookSignatureKey: required("SQUARE_WEBHOOK_SIGNATURE_KEY"),
+  squareApplicationId: process.env.SQUARE_APPLICATION_ID || "",
+  squareLocationId: required("SQUARE_LOCATION_ID"),
+  // "sandbox" (default, safe) or "production" — the one deliberate gate
+  // between test-mode and real charges. See docs/requirements/open-questions.md:
+  // live payments stay off until this is explicitly flipped by someone who has
+  // verified the three Square test scenarios (paid/declined/no-double-charge).
+  squareEnvironment: process.env.SQUARE_ENVIRONMENT || "sandbox",
   cloudinaryCloudName: required("CLOUDINARY_CLOUD_NAME"),
   cloudinaryApiKey: required("CLOUDINARY_API_KEY"),
   cloudinaryApiSecret: required("CLOUDINARY_API_SECRET"),

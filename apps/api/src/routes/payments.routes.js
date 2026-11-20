@@ -27,7 +27,7 @@ function startOfMonth() {
 
 // A Payment has no direct relation to a staff User — recorded-by is only
 // knowable for POS sales, via Payment -> Order -> Receipt -> RegisterSession
-// -> openedBy. Online/Stripe payments have no register session at all, so
+// -> openedBy. Online/Square payments have no register session at all, so
 // those resolve to a fixed label instead of a staff name. See
 // docs/database/schema.md for why this join exists instead of a FK.
 function resolveRecordedBy(order) {
