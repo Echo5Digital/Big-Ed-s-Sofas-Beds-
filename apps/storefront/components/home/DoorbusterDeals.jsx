@@ -1,99 +1,80 @@
-import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Tag } from "lucide-react";
 import Container from "@/components/ui/Container";
-import DealCard from "@/components/home/DealCard";
-import { montserrat } from "@/lib/doorbusterFont";
+import DoorbusterBook from "@/components/home/DoorbusterBook";
 
-// Yellow ribbon with swallow-tail ends. A plain clip-path so it scales with
-// the headline it wraps.
-const RIBBON_CLIP = "polygon(0 12%, 100% 0, 96.5% 50%, 100% 100%, 0 88%, 3.5% 50%)";
-
-// Decorative confetti around the headline: [position, size, colour, rotation].
-const CONFETTI = [
-  ["left-[27%] top-[6%]", "h-1.5 w-4", "bg-[#2f6bff]", "rotate-[-28deg]"],
-  ["left-[31%] top-[2%]", "h-1.5 w-1.5", "bg-[#ffc400]", "rotate-12"],
-  ["left-[33%] top-[14%]", "h-4 w-1.5", "bg-[#ff9d1c]", "rotate-[25deg]"],
-  ["left-[24%] top-[20%]", "h-1.5 w-3.5", "bg-[#a855f7]", "rotate-[18deg]"],
-  ["left-[88%] top-[3%]", "h-4 w-1.5", "bg-[#ff9d1c]", "rotate-[35deg]"],
-  ["left-[92%] top-[9%]", "h-1.5 w-4", "bg-[#2f6bff]", "rotate-[-20deg]"],
-  ["left-[86%] top-[16%]", "h-1.5 w-1.5", "bg-[#ffc400]", "rotate-12"],
-  ["left-[95%] top-[22%]", "h-1.5 w-3.5", "bg-[#a855f7]", "rotate-[40deg]"],
-  ["left-[90%] top-[28%]", "h-4 w-1.5", "bg-[#2f6bff]", "rotate-[-30deg]"],
+// The same 10 grand-opening promo flyers shown via ImageCarousel on
+// /grand-opening-sale (bedroom flyers B1-B6, living room flyers S1-S4) —
+// reused here as slides in DoorbusterBook's 3D coverflow carousel, in a
+// fixed shuffled order (not randomized at render time, so server/client
+// markup always matches).
+const DOORBUSTER_FLYER_IMAGES = [
+  { src: "/BIGEDS SOFAS & BEDS S3.webp", alt: "Big Ed's Sofas & Beds grand opening living room flyer — Blush Collection" },
+  { src: "/BIGEDS SOFAS & BEDS B1.webp", alt: "Big Ed's Sofas & Beds grand opening bedroom flyer — Beech Collection" },
+  { src: "/BIGEDS SOFAS & BEDS S1.webp", alt: "Big Ed's Sofas & Beds grand opening living room flyer — Accent Collection" },
+  { src: "/BIGEDS SOFAS & BEDS B4.webp", alt: "Big Ed's Sofas & Beds grand opening bedroom flyer — Cotton Collection" },
+  { src: "/BIGEDS SOFAS & BEDS S4.webp", alt: "Big Ed's Sofas & Beds grand opening living room flyer — Phyll Collection" },
+  { src: "/BIGEDS SOFAS & BEDS B6.webp", alt: "Big Ed's Sofas & Beds grand opening bedroom flyer — Lus Collection 4pc set" },
+  { src: "/BIGEDS SOFAS & BEDS B2.webp", alt: "Big Ed's Sofas & Beds grand opening bedroom flyer — Lus Collection" },
+  { src: "/BIGEDS SOFAS & BEDS S2.webp", alt: "Big Ed's Sofas & Beds grand opening living room flyer — Ela Collection" },
+  { src: "/BIGEDS SOFAS & BEDS B5.webp", alt: "Big Ed's Sofas & Beds grand opening bedroom flyer — Heir Collection" },
+  { src: "/BIGEDS SOFAS & BEDS B3.webp", alt: "Big Ed's Sofas & Beds grand opening bedroom flyer — Ted Collection" },
 ];
 
-// deals: the already-fetched, already-filtered list from getDoorbusterDeals()
-// (lib/doorbusterDeals.js) — products that are missing or out of stock are
-// dropped there, so everything rendered here is buyable right now.
-export default function DoorbusterDeals({ deals }) {
-  if (!deals?.length) return null;
-
+export default function DoorbusterDeals() {
   return (
-    <section
-      aria-labelledby="doorbuster-heading"
-      className={`relative isolate overflow-hidden bg-linear-to-b from-[#fffdf8] via-[#fff7e6] to-[#fdecc8] pt-10 pb-28 sm:pt-14 sm:pb-36 ${montserrat.className}`}
-    >
+    <section aria-labelledby="doorbuster-heading" className="relative isolate overflow-hidden bg-linear-to-b from-[#fffdf8] via-[#fff7e6] to-[#fdecc8] pt-10 pb-28 sm:pt-14 sm:pb-36">
       <div
         aria-hidden="true"
         className="absolute inset-x-0 top-0 -z-10 h-96 bg-[radial-gradient(ellipse_at_50%_0%,rgba(255,206,48,0.30),transparent_65%)]"
       />
 
+      {/* Confetti ribbons in the top corners, framing the heading. */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 hidden h-48 sm:block">
+        <svg viewBox="0 0 60 90" className="absolute top-2 left-[6%] h-20 w-14 opacity-90 lg:left-[12%]">
+          <path d="M10 5 C 25 15, 5 25, 20 35 C 35 45, 10 55, 25 65" fill="none" stroke="#c9960b" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+        <svg viewBox="0 0 60 90" className="absolute top-4 right-[6%] h-20 w-14 -scale-x-100 opacity-90 lg:right-[12%]">
+          <path d="M10 5 C 25 15, 5 25, 20 35 C 35 45, 10 55, 25 65" fill="none" stroke="#c9960b" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+        {[
+          ["left-[4%] top-20", "rotate-12", "bg-brand-gold"],
+          ["left-[18%] top-6", "-rotate-12", "bg-brand-red"],
+          ["right-[4%] top-24", "-rotate-12", "bg-brand-gold"],
+          ["right-[18%] top-8", "rotate-12", "bg-brand-red"],
+        ].map(([position, rotation, colour]) => (
+          <span key={position} className={`absolute size-2.5 rounded-xs ${position} ${rotation} ${colour}`} />
+        ))}
+      </div>
+
       <Container className="relative">
-        <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 hidden h-56 sm:block">
-          {CONFETTI.map(([position, size, colour, rotation]) => (
-            <span key={position} className={`absolute rounded-[1px] ${position} ${size} ${colour} ${rotation}`} />
-          ))}
-        </div>
-
-        <header className="relative flex flex-col items-center text-center lg:pl-64 xl:pl-76">
-          <div
-            aria-hidden="true"
-            className="pointer-events-none relative mb-1 w-40 sm:w-52 lg:absolute lg:top-0 lg:left-0 lg:mb-0 lg:w-64 xl:w-88"
-          >
-            <Image
-              src="/images/mascot/big-ed-thumbsup.webp"
-              alt=""
-              width={1584}
-              height={993}
-              sizes="(max-width: 1279px) 256px, 352px"
-              className="h-auto w-full"
-              style={{
-                WebkitMaskImage: "linear-gradient(to bottom, #000 78%, transparent)",
-                maskImage: "linear-gradient(to bottom, #000 78%, transparent)",
-              }}
-            />
-          </div>
-
-          <p className="flex items-center gap-3 text-base font-extrabold tracking-wide text-brand-red uppercase italic sm:gap-4 sm:text-2xl">
-            <span aria-hidden="true" className="h-0.5 w-8 rounded-full bg-brand-red sm:w-20 lg:w-28" />
+        {/* Price-tag eyebrow + plain stacked headline, "Deals" flanked by
+            thin gold rules — an editorial promo header rather than a
+            party/craft look (no ribbon banner, no starburst script font). */}
+        <header className="relative mx-auto flex max-w-2xl flex-col items-center text-center">
+          <span className="relative inline-flex items-center gap-2 rounded-r-md bg-brand-red py-1.5 pr-4 pl-5 text-xs font-bold tracking-[0.15em] text-white uppercase shadow-[0_6px_14px_-4px_rgba(163,6,16,0.45)] sm:py-2 sm:pr-6 sm:pl-7 sm:text-sm">
+            <span aria-hidden="true" className="absolute top-1/2 left-2 size-1.5 -translate-y-1/2 rounded-full bg-white/70 sm:left-2.5" />
+            <Tag className="size-3.5 sm:size-4" strokeWidth={2.5} aria-hidden="true" />
             Grand Opening Sale
-            <span aria-hidden="true" className="h-0.5 w-8 rounded-full bg-brand-red sm:w-20 lg:w-28" />
-          </p>
+          </span>
 
-          <div className="mt-2 rotate-[-1.5deg] drop-shadow-[0_8px_10px_rgba(160,100,0,0.28)] sm:mt-3">
-            <div
-              className="bg-linear-to-b from-[#ffec6e] via-[#ffd51f] to-[#ffb800] px-9 py-2.5 sm:px-16 sm:py-3.5"
-              style={{ clipPath: RIBBON_CLIP }}
-            >
-              <h2
-                id="doorbuster-heading"
-                className="text-[1.65rem] leading-tight font-extrabold text-[#0b1b4d] italic text-balance sm:text-4xl xl:text-5xl"
-              >
-                Featured Doorbuster Deals
-              </h2>
-            </div>
+          <h2
+            id="doorbuster-heading"
+            className="mt-4 font-display text-4xl leading-[1.05] font-extrabold text-balance text-brand-charcoal sm:mt-5 sm:text-6xl lg:text-7xl"
+          >
+            Featured Doorbuster
+          </h2>
+
+          <div className="mt-1 flex items-center gap-3 sm:mt-2 sm:gap-5">
+            <span aria-hidden="true" className="h-px w-8 bg-brand-gold sm:w-16 lg:w-24" />
+            <span className="font-display text-4xl font-extrabold text-brand-red sm:text-6xl lg:text-7xl">Deals</span>
+            <span aria-hidden="true" className="h-px w-8 bg-brand-gold sm:w-16 lg:w-24" />
           </div>
-
-          <p className="mt-3 max-w-3xl text-sm font-semibold text-[#2b3550] italic text-balance sm:mt-4 sm:text-lg lg:text-xl">
-            Our Biggest Grand Opening Savings on Customer Favorites!
-          </p>
         </header>
 
-        <ul className="relative z-10 mt-9 flex [--cols:2] [--gap:0.75rem] flex-wrap justify-center gap-(--gap) sm:mt-12 sm:[--cols:3] sm:[--gap:1rem] lg:[--cols:4] lg:[--gap:1.25rem]">
-          {deals.map((deal) => (
-            <DealCard key={deal.slug} deal={deal} />
-          ))}
-        </ul>
+        <div className="relative z-10 mt-6 sm:mt-10">
+          <DoorbusterBook images={DOORBUSTER_FLYER_IMAGES} />
+        </div>
 
         <div className="relative z-10 mt-10 flex items-center justify-center gap-4 sm:mt-14 sm:gap-6">
           <span
