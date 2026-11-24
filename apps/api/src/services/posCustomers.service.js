@@ -30,6 +30,25 @@ function buildWhere(q) {
   return { AND: [{ channel: "POS" }, ...terms.map(fieldsMatching)] };
 }
 
+// Address is the customer's default saved address (if any) — same shape
+// AddressFields/EMPTY_ADDRESS in the POS checkout expect, so the cashier
+// screen can drop this straight into state without reshaping it. Only ever
+// the default: a POS customer can in principle have more than one saved
+// address (created via the admin/account APIs), but the checkout screen has
+// one billing/shipping slot each, not a picker, so the single most-likely
+// one wins — same "first/default address wins" convention as checkout's own
+// saveCheckoutDeliveryAddress.
+function serializeAddress(address) {
+  if (!address) return null;
+  return {
+    line1: address.line1,
+    line2: address.line2 ?? "",
+    city: address.city,
+    state: address.state,
+    postalCode: address.postalCode,
+  };
+}
+
 function serialize(customer) {
   return {
     id: customer.id,
@@ -37,14 +56,20 @@ function serialize(customer) {
     lastName: customer.lastName,
     email: customer.email,
     phone: customer.phone,
+    address: serializeAddress(customer.addresses?.[0]),
   };
 }
+
+const DEFAULT_ADDRESS_INCLUDE = {
+  addresses: { where: { isDefault: true }, take: 1 },
+};
 
 async function searchCustomersForPos({ q }) {
   const where = buildWhere(q);
   const [customers, total] = await Promise.all([
     prisma.customer.findMany({
       where,
+      include: DEFAULT_ADDRESS_INCLUDE,
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
       take: MAX_RESULTS,
     }),
@@ -70,27 +95,40 @@ async function createPosCustomer({ firstName, lastName, phone, email, address })
       })
     : await prisma.customer.create({ data: customerData });
 
+  let savedAddress = null;
   if (address) {
     // BILLING, not SHIPPING: this is the address a walk-in customer gives
     // the cashier for their own record/billing purposes, not a delivery
     // destination — a POS sale's own delivery address (if any) is captured
     // per-order on the Order itself (see ringSale's shippingAddress), not on
-    // the Customer's saved address book.
-    await prisma.address.create({
-      data: {
-        customerId: customer.id,
-        type: "BILLING",
-        line1: address.line1,
-        line2: address.line2 || null,
-        city: address.city,
-        state: address.state,
-        postalCode: address.postalCode,
-        isDefault: true,
-      },
+    // the Customer's saved address book. The upsert above can land on a
+    // customer who already has a default address (repeat walk-in, typed a
+    // new one this visit) — clear the old default first so there's never
+    // more than one, same rule customerAccount.service.js's createAddress
+    // follows for storefront-managed addresses.
+    savedAddress = await prisma.$transaction(async (tx) => {
+      await tx.address.updateMany({ where: { customerId: customer.id, isDefault: true }, data: { isDefault: false } });
+      return tx.address.create({
+        data: {
+          customerId: customer.id,
+          type: "BILLING",
+          line1: address.line1,
+          line2: address.line2 || null,
+          city: address.city,
+          state: address.state,
+          postalCode: address.postalCode,
+          isDefault: true,
+        },
+      });
     });
+  } else if (email) {
+    // No address typed this visit — a repeat walk-in matched by email may
+    // still have one on file from a previous visit; surface it rather than
+    // reporting "no address" just because this particular call didn't send one.
+    savedAddress = await prisma.address.findFirst({ where: { customerId: customer.id, isDefault: true } });
   }
 
-  return serialize(customer);
+  return serialize({ ...customer, addresses: savedAddress ? [savedAddress] : [] });
 }
 
 module.exports = {

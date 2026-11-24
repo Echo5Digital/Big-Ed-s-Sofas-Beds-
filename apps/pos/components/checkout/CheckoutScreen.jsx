@@ -88,6 +88,26 @@ export default function CheckoutScreen() {
     setCartOpen(true);
   }
 
+  // Picking an existing customer (search) or creating a new one with an
+  // address both resolve through the same CustomerPanel onSelect — prefill
+  // billing (and, since billingSameAsShipping defaults true, shipping too)
+  // from whatever address came back, same as a returning customer's address
+  // auto-filling at online checkout. A customer with no address on file (or
+  // "Remove customer") clears back to blank rather than leaving a stale
+  // address from whoever was selected before.
+  function handleSelectCustomer(customer) {
+    setSelectedCustomer(customer);
+    setBillingAddress(customer?.address ? { ...EMPTY_ADDRESS, ...customer.address } : EMPTY_ADDRESS);
+    setBillingSameAsShipping(true);
+  }
+
+  function handleRemoveCustomer() {
+    setSelectedCustomer(null);
+    setBillingAddress(EMPTY_ADDRESS);
+    setShippingAddress(EMPTY_ADDRESS);
+    setBillingSameAsShipping(true);
+  }
+
   function handleUpdateQuantity(variantId, quantity) {
     if (quantity <= 0) {
       handleRemove(variantId);
@@ -208,8 +228,8 @@ export default function CheckoutScreen() {
 
         <CustomerPanel
           customer={selectedCustomer}
-          onSelect={setSelectedCustomer}
-          onRemove={() => setSelectedCustomer(null)}
+          onSelect={handleSelectCustomer}
+          onRemove={handleRemoveCustomer}
         />
 
         <AttributionPanel attribution={salesAttribution} onChange={setSalesAttribution} />
