@@ -1,6 +1,7 @@
 const { prisma } = require("@big-eds/database");
 const { ConflictError, NotFoundError } = require("../lib/errors");
 const { nextSequenceValue } = require("../lib/sequentialNumber");
+const { escapeLikeWildcards } = require("../lib/searchText");
 const inventoryService = require("./inventory.service");
 const posService = require("./pos.service");
 const storeCreditService = require("./storeCredit.service");
@@ -82,14 +83,15 @@ function serializeOrderForReturn(order) {
 async function findOrderForReturn({ q }) {
   const query = String(q ?? "").trim();
   if (!query) throw new ConflictError("Search query is required");
+  const likeQuery = escapeLikeWildcards(query);
 
   let order = await prisma.order.findFirst({
     where: {
       channel: "POS",
       OR: [
-        { orderNumber: { contains: query, mode: "insensitive" } },
-        { receipts: { some: { receiptNumber: { contains: query, mode: "insensitive" } } } },
-        { customer: { phone: { contains: query, mode: "insensitive" } } },
+        { orderNumber: { contains: likeQuery, mode: "insensitive" } },
+        { receipts: { some: { receiptNumber: { contains: likeQuery, mode: "insensitive" } } } },
+        { customer: { phone: { contains: likeQuery, mode: "insensitive" } } },
       ],
     },
     include: ORDER_DETAIL_INCLUDE,

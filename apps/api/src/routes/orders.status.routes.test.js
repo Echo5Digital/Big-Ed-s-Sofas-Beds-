@@ -196,4 +196,39 @@ describe("orders.routes — PATCH /admin/orders/:id/status", () => {
     expect(res.body.order.fulfillmentStatus).toBe("RESERVED");
     expect(res.body.order.displayStatus).toBe("Ordered");
   });
+
+  // Backs the storefront's 7-day "Request Return" window on My Orders
+  // (apps/storefront/components/account/OrdersSection.jsx) — completedAt
+  // must be stamped on the first transition into Completed, and must never
+  // move on any later status change, or the window would silently reset.
+  it("stamps completedAt on first transition to Completed, and never overwrites it afterward", async () => {
+    const order = await createOrder({
+      channel: "ONLINE",
+      paymentStatus: "PAID",
+      fulfillmentStatus: "READY",
+      fulfillmentMethod: "PICKUP",
+    });
+    expect(order.completedAt).toBeNull();
+
+    const firstRes = await request(app)
+      .patch(`/api/admin/orders/${order.id}/status`)
+      .set("Cookie", managerCookie)
+      .send({ displayStatus: "Completed" });
+    expect(firstRes.status).toBe(200);
+
+    const afterFirst = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(afterFirst.completedAt).not.toBeNull();
+    const firstCompletedAt = afterFirst.completedAt.getTime();
+
+    // Re-saving "Completed" (the only other legal target for a PICKUP order
+    // at this fulfillmentStatus is itself) must not move completedAt forward.
+    const secondRes = await request(app)
+      .patch(`/api/admin/orders/${order.id}/status`)
+      .set("Cookie", managerCookie)
+      .send({ displayStatus: "Completed" });
+    expect(secondRes.status).toBe(200);
+
+    const afterSecond = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(afterSecond.completedAt.getTime()).toBe(firstCompletedAt);
+  });
 });

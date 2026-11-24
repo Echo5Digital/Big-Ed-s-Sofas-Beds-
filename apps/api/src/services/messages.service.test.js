@@ -43,6 +43,52 @@ describe("messages.service — createMessage", () => {
   });
 });
 
+describe("messages.service — createReturnMessage", () => {
+  it("creates a message with isReturnRequest true and the return fields set", async () => {
+    const result = await service.createReturnMessage({
+      name: "Jane Doe",
+      email: `${emailPrefix}-return@example.com`,
+      message: "This sofa arrived damaged.",
+      returnOrderReference: "BE-10042",
+      returnAttachmentUrl: null,
+      returnAttachmentPublicId: null,
+    });
+
+    expect(result).toMatchObject({
+      name: "Jane Doe",
+      status: "NEW",
+      isImportant: false,
+      isReturnRequest: true,
+      returnOrderReference: "BE-10042",
+      returnAttachmentUrl: null,
+    });
+  });
+
+  it("stores an attachment URL when no typed reference is given", async () => {
+    const result = await service.createReturnMessage({
+      name: "John Smith",
+      email: `${emailPrefix}-return-file@example.com`,
+      message: "Please process a return, receipt attached.",
+      returnOrderReference: null,
+      returnAttachmentUrl: "https://res.cloudinary.com/demo/raw/upload/returns/receipt.pdf",
+      returnAttachmentPublicId: "returns/receipt",
+    });
+
+    expect(result.returnOrderReference).toBeNull();
+    expect(result.returnAttachmentUrl).toBe("https://res.cloudinary.com/demo/raw/upload/returns/receipt.pdf");
+  });
+
+  it("does not mark a plain createMessage contact as a return request", async () => {
+    const result = await service.createMessage({
+      name: "Jane Doe",
+      email: `${emailPrefix}-plain@example.com`,
+      message: "Just a question.",
+    });
+    expect(result.isReturnRequest).toBe(false);
+    expect(result.returnOrderReference).toBeNull();
+  });
+});
+
 describe("messages.service — listMessages", () => {
   it("excludes ARCHIVED messages", async () => {
     const visible = await newMessage();

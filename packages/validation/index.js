@@ -268,6 +268,20 @@ const contactMessageCreateSchema = z.object({
   message: z.string().trim().min(1).max(5000),
 });
 
+// Storefront /contact page's "Request Return" mode — public, unauthenticated
+// submission via multipart/form-data (POST /messages/return), so these are
+// the text fields only; the optional attachment file is validated/streamed
+// to Cloudinary by the route itself (same pattern as catalog image uploads),
+// not by this schema. returnOrderReference is optional at this layer because
+// a customer may instead attach a file with no typed reference — the route
+// rejects the request only if *neither* is present.
+const returnMessageCreateSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  email: z.string().trim().email().max(200),
+  message: z.string().trim().min(1).max(5000),
+  returnOrderReference: z.string().trim().max(200).optional(),
+});
+
 // ---------------------------------------------------------------------------
 // Inventory
 // ---------------------------------------------------------------------------
@@ -662,6 +676,7 @@ module.exports = {
   productUpdateSchema,
   reviewCreateSchema,
   contactMessageCreateSchema,
+  returnMessageCreateSchema,
   stockAdjustSchema,
   stockTransferSchema,
   countCreateSchema,

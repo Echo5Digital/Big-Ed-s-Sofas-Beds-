@@ -3,13 +3,28 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Package, ChevronDown, MapPin, CreditCard, FileDown, CheckCircle2 } from "lucide-react";
+import { Package, ChevronDown, MapPin, CreditCard, FileDown, CheckCircle2, Undo2 } from "lucide-react";
 import { listOrders, isSessionExpired } from "@/lib/api/customerAccount";
 import { Notice, describeError, linkButtonClass, secondaryButtonClass } from "@/components/account/formParts";
 import { formatCurrency } from "@/utils/formatCurrency";
 import { buildInvoiceHtml } from "@/components/account/orderInvoice";
 
 const PAGE_SIZE = 10;
+const RETURN_WINDOW_DAYS = 7;
+const RETURN_WINDOW_MS = RETURN_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
+// Return is only offered once staff have marked the order Completed (see
+// Order.completedAt in schema.prisma, stamped by PATCH
+// /admin/orders/:id/status) AND within 7 days of that date — completedAt is
+// null for any order that hasn't reached Completed yet, or that completed
+// before this column existed, so both cases correctly hide the button
+// rather than guessing a date.
+function canRequestReturn(order) {
+  if (order.displayStatus !== "Completed" || !order.completedAt) return false;
+  const completedAt = new Date(order.completedAt);
+  if (Number.isNaN(completedAt.getTime())) return false;
+  return Date.now() - completedAt.getTime() <= RETURN_WINDOW_MS;
+}
 
 const money = (cents) => formatCurrency(cents / 100);
 
@@ -231,14 +246,25 @@ function OrderDetail({ order }) {
       </div>
 
       {order.displayStatus === "Completed" ? (
-        <button
-          type="button"
-          onClick={() => downloadInvoice(order)}
-          className="inline-flex items-center gap-2 rounded-full border border-brand-charcoal/20 px-4 py-2 text-sm font-semibold text-brand-charcoal transition-colors hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red"
-        >
-          <FileDown className="size-4" aria-hidden="true" />
-          Download Invoice
-        </button>
+        <div className="flex flex-wrap gap-2.5">
+          <button
+            type="button"
+            onClick={() => downloadInvoice(order)}
+            className="inline-flex items-center gap-2 rounded-full border border-brand-charcoal/20 px-4 py-2 text-sm font-semibold text-brand-charcoal transition-colors hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red"
+          >
+            <FileDown className="size-4" aria-hidden="true" />
+            Download Invoice
+          </button>
+          {canRequestReturn(order) ? (
+            <Link
+              href={`/contact?return=1&orderNumber=${encodeURIComponent(order.orderNumber)}`}
+              className="inline-flex items-center gap-2 rounded-full border border-brand-charcoal/20 px-4 py-2 text-sm font-semibold text-brand-charcoal transition-colors hover:bg-brand-charcoal/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red"
+            >
+              <Undo2 className="size-4" aria-hidden="true" />
+              Return
+            </Link>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

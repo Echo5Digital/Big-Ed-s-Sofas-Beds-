@@ -2,6 +2,7 @@ const { prisma } = require("@big-eds/database");
 const { ConflictError, NotFoundError } = require("../lib/errors");
 const { nextSequenceValue } = require("../lib/sequentialNumber");
 const { verifyManagerPin } = require("../lib/posPin");
+const { escapeLikeWildcards } = require("../lib/searchText");
 const inventoryService = require("./inventory.service");
 const storeCreditService = require("./storeCredit.service");
 const posCustomersService = require("./posCustomers.service");
@@ -857,14 +858,15 @@ async function refund({ registerSessionId, orderId, amountCents, reasonCode, not
 async function findOrderWithBalance({ q }) {
   const query = String(q ?? "").trim();
   if (!query) throw new ConflictError("Search query is required");
+  const likeQuery = escapeLikeWildcards(query);
 
   const order = await prisma.order.findFirst({
     where: {
       paymentStatus: { in: ["PARTIALLY_PAID", "UNPAID"] },
       OR: [
-        { orderNumber: { contains: query, mode: "insensitive" } },
-        { receipts: { some: { receiptNumber: { contains: query, mode: "insensitive" } } } },
-        { customer: { phone: { contains: query, mode: "insensitive" } } },
+        { orderNumber: { contains: likeQuery, mode: "insensitive" } },
+        { receipts: { some: { receiptNumber: { contains: likeQuery, mode: "insensitive" } } } },
+        { customer: { phone: { contains: likeQuery, mode: "insensitive" } } },
       ],
     },
     include: {

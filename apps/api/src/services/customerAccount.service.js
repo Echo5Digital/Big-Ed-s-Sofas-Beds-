@@ -236,6 +236,10 @@ function serializeOrder(order) {
     id: order.id,
     orderNumber: order.orderNumber,
     placedAt: order.createdAt,
+    // Null until staff set this order's status to Completed (see
+    // orders.routes.js's PATCH /admin/orders/:id/status) — backs the
+    // storefront's 7-day "Request Return" window on My Orders.
+    completedAt: order.completedAt,
     status: order.status,
     paymentStatus: order.paymentStatus,
     fulfillmentStatus: order.fulfillmentStatus,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DollarSign,
   CalendarDays,
@@ -179,10 +179,7 @@ function DetailRow({ label, value, hint, mono }) {
 
 function PaymentsContent() {
   const [stats, setStats] = useState(null);
-  const [payments, setPayments] = useState(null);
-  const [pagination, setPagination] = useState(null);
-  const [error, setError] = useState(null);
-  const [loadingPayments, setLoadingPayments] = useState(false);
+  const [statsError, setStatsError] = useState(null);
   const [method, setMethod] = useState("");
   const [status, setStatus] = useState("");
   const [source, setSource] = useState("");
@@ -193,7 +190,19 @@ function PaymentsContent() {
   const [selectedId, setSelectedId] = useState(null);
   // "" means no month filter (all payments, same as before this was added).
   const [month, setMonth] = useState("");
-  const requestIdRef = useRef(0);
+  // The latest response, tagged with the query it answers — same
+  // "loading is derived from a stale key" pattern as CustomersTab.jsx/the
+  // admin Orders page, rather than an imperative setLoadingPayments(true)
+  // called directly in the fetch effect (which React's set-state-in-effect
+  // rule flags as a cascading-render risk, and reading a ref during render
+  // to derive it isn't allowed either — see useRef's docs).
+  const [result, setResult] = useState(null);
+
+  const queryKey = `${method}|${status}|${source}|${debouncedQ}|${month}`;
+  const loadingPayments = result?.key !== queryKey;
+  const payments = result?.payments ?? null;
+  const pagination = result?.pagination ?? null;
+  const error = !loadingPayments ? result?.error : null;
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQ(q.trim()), 300);
@@ -204,10 +213,13 @@ function PaymentsContent() {
     api
       .get("/payments/stats")
       .then(setStats)
-      .catch((err) => setError(err instanceof ApiClientError ? err.message : "Failed to load payment stats."));
+      .catch((err) => setStatsError(err instanceof ApiClientError ? err.message : "Failed to load payment stats."));
   }, []);
 
-  const loadPayments = useCallback(() => {
+  useEffect(() => {
+    // A response that arrives after the query has moved on must not overwrite
+    // the newer one.
+    let cancelled = false;
     const params = new URLSearchParams();
     if (method) params.set("method", method);
     if (status) params.set("status", status);
@@ -219,38 +231,26 @@ function PaymentsContent() {
       params.set("to", to);
     }
     const query = params.toString();
-    const requestId = ++requestIdRef.current;
-    setLoadingPayments(true);
+
     api
       .get(`/payments${query ? `?${query}` : ""}`)
       .then((data) => {
-        // Guards against a slow earlier request's response landing after a
-        // faster later one's and overwriting it with stale/mismatched rows —
-        // without this, editing the search text again before the first
-        // request finished could leave the table showing results for a
-        // query that's no longer in the box.
-        if (requestId !== requestIdRef.current) return;
-        setPayments(data.payments);
-        setPagination(data.pagination ?? null);
-        setError(null);
+        if (!cancelled) setResult({ key: queryKey, payments: data.payments, pagination: data.pagination ?? null });
       })
       .catch((err) => {
-        if (requestId !== requestIdRef.current) return;
-        setError(err instanceof ApiClientError ? err.message : "Failed to load payments.");
-      })
-      .finally(() => {
-        if (requestId !== requestIdRef.current) return;
-        setLoadingPayments(false);
+        if (!cancelled) {
+          setResult({ key: queryKey, error: err instanceof ApiClientError ? err.message : "Failed to load payments." });
+        }
       });
-  }, [method, status, source, debouncedQ, month]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [queryKey, method, status, source, debouncedQ, month]);
 
   useEffect(() => {
     loadStats();
   }, [loadStats]);
-
-  useEffect(() => {
-    loadPayments();
-  }, [loadPayments]);
 
   const columns = useMemo(
     () => [
@@ -289,7 +289,9 @@ function PaymentsContent() {
     <div>
       <PageHeader title="Payments" subtitle="Transactions, revenue breakdown, and reconciliation" />
 
-      {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      {(error || statsError) && (
+        <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error || statsError}</p>
+      )}
 
       <StatsGrid stats={stats} />
 

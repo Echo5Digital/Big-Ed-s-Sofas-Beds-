@@ -230,10 +230,14 @@ export default function DealsCarousel({ products }) {
         </button>
       </div>
 
-      {/* Pagination Indicator Dots */}
-      <div className="flex items-center justify-center gap-1.5 pt-2">
-        {products.slice(0, Math.min(total, 7)).map((_, i) => {
-          const isActive = activeIndex % Math.min(total, 7) === i;
+      {/* Pagination Indicator Dots — one per deal, matching `total` exactly
+          (products can hold up to DEALS_POOL_SIZE items; a dot count
+          previously hard-capped at 7 made slides beyond the 7th unreachable
+          via the dots and made the active-dot highlight wrap incorrectly
+          once activeIndex passed 6). */}
+      <div className="flex flex-wrap items-center justify-center gap-1.5 pt-2">
+        {products.map((_, i) => {
+          const isActive = activeIndex === i;
           return (
             <button
               key={i}

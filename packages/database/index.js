@@ -1,4 +1,4 @@
-const { PrismaClient } = require("./generated/client");
+const { PrismaClient, Prisma } = require("./generated/client");
 
 const globalForPrisma = globalThis;
 
@@ -48,4 +48,9 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prismaGlobal = prisma;
 }
 
-module.exports = { prisma, PrismaClient };
+// Re-exported so callers can build parameterized raw-SQL fragments
+// (Prisma.sql / Prisma.join / Prisma.raw) when a query needs to filter or
+// sort on a value Prisma's query builder can't express directly (e.g.
+// comparing two columns, as inventory.routes.js's low-stock filter does) —
+// always via the tagged-template helpers, never raw string concatenation.
+module.exports = { prisma, PrismaClient, Prisma };
