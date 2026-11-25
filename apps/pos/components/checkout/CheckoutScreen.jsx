@@ -16,6 +16,21 @@ import CardCheckoutModal from "./CardCheckoutModal";
 import ReceiptView from "./ReceiptView";
 import CloseRegister from "../register/CloseRegister";
 
+// The server's "Validation failed" message is deliberately generic (see
+// apps/api/src/lib/errors.js's ValidationError) — the actual reason lives in
+// err.details, a Zod .flatten() result ({ fieldErrors, formErrors }). Without
+// this, every rejected sale looked identical to the cashier regardless of
+// cause (a bad discount, an unresolved split attribution, a stray field),
+// which made real bugs indistinguishable from the cashier's own input
+// mistakes. Falls back to err.message for non-validation errors (409s etc.),
+// which already carry a specific, human-written message of their own.
+function describeApiError(err) {
+  const fieldErrors = err.details?.fieldErrors ?? {};
+  const formErrors = err.details?.formErrors ?? [];
+  const messages = [...formErrors, ...Object.values(fieldErrors).flat()];
+  return messages.length > 0 ? messages.join(" ") : err.message;
+}
+
 export default function CheckoutScreen() {
   const { session } = useRegisterSession();
   const [cart, setCart] = useState([]);
@@ -208,7 +223,7 @@ export default function CheckoutScreen() {
       setTenderOpen(false);
       resetSaleForm();
     } catch (err) {
-      setError(err instanceof ApiClientError ? err.message : "Unable to complete sale");
+      setError(err instanceof ApiClientError ? describeApiError(err) : "Unable to complete sale");
     } finally {
       setSubmitting(false);
     }
