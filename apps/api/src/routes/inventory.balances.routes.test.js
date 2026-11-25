@@ -67,6 +67,8 @@ describe("inventory.routes — GET /inventory/balances", () => {
     await prisma.product.delete({ where: { id: product.id } });
     await prisma.category.delete({ where: { id: category.id } });
     await prisma.location.delete({ where: { id: location.id } });
+    await prisma.userRole.deleteMany({ where: { user: { email: { startsWith: "inventory-balances-manager-" } } } });
+    await prisma.user.deleteMany({ where: { email: { startsWith: "inventory-balances-manager-" } } });
   });
 
   it("returns both rows when lowStockOnly is not set", async () => {

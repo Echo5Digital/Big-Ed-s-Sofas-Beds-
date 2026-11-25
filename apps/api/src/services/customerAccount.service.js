@@ -104,8 +104,57 @@ async function findOwnedAddress(client, customerId, addressId) {
   return address;
 }
 
+// Case/whitespace-insensitive so "123 Main St" and "123 main st " are
+// recognized as the same address — nothing in the schema stops a second,
+// textually-identical Address row from ever existing (no @@unique on this
+// combination), and createAddress's only prior guard was a row *count*
+// ("first one is default"), never a check against the new input matching an
+// existing row's content. Without this, a customer saving the same address
+// twice (e.g. re-entering it after forgetting they already had it on file)
+// silently ends up with two rows for one real-world address — one
+// isDefault, one not — both rendered on checkout's address picker with no
+// visible difference except the DEFAULT badge.
+function normalizeForDuplicateCheck(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+async function findDuplicateAddress(client, customerId, input) {
+  const candidates = await client.address.findMany({ where: { customerId } });
+  const target = {
+    line1: normalizeForDuplicateCheck(input.line1),
+    line2: normalizeForDuplicateCheck(input.line2),
+    city: normalizeForDuplicateCheck(input.city),
+    state: normalizeForDuplicateCheck(input.state),
+    postalCode: normalizeForDuplicateCheck(input.postalCode),
+  };
+  return candidates.find(
+    (a) =>
+      normalizeForDuplicateCheck(a.line1) === target.line1 &&
+      normalizeForDuplicateCheck(a.line2) === target.line2 &&
+      normalizeForDuplicateCheck(a.city) === target.city &&
+      normalizeForDuplicateCheck(a.state) === target.state &&
+      normalizeForDuplicateCheck(a.postalCode) === target.postalCode
+  );
+}
+
 async function createAddress(customerId, input) {
   return prisma.$transaction(async (tx) => {
+    const duplicate = await findDuplicateAddress(tx, customerId, input);
+    if (duplicate) {
+      // Same real-world address already on file — treat this as "update/
+      // promote that one" instead of creating a second row for it. Honors
+      // whatever default intent this submission carried, same as a normal
+      // updateAddress(isDefault: true) call would.
+      const makeDefault = input.isDefault === true && !duplicate.isDefault;
+      if (makeDefault) {
+        await tx.address.updateMany({ where: { customerId, isDefault: true }, data: { isDefault: false } });
+      }
+      const updated = makeDefault
+        ? await tx.address.update({ where: { id: duplicate.id }, data: { isDefault: true } })
+        : duplicate;
+      return serializeAddress(updated);
+    }
+
     const existing = await tx.address.count({ where: { customerId } });
     if (existing >= MAX_ADDRESSES) {
       throw new ConflictError(`You can save up to ${MAX_ADDRESSES} addresses. Remove one to add another.`, {

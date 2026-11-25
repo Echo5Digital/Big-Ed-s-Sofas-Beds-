@@ -15,7 +15,8 @@ const {
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
-const { NotFoundError } = require("../lib/errors");
+const { NotFoundError, ConflictError } = require("../lib/errors");
+const { square } = require("../lib/square");
 const posService = require("../services/pos.service");
 const posCustomersService = require("../services/posCustomers.service");
 const posReturnsService = require("../services/posReturns.service");
@@ -243,10 +244,12 @@ router.post(
 );
 
 // Rings up a walk-in sale across one or more payment entries (CASH, DEPOSIT,
-// BANK_TRANSFER, STORE_CREDIT) and returns the receipt. CARD is intentionally
-// rejected here (501) — see docs/requirements/open-questions.md; no payment
-// processor/terminal model has been selected yet, and this route must never
-// fabricate a successful card charge.
+// BANK_TRANSFER, STORE_CREDIT) and returns the receipt. A CARD entry is
+// routed to createCardCheckout instead (see pos.service.js) — a card-present
+// sale is single-tender only (the full total on one Square Terminal
+// checkout) and resolves asynchronously via webhooks.routes.js's
+// terminal.checkout.updated handler, not synchronously like this route's
+// other tender methods.
 router.post(
   "/sales",
   requirePermission("pos:sell"),
@@ -270,11 +273,31 @@ router.post(
     } = req.body;
 
     if (payments.some((p) => p.method === "CARD")) {
-      return res.status(501).json({
-        error: {
-          message:
-            "Card-present tender is not available yet — no payment processor or terminal model has been selected.",
-        },
+      if (payments.length > 1) {
+        throw new ConflictError("A card sale can't be split with another tender method");
+      }
+
+      const result = await posService.createCardCheckout({
+        registerSessionId,
+        lines,
+        discount,
+        discountReasonCode,
+        pinOverride,
+        salesAttribution,
+        requestedDeliveryAt,
+        shippingAddress,
+        billingAddress,
+        billingSameAsShipping,
+        customerId,
+        customerInput: customer,
+        performedById: req.user.id,
+      });
+
+      return res.status(202).json({
+        pending: true,
+        order: serializeOrder(result.order),
+        payment: serializePayment(result.payment),
+        squareCheckoutId: result.squareCheckoutId,
       });
     }
 
@@ -301,6 +324,92 @@ router.post(
       receipt: result.receipt,
       changeDueCents: result.changeDueCents,
     });
+  })
+);
+
+// Polled by the POS "waiting for card" screen after a pending CARD sale
+// (POST /sales above) — the webhook is the actual source of truth for when
+// the sale resolves, this just lets the UI find out without needing its own
+// public endpoint for Square to call. Scoped to the cashier's own
+// in-progress sale by orderId, same read-only shape as GET /orders/:id
+// elsewhere, but POS-specific since a cashier only has pos:sell, not
+// orders:read. Once resolved to CONFIRMED (completeCardCheckout has run),
+// returns the same { order, payments, receipt } shape POST /sales returns
+// synchronously for every other tender, so the POS UI can feed either result
+// into the same ReceiptView with no separate "pending-sale receipt" component.
+router.get(
+  "/sales/:orderId/status",
+  requirePermission("pos:sell"),
+  asyncHandler(async (req, res) => {
+    const order = await prisma.order.findUnique({
+      where: { id: req.params.orderId },
+      include: {
+        payments: true,
+        lines: true,
+        customer: true,
+        salesAttributions: { include: { user: { select: { firstName: true, lastName: true } } } },
+        shippingAddress: true,
+        billingAddress: true,
+        receipts: true,
+      },
+    });
+    if (!order) throw new NotFoundError("Order not found");
+
+    const cardPayment = order.payments.find((p) => p.method === "CARD");
+
+    if (order.status === "CONFIRMED") {
+      return res.json({
+        resolved: true,
+        order: serializeOrder(order),
+        payments: order.payments.map(serializePayment),
+        receipt: order.receipts[0] ?? null,
+        changeDueCents: 0,
+      });
+    }
+
+    if (order.status === "CANCELED") {
+      return res.json({ resolved: true, canceled: true, failureReason: cardPayment?.failureReason ?? null });
+    }
+
+    res.json({ resolved: false, orderStatus: order.status, paymentStatus: cardPayment?.status ?? null });
+  })
+);
+
+// Lets the cashier back out of a "waiting for card" screen before the
+// customer taps — cancels the request on Square's side (so the terminal
+// stops prompting) and on this app's side (so the order doesn't sit DRAFT
+// forever if canceling on the terminal doesn't itself trigger a webhook
+// delivery for some reason). Square's own cancel call fails harmlessly if
+// the checkout already resolved (COMPLETED/CANCELED) in the moment before
+// this request landed — that race is resolved by whichever side (this
+// route or the webhook) gets there first, same as every other
+// webhook/synchronous-response race in this codebase.
+router.post(
+  "/sales/:orderId/cancel-card",
+  requirePermission("pos:sell"),
+  asyncHandler(async (req, res) => {
+    const order = await prisma.order.findUnique({
+      where: { id: req.params.orderId },
+      include: { payments: true },
+    });
+    if (!order) throw new NotFoundError("Order not found");
+    if (order.status !== "DRAFT") {
+      return res.json({ orderStatus: order.status });
+    }
+
+    const payment = order.payments.find((p) => p.method === "CARD");
+    if (payment?.providerRef) {
+      try {
+        await square.terminal.checkouts.cancel({ checkoutId: payment.providerRef });
+      } catch {
+        // Already resolved/can't be canceled on Square's side — fall through
+        // and let the webhook (which may already be in flight) be the one
+        // that resolves this order instead of double-canceling here.
+      }
+    }
+
+    await posService.failCardCheckout(order.id, "Canceled by cashier");
+    res.json({ orderStatus: "CANCELED" });
   })
 );
 

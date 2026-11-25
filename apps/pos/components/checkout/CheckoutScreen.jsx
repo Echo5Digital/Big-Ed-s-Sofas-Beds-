@@ -12,6 +12,7 @@ import AttributionPanel from "./AttributionPanel";
 import DeliveryAddressPanel from "./DeliveryAddressPanel";
 import { EMPTY_ADDRESS } from "./AddressFields";
 import TenderModal from "./TenderModal";
+import CardCheckoutModal from "./CardCheckoutModal";
 import ReceiptView from "./ReceiptView";
 import CloseRegister from "../register/CloseRegister";
 
@@ -24,6 +25,11 @@ export default function CheckoutScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [completedSale, setCompletedSale] = useState(null);
+  // Set only while a CARD sale's Square Terminal checkout is awaiting the
+  // customer's tap/insert/swipe (see CardCheckoutModal) — null the rest of
+  // the time, including for every other tender method, which still resolve
+  // synchronously within handleConfirmPayment itself.
+  const [pendingCardOrderId, setPendingCardOrderId] = useState(null);
   const [costsByVariantId, setCostsByVariantId] = useState({});
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [requestedDeliveryAt, setRequestedDeliveryAt] = useState("");
@@ -144,6 +150,20 @@ export default function CheckoutScreen() {
       : undefined;
   }
 
+  // Shared by a synchronous sale's success and a card sale's eventual
+  // resolution (via CardCheckoutModal) — both start the next sale from the
+  // same clean slate.
+  function resetSaleForm() {
+    setCartOpen(false);
+    setCart([]);
+    setSelectedCustomer(null);
+    setRequestedDeliveryAt("");
+    setShippingAddress(EMPTY_ADDRESS);
+    setBillingAddress(EMPTY_ADDRESS);
+    setBillingSameAsShipping(true);
+    setSalesAttribution([]);
+  }
+
   async function handleConfirmPayment({ payments, discount, discountReasonCode, pinOverride }) {
     setError(null);
     setSubmitting(true);
@@ -170,21 +190,46 @@ export default function CheckoutScreen() {
         billingSameAsShipping: resolvedBillingAddress ? billingSameAsShipping : undefined,
         customerId: selectedCustomer?.id,
       });
+
+      if (data.pending) {
+        // Card sale: stays open on the register's cart/session (the cashier
+        // can't ring up a second sale mid-wait — same single-register-at-a-
+        // time model this whole screen already assumes) until
+        // CardCheckoutModal's polling reports a resolution.
+        setTenderOpen(false);
+        setPendingCardOrderId(data.order.id);
+        return;
+      }
+
       setCompletedSale(data);
       setTenderOpen(false);
-      setCartOpen(false);
-      setCart([]);
-      setSelectedCustomer(null);
-      setRequestedDeliveryAt("");
-      setShippingAddress(EMPTY_ADDRESS);
-      setBillingAddress(EMPTY_ADDRESS);
-      setBillingSameAsShipping(true);
-      setSalesAttribution([]);
+      resetSaleForm();
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "Unable to complete sale");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleCardResolved(data) {
+    setPendingCardOrderId(null);
+    if (data.canceled) {
+      // Reopen the tender modal (rather than leaving no modal open at all)
+      // so the error is actually visible and the cashier can immediately
+      // retry with another tender — the cart/customer/etc. are all still
+      // intact since resetSaleForm only ever runs on an actual success.
+      setError(data.failureReason || "The card payment was not completed.");
+      setTenderOpen(true);
+      return;
+    }
+    setCompletedSale(data);
+    resetSaleForm();
+  }
+
+  function handleCardCanceled() {
+    setPendingCardOrderId(null);
+    setError("Card payment canceled.");
+    setTenderOpen(true);
   }
 
   return (
@@ -284,6 +329,12 @@ export default function CheckoutScreen() {
         onConfirm={handleConfirmPayment}
         submitting={submitting}
         error={error}
+      />
+
+      <CardCheckoutModal
+        orderId={pendingCardOrderId}
+        onResolved={handleCardResolved}
+        onCancel={handleCardCanceled}
       />
 
       <ReceiptView open={Boolean(completedSale)} onClose={() => setCompletedSale(null)} sale={completedSale} />
