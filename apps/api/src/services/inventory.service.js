@@ -377,39 +377,65 @@ async function reserveAndConvertForSale({ variantId, locationId, quantity, order
   });
 }
 
-// Lazily expire reservations past their TTL. Called before any read that
-// needs an accurate available-to-sell figure (catalog reads, PDP, checkout).
-async function expireStaleReservations() {
-  const stale = await prisma.reservation.findMany({
-    where: { status: "ACTIVE", expiresAt: { lt: new Date() } },
-  });
-
-  for (const reservation of stale) {
-    await prisma.$transaction(async (tx) => {
-      const balance = await getOrCreateBalance(tx, reservation.variantId, reservation.locationId);
-      await tx.stockBalance.update({
-        where: { id: balance.id },
-        data: { reserved: { decrement: reservation.quantity } },
-      });
-      await tx.reservation.update({
-        where: { id: reservation.id },
-        data: { status: "EXPIRED" },
-      });
-      await tx.stockMovement.create({
-        data: {
-          variantId: reservation.variantId,
-          locationId: reservation.locationId,
-          type: "RESERVATION_RELEASE",
-          quantity: reservation.quantity,
-          referenceType: "Reservation",
-          referenceId: reservation.id,
-          reasonCode: "expired",
-        },
-      });
+async function expireOneReservation(reservation) {
+  return prisma.$transaction(async (tx) => {
+    const balance = await getOrCreateBalance(tx, reservation.variantId, reservation.locationId);
+    await tx.stockBalance.update({
+      where: { id: balance.id },
+      data: { reserved: { decrement: reservation.quantity } },
     });
+    await tx.reservation.update({
+      where: { id: reservation.id },
+      data: { status: "EXPIRED" },
+    });
+    await tx.stockMovement.create({
+      data: {
+        variantId: reservation.variantId,
+        locationId: reservation.locationId,
+        type: "RESERVATION_RELEASE",
+        quantity: reservation.quantity,
+        referenceType: "Reservation",
+        referenceId: reservation.id,
+        reasonCode: "expired",
+      },
+    });
+  });
+}
+
+// Lazily expire reservations past their TTL. Called before any read that
+// needs an accurate available-to-sell figure (catalog reads, PDP, checkout),
+// so this runs on hot paths (every checkout, every admin inventory-balances
+// load) and must never turn into an unbounded amount of serial work.
+//
+// Processed in bounded batches, each batch's reservations expired
+// concurrently rather than one-at-a-time: two reservations for different
+// variant/location pairs don't contend for the same StockBalance row, so
+// there's no correctness reason to serialize them — only same-pair
+// reservations ever share a row, and Postgres's FOR UPDATE lock in
+// getOrCreateBalance already makes concurrent access to the same row safe
+// (the second transaction simply waits), so running the batch with
+// Promise.all is strictly a throughput improvement, not a correctness risk.
+// Batching (rather than one findMany for everything) keeps a single call
+// bounded even if stale reservations have piled up after an outage.
+const EXPIRE_STALE_BATCH_SIZE = 200;
+
+async function expireStaleReservations() {
+  let totalExpired = 0;
+
+  for (;;) {
+    const stale = await prisma.reservation.findMany({
+      where: { status: "ACTIVE", expiresAt: { lt: new Date() } },
+      take: EXPIRE_STALE_BATCH_SIZE,
+    });
+    if (stale.length === 0) break;
+
+    await Promise.all(stale.map(expireOneReservation));
+    totalExpired += stale.length;
+
+    if (stale.length < EXPIRE_STALE_BATCH_SIZE) break;
   }
 
-  return stale.length;
+  return totalExpired;
 }
 
 module.exports = {

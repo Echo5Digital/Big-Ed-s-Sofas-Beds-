@@ -1038,6 +1038,12 @@ describe("pos.service", () => {
 
       const byReceiptNumber = await posService.findOrderWithBalance({ q: receipt.receiptNumber });
       expect(byReceiptNumber.order.id).toBe(order.id);
+
+      // A literal "%"/"_" in the query must be treated as a literal character,
+      // not a SQL LIKE wildcard — Prisma's `contains` compiles to LIKE/ILIKE
+      // and does not escape these itself (see lib/searchText.js). An
+      // unescaped "%" would match virtually every order's orderNumber.
+      await expect(posService.findOrderWithBalance({ q: "%" })).rejects.toThrow(/no order with an outstanding balance/i);
     });
 
     it("does not surface an order that's already fully PAID — nothing left to collect", async () => {

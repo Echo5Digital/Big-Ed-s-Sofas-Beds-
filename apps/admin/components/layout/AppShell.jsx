@@ -35,9 +35,9 @@ const REVIEW_POLL_MS = 20000;
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard, permission: "reports:read" },
   { label: "Products", href: "/products", icon: Package, permission: "catalog:read", countKey: "pendingReviews" },
-  { label: "Messages", href: "/messages", icon: Mail, permission: "messages:read", countKey: "unreadMessages" },
   { label: "Inventory", href: "/inventory", icon: Boxes, permission: "inventory:read" },
   { label: "Purchase Orders", href: "/purchasing", icon: ClipboardList, permission: "purchasing:read" },
+  { label: "Messages", href: "/messages", icon: Mail, permission: "messages:read", countKey: "unreadMessages" },
   { label: "Suppliers", href: "/suppliers", icon: Users, permission: "purchasing:read" },
   { label: "Orders", href: "/orders", icon: ShoppingCart, permission: "orders:read" },
   { label: "Payments", href: "/payments", icon: CreditCard, permission: "reports:read" },

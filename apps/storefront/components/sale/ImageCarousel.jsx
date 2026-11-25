@@ -25,7 +25,13 @@ import Image from "next/image";
 export default function ImageCarousel({ images, intervalMs = 5000 }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(false);
+  // Lazy initializer reads the synchronous initial value directly (SSR has
+  // no `window`, so it still falls back to false there) — the effect below
+  // only needs to subscribe to future changes, not also seed the initial
+  // read, which is what let this call setState unconditionally on mount.
+  const [reducedMotion, setReducedMotion] = useState(() =>
+    typeof window === "undefined" ? false : window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
   const touchStartX = useRef(null);
 
   const total = images.length;
@@ -33,7 +39,6 @@ export default function ImageCarousel({ images, intervalMs = 5000 }) {
 
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReducedMotion(query.matches);
     const handleChange = (event) => setReducedMotion(event.matches);
     query.addEventListener("change", handleChange);
     return () => query.removeEventListener("change", handleChange);

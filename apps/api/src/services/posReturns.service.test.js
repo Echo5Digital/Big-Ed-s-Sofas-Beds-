@@ -121,6 +121,13 @@ describe("posReturns.service", () => {
     expect(result.order.id).toBe(sale.order.id);
   });
 
+  it("a literal % or _ in the query is treated literally, not as a SQL wildcard", async () => {
+    // Prisma's `contains` compiles to SQL LIKE/ILIKE and does not escape
+    // these itself (see lib/searchText.js) — an unescaped "%" would match
+    // virtually every POS order's orderNumber instead of finding nothing.
+    await expect(posReturnsService.findOrderForReturn({ q: "%" })).rejects.toThrow(/no matching order found/i);
+  });
+
   it("processes a sellable cash return and restocks on-hand", async () => {
     const { session, sale } = await ringTestSale({ quantity: 2 });
     const balanceBefore = await prisma.stockBalance.findUnique({

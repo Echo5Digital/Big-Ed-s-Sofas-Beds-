@@ -1,16 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Search } from "lucide-react";
 import RequireAuth from "@/components/layout/RequireAuth";
 import PageHeader from "@/components/ui/PageHeader";
 import DataTable from "@/components/ui/DataTable";
 import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
 import OrderStatusDropdown from "@/components/orders/OrderStatusDropdown";
 import { api, ApiClientError } from "@/lib/api/client";
 import { formatCentsAsCurrency } from "@/lib/formatCurrency";
 
 const PAYMENT_TONE = { UNPAID: "danger", PARTIALLY_PAID: "warning", PAID: "success", REFUNDED: "default" };
+
+const PAGE_SIZE = 25;
+const SEARCH_DEBOUNCE_MS = 300;
 
 const ORDER_STATUSES = ["DRAFT", "CONFIRMED", "CANCELED", "CLOSED"];
 const FULFILLMENT_STATUSES = ["UNALLOCATED", "RESERVED", "PROCESSING", "READY", "PICKED_UP", "DELIVERED"];
@@ -41,27 +46,67 @@ function SelectFilter({ label, value, onChange, options }) {
 }
 
 function OrdersContent() {
-  const [orders, setOrders] = useState(null);
-  const [error, setError] = useState(null);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [status, setStatus] = useState("");
   const [fulfillmentStatus, setFulfillmentStatus] = useState("");
   const [channel, setChannel] = useState("");
+  const [page, setPage] = useState(1);
+  // The latest response, tagged with the query it answers — same
+  // "loading is derived from a stale key" pattern as CustomersTab.jsx, so a
+  // slow response to an earlier keystroke/filter change can't land after and
+  // overwrite a newer one's results.
+  const [result, setResult] = useState(null);
 
-  const load = useCallback(() => {
-    const params = new URLSearchParams();
+  const queryKey = `${debouncedSearch}|${status}|${fulfillmentStatus}|${channel}|${page}`;
+  const loading = result?.key !== queryKey;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setPage(1);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  function handleFilterChange(setter) {
+    return (value) => {
+      setter(value);
+      setPage(1);
+    };
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+    if (debouncedSearch) params.set("q", debouncedSearch);
     if (status) params.set("status", status);
     if (fulfillmentStatus) params.set("fulfillmentStatus", fulfillmentStatus);
     if (channel) params.set("channel", channel);
-    const query = params.toString();
-    api
-      .get(`/admin/orders${query ? `?${query}` : ""}`)
-      .then((data) => setOrders(data.orders))
-      .catch((err) => setError(err instanceof ApiClientError ? err.message : "Failed to load orders."));
-  }, [status, fulfillmentStatus, channel]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+    api
+      .get(`/admin/orders?${params}`)
+      .then((data) => {
+        if (!cancelled) setResult({ key: queryKey, orders: data.orders, pagination: data.pagination });
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setResult({ key: queryKey, error: err instanceof ApiClientError ? err.message : "Failed to load orders." });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [queryKey, debouncedSearch, status, fulfillmentStatus, channel, page]);
+
+  const orders = result?.orders ?? null;
+  const total = result?.pagination?.total ?? 0;
+  const pageSize = result?.pagination?.pageSize ?? PAGE_SIZE;
+  const shownPage = result?.pagination?.page ?? 1;
+  const from = total === 0 ? 0 : (shownPage - 1) * pageSize + 1;
+  const to = from + (orders?.length ?? 0) - 1;
+  const error = !loading ? result?.error : null;
 
   const columns = [
     {
@@ -83,12 +128,24 @@ function OrdersContent() {
       render: (o) => (
         <OrderStatusDropdown
           order={o}
-          onUpdated={(updated) => setOrders((prev) => prev.map((row) => (row.id === updated.id ? { ...row, ...updated } : row)))}
+          onUpdated={(updated) =>
+            setResult((prev) =>
+              prev?.orders
+                ? { ...prev, orders: prev.orders.map((row) => (row.id === updated.id ? { ...row, ...updated } : row)) }
+                : prev
+            )
+          }
         />
       ),
     },
     { key: "createdAt", header: "Placed", render: (o) => new Date(o.createdAt).toLocaleDateString() },
   ];
+
+  const emptyMessage = loading
+    ? "Loading orders…"
+    : debouncedSearch
+      ? "No orders match your search."
+      : "No orders yet.";
 
   return (
     <div>
@@ -97,11 +154,11 @@ function OrdersContent() {
         subtitle="Online and in-store sales"
         action={
           <div className="flex flex-wrap items-center gap-4">
-            <SelectFilter label="Status" value={status} onChange={setStatus} options={ORDER_STATUSES} />
+            <SelectFilter label="Status" value={status} onChange={handleFilterChange(setStatus)} options={ORDER_STATUSES} />
             <SelectFilter
               label="Fulfillment"
               value={fulfillmentStatus}
-              onChange={setFulfillmentStatus}
+              onChange={handleFilterChange(setFulfillmentStatus)}
               options={FULFILLMENT_STATUSES}
             />
           </div>
@@ -115,7 +172,7 @@ function OrdersContent() {
             type="button"
             role="tab"
             aria-selected={channel === value}
-            onClick={() => setChannel(value)}
+            onClick={() => handleFilterChange(setChannel)(value)}
             className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-brand-red ${
               channel === value
                 ? "border-brand-red text-brand-red"
@@ -127,9 +184,44 @@ function OrdersContent() {
         ))}
       </div>
 
+      <div className="mb-4 max-w-xs">
+        <div className="relative">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-brand-charcoal/40"
+            aria-hidden="true"
+          />
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search order #, customer name, or email"
+            aria-label="Search orders by order number, customer name, or email"
+            className="w-full rounded-lg border border-black/15 py-2 pl-9 pr-3 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+          />
+        </div>
+      </div>
+
       {error && <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-      <DataTable columns={columns} rows={orders} rowHref={(o) => `/orders/${o.id}`} emptyMessage="No orders yet." />
+      <div aria-busy={loading} className={loading && orders ? "opacity-60 transition-opacity" : undefined}>
+        <DataTable columns={columns} rows={orders} rowHref={(o) => `/orders/${o.id}`} emptyMessage={emptyMessage} />
+      </div>
+
+      {total > 0 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-brand-charcoal/60">
+            Showing {from}&ndash;{to} of {total}
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={loading || page <= 1} onClick={() => setPage((p) => p - 1)}>
+              Previous
+            </Button>
+            <Button variant="outline" size="sm" disabled={loading || page * pageSize >= total} onClick={() => setPage((p) => p + 1)}>
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

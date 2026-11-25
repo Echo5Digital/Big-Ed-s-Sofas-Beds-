@@ -133,7 +133,10 @@ export default function AccountPanel({ onSignedIn = () => {}, onViewChange = () 
     return () => {
       cancelled = true;
     };
-  }, []);
+    // setView is a React state setter, guaranteed stable across renders —
+    // listed to satisfy exhaustive-deps, not because it can ever actually
+    // change and re-run this effect.
+  }, [setView]);
 
   // Drives the "Resend code in Ns" countdown while the code screen is open.
   useEffect(() => {
@@ -273,7 +276,11 @@ export default function AccountPanel({ onSignedIn = () => {}, onViewChange = () 
     setCustomer(null);
     setNotice({ type: "info", message: "Your session has expired. Please sign in again." });
     setView("signin");
-  }, []);
+    // setCustomer/setNotice/setView are all React state setters, guaranteed
+    // stable across renders — listed to satisfy exhaustive-deps, not because
+    // any of them can actually change and invalidate this callback's identity
+    // (the comment above this function depends on that staying true).
+  }, [setCustomer, setNotice, setView]);
 
   // Keeps the "Hello, name" in the sidebar in step with a saved profile edit.
   const handleProfileSaved = useCallback((names) => {

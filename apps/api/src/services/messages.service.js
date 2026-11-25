@@ -13,6 +13,9 @@ function serializeMessage(message) {
     message: message.message,
     status: message.status,
     isImportant: message.isImportant,
+    isReturnRequest: message.isReturnRequest,
+    returnOrderReference: message.returnOrderReference,
+    returnAttachmentUrl: message.returnAttachmentUrl,
     createdAt: message.createdAt,
   };
 }
@@ -22,13 +25,46 @@ async function createMessage({ name, email, message }) {
   return serializeMessage(created);
 }
 
+// Storefront My Orders "Request Return" flow (POST /messages/return) — a
+// return request is a ContactMessage with isReturnRequest: true plus the
+// order reference the customer typed and/or the Cloudinary URL of a file
+// they attached; see the ContactMessage model comment in schema.prisma for
+// why this isn't a new table.
+async function createReturnMessage({
+  name,
+  email,
+  message,
+  returnOrderReference,
+  returnAttachmentUrl,
+  returnAttachmentPublicId,
+}) {
+  const created = await prisma.contactMessage.create({
+    data: {
+      name,
+      email,
+      message,
+      isReturnRequest: true,
+      returnOrderReference,
+      returnAttachmentUrl,
+      returnAttachmentPublicId,
+    },
+  });
+  return serializeMessage(created);
+}
+
 // Default admin list excludes ARCHIVED — staff explicitly archives a message
 // to dismiss it from the working inbox view without deleting the record.
+// Hard-capped (same convention as orders.routes.js/reports.routes.js) —
+// previously had no take at all, so every non-archived message ever
+// submitted (contact form + Return requests) loaded on every inbox view.
+// No pagination UI exists for Messages yet, so a cap for now; staff archive
+// messages to keep the working inbox well under this anyway.
 async function listMessages() {
   const messages = await prisma.contactMessage.findMany({
     where: { status: { not: "ARCHIVED" } },
     // Important first, then newest — the two things staff triage by.
     orderBy: [{ isImportant: "desc" }, { createdAt: "desc" }],
+    take: 500,
   });
   return messages.map(serializeMessage);
 }
@@ -73,6 +109,7 @@ async function deleteMessage(id) {
 
 module.exports = {
   createMessage,
+  createReturnMessage,
   listMessages,
   countUnreadAndImportant,
   markRead,

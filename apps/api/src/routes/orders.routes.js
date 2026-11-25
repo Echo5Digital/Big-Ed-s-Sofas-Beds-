@@ -17,6 +17,7 @@ const { SquareError } = require("square");
 const { env } = require("../lib/env");
 const { markPaymentSucceeded, markPaymentFailed } = require("../services/payments.service");
 const { nextSequenceValue } = require("../lib/sequentialNumber");
+const { escapeLikeWildcards } = require("../lib/searchText");
 
 const router = express.Router();
 
@@ -344,23 +345,70 @@ router.get(
 
 // --- Staff (admin) -------------------------------------------------------
 
+// Paginated + server-searched — a hard take:200 with no skip/q used to mean
+// orders beyond the newest 200 were permanently unreachable and
+// unsearchable from this page once the store had more order history than
+// that. `q` matches order number, customer email, or customer name (same
+// multi-term-AND approach as customers.service.js's buildWhere, so "jane
+// doe" finds a customer whose first/last name are in different columns).
+const ORDERS_MAX_PAGE_SIZE = 100;
+const ORDERS_DEFAULT_PAGE_SIZE = 25;
+const ORDERS_MAX_SEARCH_TERMS = 5;
+
+function buildOrdersSearchWhere(q) {
+  const terms = String(q ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, ORDERS_MAX_SEARCH_TERMS);
+  if (terms.length === 0) return {};
+
+  return {
+    AND: terms.map((term) => {
+      const contains = { contains: escapeLikeWildcards(term), mode: "insensitive" };
+      return {
+        OR: [
+          { orderNumber: contains },
+          { customer: { email: contains } },
+          { customer: { firstName: contains } },
+          { customer: { lastName: contains } },
+        ],
+      };
+    }),
+  };
+}
+
 router.get(
   "/admin/orders",
   requireAuth,
   requirePermission("orders:read"),
   asyncHandler(async (req, res) => {
-    const { status, fulfillmentStatus, channel } = req.query;
-    const orders = await prisma.order.findMany({
-      where: {
-        ...(status ? { status: String(status) } : {}),
-        ...(fulfillmentStatus ? { fulfillmentStatus: String(fulfillmentStatus) } : {}),
-        ...(channel ? { channel: String(channel) } : {}),
-      },
-      include: { lines: true, customer: true },
-      orderBy: { createdAt: "desc" },
-      take: 200,
+    const { status, fulfillmentStatus, channel, q, page, pageSize } = req.query;
+    const take = Math.min(ORDERS_MAX_PAGE_SIZE, Math.max(1, Math.floor(Number(pageSize)) || ORDERS_DEFAULT_PAGE_SIZE));
+    const currentPage = Math.max(1, Math.floor(Number(page)) || 1);
+    const where = {
+      ...(status ? { status: String(status) } : {}),
+      ...(fulfillmentStatus ? { fulfillmentStatus: String(fulfillmentStatus) } : {}),
+      ...(channel ? { channel: String(channel) } : {}),
+      ...buildOrdersSearchWhere(q),
+    };
+
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        include: { lines: true, customer: true },
+        // id breaks ties so paging stays stable when orders share a timestamp.
+        orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+        skip: (currentPage - 1) * take,
+        take,
+      }),
+      prisma.order.count({ where }),
+    ]);
+
+    res.json({
+      orders: orders.map(serializeOrder),
+      pagination: { page: currentPage, pageSize: take, total },
     });
-    res.json({ orders: orders.map(serializeOrder) });
   })
 );
 
@@ -555,6 +603,13 @@ router.patch(
 
     const fromDisplayStatus = computeOrderDisplayStatus(order);
     const fieldWrites = resolveOrderStatusFieldWrites(order, req.body.displayStatus);
+    // Stamp once, only on the transition into Completed, and only if it was
+    // never set before — re-saving "Completed" (or any later status change)
+    // must never move this date forward, since it backs the storefront's
+    // 7-day Return window.
+    if (req.body.displayStatus === "Completed" && !order.completedAt) {
+      fieldWrites.completedAt = new Date();
+    }
 
     const updated = await prisma.$transaction(async (tx) => {
       const updatedOrder = await tx.order.update({ where: { id: order.id }, data: fieldWrites });

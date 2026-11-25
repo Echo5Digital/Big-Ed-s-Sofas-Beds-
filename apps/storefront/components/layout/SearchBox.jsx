@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useId } from "react";
+import { useEffect, useState, useId } from "react";
 import { Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -13,32 +13,28 @@ const SEARCH_DEBOUNCE_MS = 250;
 export default function SearchBox({ className = "" }) {
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const requestIdRef = useRef(0);
+  // The latest response, tagged with the query it answers — loading/results/
+  // error are all derived from comparing this to the live trimmedQuery
+  // below, rather than setResults([])/setLoading(true)/etc. called directly
+  // in the effect body (which React's set-state-in-effect rule flags as a
+  // cascading-render risk). Clearing the box is then just "trimmedQuery is
+  // empty", which the derived showResults/results already resolve to empty
+  // with no separate reset needed.
+  const [result, setResult] = useState({ key: "", products: [], error: false });
   const inputId = useId();
   const listId = useId();
   const router = useRouter();
 
   const trimmedQuery = query.trim();
+  const loading = trimmedQuery !== "" && result.key !== trimmedQuery && !result.error;
+  const results = result.key === trimmedQuery ? result.products : [];
+  const error = result.key === trimmedQuery ? result.error : false;
 
   useEffect(() => {
-    if (!trimmedQuery) {
-      // Clearing the box must drop any stale results immediately — otherwise
-      // the old list briefly reappears the instant the user starts typing a
-      // new query, before the new debounced fetch has resolved.
-      requestIdRef.current += 1;
-      setResults([]);
-      setError(false);
-      setLoading(false);
-      setActiveIndex(-1);
-      return;
-    }
+    if (!trimmedQuery) return undefined;
 
-    const requestId = ++requestIdRef.current;
-    setLoading(true);
+    let cancelled = false;
     const timeout = setTimeout(() => {
       // No explicit sort -> the catalog route's own default (newest-first).
       // A live type-ahead dropdown only shows a handful of results; the
@@ -52,22 +48,19 @@ export default function SearchBox({ className = "" }) {
           // without this check, a slow response to an earlier keystroke can
           // land after a faster response to a later one and overwrite it
           // with stale, mismatched results.
-          if (requestId !== requestIdRef.current) return;
-          setResults(data.products.map(normalizeProductForCard));
-          setError(false);
+          if (cancelled) return;
+          setResult({ key: trimmedQuery, products: data.products.map(normalizeProductForCard), error: false });
           setActiveIndex(-1);
         })
         .catch(() => {
-          if (requestId !== requestIdRef.current) return;
-          setResults([]);
-          setError(true);
-        })
-        .finally(() => {
-          if (requestId !== requestIdRef.current) return;
-          setLoading(false);
+          if (cancelled) return;
+          setResult({ key: trimmedQuery, products: [], error: true });
         });
     }, SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(timeout);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
   }, [trimmedQuery]);
 
   const showResults = focused && trimmedQuery.length > 0;

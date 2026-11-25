@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { Plus, X } from "lucide-react";
 import { api } from "@/lib/api/client";
@@ -26,16 +26,30 @@ export default function LinkedProductPicker({ linkedProducts, onChange, excludeP
   const [searchState, setSearchState] = useState({ query: "", results: [], error: null });
   const trimmedQuery = query.trim();
   const searching = trimmedQuery !== "" && searchState.query !== trimmedQuery && !searchState.error;
+  // Guards against a slow earlier keystroke's response landing after a
+  // faster later one's and overwriting it — same requestIdRef pattern used
+  // by products/page.jsx and the other search-as-you-type inputs in this
+  // app, rather than matching the response back to the query string it
+  // answers (which a same-string re-fetch, e.g. type-then-backspace-back-to
+  // the-same-text, could still resolve out of order).
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     if (!trimmedQuery) return undefined;
     // Debounced so every keystroke doesn't fire its own request — matches the
     // delay other search-as-you-type inputs in this app use.
+    const requestId = ++requestIdRef.current;
     const timeout = setTimeout(() => {
       api
         .get(`/catalog/admin/products?q=${encodeURIComponent(trimmedQuery)}`)
-        .then((data) => setSearchState({ query: trimmedQuery, results: data.products, error: null }))
-        .catch(() => setSearchState({ query: trimmedQuery, results: [], error: "Search failed." }));
+        .then((data) => {
+          if (requestId !== requestIdRef.current) return;
+          setSearchState({ query: trimmedQuery, results: data.products, error: null });
+        })
+        .catch(() => {
+          if (requestId !== requestIdRef.current) return;
+          setSearchState({ query: trimmedQuery, results: [], error: "Search failed." });
+        });
     }, 300);
     return () => clearTimeout(timeout);
   }, [trimmedQuery]);

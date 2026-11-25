@@ -11,7 +11,20 @@ import { useDemoCart } from "@/components/layout/DemoCartProvider";
 import { formatCurrency } from "@/utils/formatCurrency";
 import { api, ApiClientError } from "@/lib/api/client";
 import { getCurrentCustomer } from "@/lib/api/customerAuth";
+import { getProfile, listAddresses, createAddress } from "@/lib/api/customerAccount";
 import { siteConfig } from "@/lib/mock-data/site-config";
+
+const NEW_ADDRESS_OPTION = "__new__";
+
+function addressToFormFields(address) {
+  return {
+    address1: address.line1 ?? "",
+    address2: address.line2 ?? "",
+    city: address.city ?? "",
+    state: address.state ?? "",
+    zip: address.postalCode ?? "",
+  };
+}
 
 export default function CheckoutPage() {
   const { cartItems, cartSubtotal, clearCart } = useDemoCart();
@@ -29,6 +42,13 @@ export default function CheckoutPage() {
   // storefront-only gate, the API's /checkout endpoint is unchanged and still
   // accepts guest orders from other channels (e.g. future POS/phone orders).
   const [authStatus, setAuthStatus] = useState("checking");
+  // The signed-in customer's saved addresses, and which one is currently
+  // selected in the picker — NEW_ADDRESS_OPTION means "typing a fresh one",
+  // distinct from having zero saved addresses (same blank form, but no
+  // picker shown at all in that case).
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [selectedAddressId, setSelectedAddressId] = useState(NEW_ADDRESS_OPTION);
+  const [saveNewAddress, setSaveNewAddress] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +63,49 @@ export default function CheckoutPage() {
       cancelled = true;
     };
   }, []);
+
+  // Once signed in, prefill contact info from the account profile and the
+  // address form from the default saved address (if any) — a returning
+  // customer shouldn't have to retype what's already on file. Guarded on
+  // authStatus (not just "run once on mount") since authStatus flips from
+  // "checking" to "signed-in" asynchronously above.
+  useEffect(() => {
+    if (authStatus !== "signed-in") return;
+    let cancelled = false;
+    Promise.all([getProfile(), listAddresses()])
+      .then(([profile, addresses]) => {
+        if (cancelled) return;
+        setContact({
+          fullName: [profile.firstName, profile.lastName].filter(Boolean).join(" "),
+          phone: profile.phone ?? "",
+          email: profile.email ?? "",
+        });
+        setSavedAddresses(addresses);
+        const defaultAddress = addresses.find((a) => a.isDefault) ?? addresses[0];
+        if (defaultAddress) {
+          setSelectedAddressId(defaultAddress.id);
+          setAddress(addressToFormFields(defaultAddress));
+        }
+      })
+      .catch(() => {
+        // Non-fatal: the form just stays blank, same as a guest's would —
+        // nothing here blocks placing the order.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authStatus]);
+
+  function handleAddressSelect(addressId) {
+    setSelectedAddressId(addressId);
+    setSaveNewAddress(false);
+    if (addressId === NEW_ADDRESS_OPTION) {
+      setAddress({ address1: "", address2: "", city: "", state: "", zip: "" });
+      return;
+    }
+    const picked = savedAddresses.find((a) => a.id === addressId);
+    if (picked) setAddress(addressToFormFields(picked));
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -74,6 +137,29 @@ export default function CheckoutPage() {
               }
             : null,
       });
+
+      // Saving to the account's address book is a separate, additive step
+      // from the order's own delivery-address snapshot above (checkout
+      // always writes its own Address row for the order regardless) — only
+      // attempted for a signed-in customer who typed a new address and
+      // ticked "save this address." A failure here must never block the
+      // order that already succeeded, so it's fire-and-forget.
+      if (
+        authStatus === "signed-in" &&
+        fulfillment === "delivery" &&
+        selectedAddressId === NEW_ADDRESS_OPTION &&
+        saveNewAddress
+      ) {
+        createAddress({
+          line1: address.address1,
+          line2: address.address2 || null,
+          city: address.city,
+          state: address.state,
+          postalCode: address.zip,
+        }).catch(() => {
+          // Non-fatal: the order already placed successfully either way.
+        });
+      }
 
       setOrder(createdOrder);
       setPaymentId(createdPaymentId);
@@ -288,48 +374,114 @@ export default function CheckoutPage() {
               </div>
 
               {fulfillment === "delivery" && (
-                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <Field
-                    label="Street Address"
-                    id="address1"
-                    type="text"
-                    required
-                    className="sm:col-span-2"
-                    value={address.address1}
-                    onChange={(value) => setAddress((a) => ({ ...a, address1: value }))}
-                  />
-                  <Field
-                    label="Apt / Unit (optional)"
-                    id="address2"
-                    type="text"
-                    value={address.address2}
-                    onChange={(value) => setAddress((a) => ({ ...a, address2: value }))}
-                  />
-                  <Field
-                    label="City"
-                    id="city"
-                    type="text"
-                    required
-                    value={address.city}
-                    onChange={(value) => setAddress((a) => ({ ...a, city: value }))}
-                  />
-                  <Field
-                    label="State"
-                    id="state"
-                    type="text"
-                    required
-                    value={address.state}
-                    onChange={(value) => setAddress((a) => ({ ...a, state: value }))}
-                  />
-                  <Field
-                    label="ZIP Code"
-                    id="zip"
-                    type="text"
-                    required
-                    value={address.zip}
-                    onChange={(value) => setAddress((a) => ({ ...a, zip: value }))}
-                  />
-                </div>
+                <>
+                  {savedAddresses.length > 0 && (
+                    <div className="mt-4 flex flex-col gap-2">
+                      <p className="text-sm font-semibold text-brand-charcoal">Choose a delivery address</p>
+                      <div className="flex flex-col gap-2">
+                        {savedAddresses.map((saved) => (
+                          <label
+                            key={saved.id}
+                            className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-sm transition-colors ${
+                              selectedAddressId === saved.id
+                                ? "border-brand-red bg-brand-red/5"
+                                : "border-brand-charcoal/15 hover:border-brand-charcoal/30"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="savedAddress"
+                              checked={selectedAddressId === saved.id}
+                              onChange={() => handleAddressSelect(saved.id)}
+                              className="mt-0.5 accent-brand-red"
+                            />
+                            <span className="text-brand-charcoal/80">
+                              {saved.line1}
+                              {saved.line2 ? `, ${saved.line2}` : ""}, {saved.city}, {saved.state}{" "}
+                              {saved.postalCode}
+                              {saved.isDefault && (
+                                <span className="ml-1.5 text-xs font-semibold uppercase tracking-wide text-brand-red-dark">
+                                  Default
+                                </span>
+                              )}
+                            </span>
+                          </label>
+                        ))}
+                        <label
+                          className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-3.5 py-2.5 text-sm font-semibold transition-colors ${
+                            selectedAddressId === NEW_ADDRESS_OPTION
+                              ? "border-brand-red bg-brand-red/5 text-brand-red-dark"
+                              : "border-brand-charcoal/15 text-brand-charcoal hover:border-brand-charcoal/30"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="savedAddress"
+                            checked={selectedAddressId === NEW_ADDRESS_OPTION}
+                            onChange={() => handleAddressSelect(NEW_ADDRESS_OPTION)}
+                            className="accent-brand-red"
+                          />
+                          Enter a new address
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field
+                      label="Street Address"
+                      id="address1"
+                      type="text"
+                      required
+                      className="sm:col-span-2"
+                      value={address.address1}
+                      onChange={(value) => setAddress((a) => ({ ...a, address1: value }))}
+                    />
+                    <Field
+                      label="Apt / Unit (optional)"
+                      id="address2"
+                      type="text"
+                      value={address.address2}
+                      onChange={(value) => setAddress((a) => ({ ...a, address2: value }))}
+                    />
+                    <Field
+                      label="City"
+                      id="city"
+                      type="text"
+                      required
+                      value={address.city}
+                      onChange={(value) => setAddress((a) => ({ ...a, city: value }))}
+                    />
+                    <Field
+                      label="State"
+                      id="state"
+                      type="text"
+                      required
+                      value={address.state}
+                      onChange={(value) => setAddress((a) => ({ ...a, state: value }))}
+                    />
+                    <Field
+                      label="ZIP Code"
+                      id="zip"
+                      type="text"
+                      required
+                      value={address.zip}
+                      onChange={(value) => setAddress((a) => ({ ...a, zip: value }))}
+                    />
+                  </div>
+
+                  {authStatus === "signed-in" && selectedAddressId === NEW_ADDRESS_OPTION && (
+                    <label className="mt-3 flex items-center gap-2 text-sm font-medium text-brand-charcoal">
+                      <input
+                        type="checkbox"
+                        checked={saveNewAddress}
+                        onChange={(e) => setSaveNewAddress(e.target.checked)}
+                        className="size-4 accent-brand-red"
+                      />
+                      Save this address to my account
+                    </label>
+                  )}
+                </>
               )}
 
               {fulfillment === "pickup" && (

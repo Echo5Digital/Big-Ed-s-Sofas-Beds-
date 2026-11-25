@@ -87,4 +87,107 @@ describe("posCustomers.service", () => {
     // their record, not a delivery destination (see createPosCustomer).
     expect(addresses[0].type).toBe("BILLING");
   });
+
+  it("returns the new address inline on the created customer (so the checkout screen can prefill without a second round-trip)", async () => {
+    const customer = await posCustomersService.createPosCustomer({
+      firstName: "Inline",
+      lastName: `Addr${stamp}`,
+      phone: `555-${(stamp + 5).toString().slice(-7)}`,
+      address: { line1: "456 Oak Ave", city: "Rivertown", state: "OH", postalCode: "43215" },
+    });
+    createdCustomerIds.push(customer.id);
+
+    expect(customer.address).toEqual({
+      line1: "456 Oak Ave",
+      line2: "",
+      city: "Rivertown",
+      state: "OH",
+      postalCode: "43215",
+    });
+  });
+
+  it("returns address: null when no address was ever saved", async () => {
+    const customer = await posCustomersService.createPosCustomer({
+      firstName: "NoAddr",
+      lastName: `Customer${stamp}`,
+      phone: `555-${(stamp + 6).toString().slice(-7)}`,
+    });
+    createdCustomerIds.push(customer.id);
+
+    expect(customer.address).toBeNull();
+  });
+
+  it("surfaces a repeat walk-in's address on file even when this visit's call sends no address", async () => {
+    const email = `pos-repeat-${stamp}@example.com`;
+    const first = await posCustomersService.createPosCustomer({
+      firstName: "Repeat",
+      lastName: "Visitor",
+      phone: `555-${(stamp + 7).toString().slice(-7)}`,
+      email,
+      address: { line1: "789 Pine Rd", city: "Lakeview", state: "MI", postalCode: "48001" },
+    });
+    createdCustomerIds.push(first.id);
+
+    const second = await posCustomersService.createPosCustomer({
+      firstName: "Repeat",
+      lastName: "Visitor",
+      phone: first.phone,
+      email,
+    });
+
+    expect(second.id).toBe(first.id);
+    expect(second.address).toEqual({
+      line1: "789 Pine Rd",
+      line2: "",
+      city: "Lakeview",
+      state: "MI",
+      postalCode: "48001",
+    });
+  });
+
+  it("replaces the prior default address instead of leaving two defaults when a repeat walk-in gives a new one", async () => {
+    const email = `pos-readdr-${stamp}@example.com`;
+    const first = await posCustomersService.createPosCustomer({
+      firstName: "Moved",
+      lastName: "Customer",
+      phone: `555-${(stamp + 8).toString().slice(-7)}`,
+      email,
+      address: { line1: "1 Old St", city: "Oldtown", state: "OH", postalCode: "43000" },
+    });
+    createdCustomerIds.push(first.id);
+
+    const second = await posCustomersService.createPosCustomer({
+      firstName: "Moved",
+      lastName: "Customer",
+      phone: first.phone,
+      email,
+      address: { line1: "2 New St", city: "Newtown", state: "OH", postalCode: "43001" },
+    });
+
+    expect(second.address.line1).toBe("2 New St");
+    const defaults = await prisma.address.findMany({ where: { customerId: first.id, isDefault: true } });
+    expect(defaults).toHaveLength(1);
+    expect(defaults[0].line1).toBe("2 New St");
+  });
+
+  it("includes address on search results via the default-address include", async () => {
+    const customer = await posCustomersService.createPosCustomer({
+      firstName: "Searchable",
+      lastName: `WithAddr${stamp}`,
+      phone: `555-${(stamp + 9).toString().slice(-7)}`,
+      address: { line1: "99 Search Ln", city: "Findville", state: "TX", postalCode: "75000" },
+    });
+    createdCustomerIds.push(customer.id);
+
+    const { customers } = await posCustomersService.searchCustomersForPos({ q: `WithAddr${stamp}` });
+    const found = customers.find((c) => c.id === customer.id);
+    expect(found).toBeDefined();
+    expect(found.address).toEqual({
+      line1: "99 Search Ln",
+      line2: "",
+      city: "Findville",
+      state: "TX",
+      postalCode: "75000",
+    });
+  });
 });

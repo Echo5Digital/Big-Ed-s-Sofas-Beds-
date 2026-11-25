@@ -127,6 +127,58 @@ describe("customerAccount.service — addresses", () => {
     expect(list.find((a) => a.id === first.id).isDefault).toBe(false);
   });
 
+  it("saving the same address twice does not create a duplicate row", async () => {
+    const customer = await newCustomer();
+    const first = await service.createAddress(customer.id, ADDRESS);
+    const again = await service.createAddress(customer.id, ADDRESS);
+
+    expect(again.id).toBe(first.id);
+    const list = await service.listAddresses(customer.id);
+    expect(list).toHaveLength(1);
+  });
+
+  it("recognizes a duplicate address regardless of case/whitespace differences", async () => {
+    const customer = await newCustomer();
+    const first = await service.createAddress(customer.id, ADDRESS);
+    const again = await service.createAddress(customer.id, {
+      line1: `  ${ADDRESS.line1.toUpperCase()}  `,
+      city: ADDRESS.city.toLowerCase(),
+      state: ADDRESS.state,
+      postalCode: ADDRESS.postalCode,
+    });
+
+    expect(again.id).toBe(first.id);
+    const list = await service.listAddresses(customer.id);
+    expect(list).toHaveLength(1);
+  });
+
+  it("re-saving the default address as isDefault stays idempotent (no change, no duplicate)", async () => {
+    const customer = await newCustomer();
+    const first = await service.createAddress(customer.id, ADDRESS);
+    const again = await service.createAddress(customer.id, { ...ADDRESS, isDefault: true });
+
+    expect(again.id).toBe(first.id);
+    expect(again.isDefault).toBe(true);
+    const list = await service.listAddresses(customer.id);
+    expect(list).toHaveLength(1);
+  });
+
+  it("re-saving a non-default address with isDefault:true promotes that same row instead of duplicating it", async () => {
+    const customer = await newCustomer();
+    const first = await service.createAddress(customer.id, ADDRESS);
+    const second = await service.createAddress(customer.id, { ...ADDRESS, line1: "2 Oak Ave" });
+    expect(second.isDefault).toBe(false);
+
+    const again = await service.createAddress(customer.id, { ...ADDRESS, line1: "2 Oak Ave", isDefault: true });
+
+    expect(again.id).toBe(second.id);
+    const list = await service.listAddresses(customer.id);
+    expect(list).toHaveLength(2);
+    expect(list.filter((a) => a.isDefault)).toHaveLength(1);
+    expect(list.find((a) => a.id === second.id).isDefault).toBe(true);
+    expect(list.find((a) => a.id === first.id).isDefault).toBe(false);
+  });
+
   it("edits an address, and setDefaultAddress flips the default", async () => {
     const customer = await newCustomer();
     const first = await service.createAddress(customer.id, ADDRESS);
@@ -189,7 +241,10 @@ describe("customerAccount.service — addresses", () => {
     for (let i = 0; i < service.MAX_ADDRESSES; i += 1) {
       await service.createAddress(customer.id, { ...ADDRESS, line1: `${i + 1} Main St` });
     }
-    await expect(service.createAddress(customer.id, ADDRESS)).rejects.toMatchObject({
+    // A genuinely new, non-duplicate address — distinct from every "N Main
+    // St" row already created above — so this actually exercises the cap
+    // rather than being short-circuited by the duplicate-address check.
+    await expect(service.createAddress(customer.id, { ...ADDRESS, line1: "1 Over The Limit Ave" })).rejects.toMatchObject({
       statusCode: 409,
       details: { reason: "address_limit" },
     });

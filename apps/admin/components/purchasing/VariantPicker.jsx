@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api/client";
 
 // Type-to-search replacement for a plain <select> of every variant in the
@@ -16,13 +16,19 @@ export default function VariantPicker({ value, onChange }) {
   const [searchState, setSearchState] = useState({ query: "", results: [], error: null });
   const trimmedQuery = query.trim();
   const searching = trimmedQuery !== "" && searchState.query !== trimmedQuery && !searchState.error;
+  // Guards against a slow earlier keystroke's response landing after a
+  // faster later one's and overwriting it — same requestIdRef pattern used
+  // elsewhere in this app (see LinkedProductPicker.jsx, products/page.jsx).
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     if (!trimmedQuery) return undefined;
+    const requestId = ++requestIdRef.current;
     const timeout = setTimeout(() => {
       api
         .get(`/catalog/admin/products?q=${encodeURIComponent(trimmedQuery)}`)
         .then((data) => {
+          if (requestId !== requestIdRef.current) return;
           // costCents carries through so the PO form can preset the line's
           // unit cost from the product's last known supplier cost.
           const variants = data.products.flatMap((p) =>
@@ -30,7 +36,10 @@ export default function VariantPicker({ value, onChange }) {
           );
           setSearchState({ query: trimmedQuery, results: variants, error: null });
         })
-        .catch(() => setSearchState({ query: trimmedQuery, results: [], error: "Search failed." }));
+        .catch(() => {
+          if (requestId !== requestIdRef.current) return;
+          setSearchState({ query: trimmedQuery, results: [], error: "Search failed." });
+        });
     }, 300);
     return () => clearTimeout(timeout);
   }, [trimmedQuery]);

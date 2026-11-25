@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { LogOut, ShoppingCart, ChevronDown } from "lucide-react";
 import { api, ApiClientError } from "@/lib/api/client";
 import { useRegisterSession } from "@/lib/hooks/useRegisterSession";
@@ -12,8 +12,24 @@ import AttributionPanel from "./AttributionPanel";
 import DeliveryAddressPanel from "./DeliveryAddressPanel";
 import { EMPTY_ADDRESS } from "./AddressFields";
 import TenderModal from "./TenderModal";
+import CardCheckoutModal from "./CardCheckoutModal";
 import ReceiptView from "./ReceiptView";
 import CloseRegister from "../register/CloseRegister";
+
+// The server's "Validation failed" message is deliberately generic (see
+// apps/api/src/lib/errors.js's ValidationError) — the actual reason lives in
+// err.details, a Zod .flatten() result ({ fieldErrors, formErrors }). Without
+// this, every rejected sale looked identical to the cashier regardless of
+// cause (a bad discount, an unresolved split attribution, a stray field),
+// which made real bugs indistinguishable from the cashier's own input
+// mistakes. Falls back to err.message for non-validation errors (409s etc.),
+// which already carry a specific, human-written message of their own.
+function describeApiError(err) {
+  const fieldErrors = err.details?.fieldErrors ?? {};
+  const formErrors = err.details?.formErrors ?? [];
+  const messages = [...formErrors, ...Object.values(fieldErrors).flat()];
+  return messages.length > 0 ? messages.join(" ") : err.message;
+}
 
 export default function CheckoutScreen() {
   const { session } = useRegisterSession();
@@ -24,6 +40,11 @@ export default function CheckoutScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [completedSale, setCompletedSale] = useState(null);
+  // Set only while a CARD sale's Square Terminal checkout is awaiting the
+  // customer's tap/insert/swipe (see CardCheckoutModal) — null the rest of
+  // the time, including for every other tender method, which still resolve
+  // synchronously within handleConfirmPayment itself.
+  const [pendingCardOrderId, setPendingCardOrderId] = useState(null);
   const [costsByVariantId, setCostsByVariantId] = useState({});
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [requestedDeliveryAt, setRequestedDeliveryAt] = useState("");
@@ -88,6 +109,26 @@ export default function CheckoutScreen() {
     setCartOpen(true);
   }
 
+  // Picking an existing customer (search) or creating a new one with an
+  // address both resolve through the same CustomerPanel onSelect — prefill
+  // billing (and, since billingSameAsShipping defaults true, shipping too)
+  // from whatever address came back, same as a returning customer's address
+  // auto-filling at online checkout. A customer with no address on file (or
+  // "Remove customer") clears back to blank rather than leaving a stale
+  // address from whoever was selected before.
+  function handleSelectCustomer(customer) {
+    setSelectedCustomer(customer);
+    setBillingAddress(customer?.address ? { ...EMPTY_ADDRESS, ...customer.address } : EMPTY_ADDRESS);
+    setBillingSameAsShipping(true);
+  }
+
+  function handleRemoveCustomer() {
+    setSelectedCustomer(null);
+    setBillingAddress(EMPTY_ADDRESS);
+    setShippingAddress(EMPTY_ADDRESS);
+    setBillingSameAsShipping(true);
+  }
+
   function handleUpdateQuantity(variantId, quantity) {
     if (quantity <= 0) {
       handleRemove(variantId);
@@ -124,6 +165,23 @@ export default function CheckoutScreen() {
       : undefined;
   }
 
+  // Shared by a synchronous sale's success and a card sale's eventual
+  // resolution (via CardCheckoutModal) — both start the next sale from the
+  // same clean slate. useCallback with an empty dependency array is safe
+  // here since the body only calls setState functions, which React
+  // guarantees are stable across renders — this gives handleCardResolved
+  // below a stable identity to depend on in turn.
+  const resetSaleForm = useCallback(() => {
+    setCartOpen(false);
+    setCart([]);
+    setSelectedCustomer(null);
+    setRequestedDeliveryAt("");
+    setShippingAddress(EMPTY_ADDRESS);
+    setBillingAddress(EMPTY_ADDRESS);
+    setBillingSameAsShipping(true);
+    setSalesAttribution([]);
+  }, []);
+
   async function handleConfirmPayment({ payments, discount, discountReasonCode, pinOverride }) {
     setError(null);
     setSubmitting(true);
@@ -150,22 +208,58 @@ export default function CheckoutScreen() {
         billingSameAsShipping: resolvedBillingAddress ? billingSameAsShipping : undefined,
         customerId: selectedCustomer?.id,
       });
+
+      if (data.pending) {
+        // Card sale: stays open on the register's cart/session (the cashier
+        // can't ring up a second sale mid-wait — same single-register-at-a-
+        // time model this whole screen already assumes) until
+        // CardCheckoutModal's polling reports a resolution.
+        setTenderOpen(false);
+        setPendingCardOrderId(data.order.id);
+        return;
+      }
+
       setCompletedSale(data);
       setTenderOpen(false);
-      setCartOpen(false);
-      setCart([]);
-      setSelectedCustomer(null);
-      setRequestedDeliveryAt("");
-      setShippingAddress(EMPTY_ADDRESS);
-      setBillingAddress(EMPTY_ADDRESS);
-      setBillingSameAsShipping(true);
-      setSalesAttribution([]);
+      resetSaleForm();
     } catch (err) {
-      setError(err instanceof ApiClientError ? err.message : "Unable to complete sale");
+      setError(err instanceof ApiClientError ? describeApiError(err) : "Unable to complete sale");
     } finally {
       setSubmitting(false);
     }
   }
+
+  // useCallback so CardCheckoutModal's polling effect (keyed on this
+  // function's identity, see its own [orderId, onResolved] dependency
+  // array) doesn't tear down and restart its interval on every unrelated
+  // re-render of this screen — e.g. a cashier adjusting cart quantities
+  // while a card payment is pending (the cart stays interactive underneath
+  // the "waiting for card" modal) would otherwise reset the 2s poll cadence
+  // on every keystroke/click, purely because this prop got a new identity
+  // each render.
+  const handleCardResolved = useCallback(
+    (data) => {
+      setPendingCardOrderId(null);
+      if (data.canceled) {
+        // Reopen the tender modal (rather than leaving no modal open at all)
+        // so the error is actually visible and the cashier can immediately
+        // retry with another tender — the cart/customer/etc. are all still
+        // intact since resetSaleForm only ever runs on an actual success.
+        setError(data.failureReason || "The card payment was not completed.");
+        setTenderOpen(true);
+        return;
+      }
+      setCompletedSale(data);
+      resetSaleForm();
+    },
+    [resetSaleForm]
+  );
+
+  const handleCardCanceled = useCallback(() => {
+    setPendingCardOrderId(null);
+    setError("Card payment canceled.");
+    setTenderOpen(true);
+  }, []);
 
   return (
     <div className="flex h-[calc(100vh-56px)] flex-col lg:flex-row">
@@ -208,8 +302,8 @@ export default function CheckoutScreen() {
 
         <CustomerPanel
           customer={selectedCustomer}
-          onSelect={setSelectedCustomer}
-          onRemove={() => setSelectedCustomer(null)}
+          onSelect={handleSelectCustomer}
+          onRemove={handleRemoveCustomer}
         />
 
         <AttributionPanel attribution={salesAttribution} onChange={setSalesAttribution} />
@@ -264,6 +358,12 @@ export default function CheckoutScreen() {
         onConfirm={handleConfirmPayment}
         submitting={submitting}
         error={error}
+      />
+
+      <CardCheckoutModal
+        orderId={pendingCardOrderId}
+        onResolved={handleCardResolved}
+        onCancel={handleCardCanceled}
       />
 
       <ReceiptView open={Boolean(completedSale)} onClose={() => setCompletedSale(null)} sale={completedSale} />

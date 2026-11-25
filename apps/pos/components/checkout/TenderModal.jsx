@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { Banknote, CreditCard, HandCoins, AlertTriangle, Plus, X } from "lucide-react";
 import { formatCents } from "@/lib/format";
 import Modal from "../ui/Modal";
@@ -8,10 +8,13 @@ import Button from "../ui/Button";
 
 // Only these three tenders are offered — Bank Transfer and Store Credit are
 // deliberately not in this list (a prior iteration had them; both worked,
-// but the business only wants Cash/Card/Deposit at the register). Card stays
-// listed but disabled: no payment processor/terminal has been selected yet
-// (see docs/requirements/open-questions.md), so it shows a "not available
-// yet" notice rather than accepting a tender it can't actually process.
+// but the business only wants Cash/Card/Deposit at the register). Card is a
+// Square Terminal checkout (apps/api/src/services/pos.service.js's
+// createCardCheckout) — single-tender only (see canAddEntry below) and
+// resolves asynchronously, unlike Cash/Deposit which confirm this same
+// request. If the register has no paired terminal (Register.squareDeviceId
+// unset), the API rejects with a clear message rather than this UI guessing
+// at availability client-side.
 const TENDERS = [
   { key: "CASH", label: "Cash", icon: Banknote },
   { key: "CARD", label: "Card (terminal)", icon: CreditCard },
@@ -108,13 +111,17 @@ export default function TenderModal({
   const remainingBalanceCents = Math.max(0, totalCents - amountAddedCents);
   const entryAmountCents = Math.round(Number(amount || 0) * 100);
 
-  const canAddEntry = useMemo(() => {
+  // Plain derived values, not useMemo — this form is small enough that
+  // memoizing bought nothing but a dependency-array footgun (easy to list a
+  // proxy like entries.length instead of the actual values a check reads,
+  // and silently recompute on the wrong renders).
+  const canAddEntry = (() => {
     if (!entryAmountCents || entryAmountCents <= 0) return false;
     if (method === "CARD") return false;
     // Only cash may exceed the remaining balance (to produce change).
     if (method !== "CASH" && entryAmountCents > remainingBalanceCents) return false;
     return true;
-  }, [entryAmountCents, method, remainingBalanceCents]);
+  })();
 
   function handleAddEntry() {
     if (!canAddEntry) return;
@@ -131,30 +138,22 @@ export default function TenderModal({
   const changeDueCents = Math.max(0, totalTenderedCents - totalCents);
   const hasDeposit = entries.some((e) => e.method === "DEPOSIT");
 
-  const canConfirm = useMemo(() => {
-    if (entries.length === 0) return false;
+  const canConfirm = (() => {
     if (discountCents > subtotalCents) return false;
     if (discountCents > 0 && !discountReasonCode.trim()) return false;
     if (pinRequired && !/^\d{4,6}$/.test(approverPin)) return false;
     if (belowCost) return false;
+    // Card never uses the entries list (see canAddEntry) — it's confirmable
+    // on its own once the total is a real, chargeable amount.
+    if (method === "CARD") return totalCents > 0;
+    if (entries.length === 0) return false;
     return totalTenderedCents >= totalCents || hasDeposit;
-  }, [
-    entries.length,
-    discountCents,
-    subtotalCents,
-    discountReasonCode,
-    pinRequired,
-    approverPin,
-    belowCost,
-    totalTenderedCents,
-    totalCents,
-    hasDeposit,
-  ]);
+  })();
 
   function handleConfirm() {
     const discountValueNumber = Number(discountValue || 0);
     onConfirm({
-      payments: entries,
+      payments: method === "CARD" ? [{ method: "CARD", amountCents: totalCents }] : entries,
       discount:
         discountCents > 0
           ? discountMode === "PERCENT"
@@ -239,7 +238,11 @@ export default function TenderModal({
 
         <div className="grid grid-cols-3 gap-2">
           {TENDERS.map(({ key, label, icon: Icon }) => {
-            const disabled = key === "CARD";
+            // Card is single-tender only — switching to it with other
+            // entries already added would be ambiguous (charge the card for
+            // the full total, or just the remaining balance?), so it's
+            // disabled once any entry exists; clear entries first to use it.
+            const disabled = key === "CARD" && entries.length > 0;
             return (
               <button
                 key={key}
@@ -260,9 +263,9 @@ export default function TenderModal({
         </div>
 
         {method === "CARD" && (
-          <p className="rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-            Card-present payment isn&apos;t available yet — the store hasn&apos;t selected a payment processor or
-            terminal model. Use another tender for now.
+          <p className="rounded-lg bg-brand-cream px-3 py-2.5 text-sm text-brand-charcoal/70">
+            The customer will tap, insert, or swipe their card on the register&apos;s terminal for the full order
+            total ({formatCents(totalCents)}).
           </p>
         )}
 
@@ -364,7 +367,7 @@ export default function TenderModal({
         )}
 
         <Button size="lg" disabled={!canConfirm || submitting} onClick={handleConfirm} className="w-full">
-          {submitting ? "Processing…" : "Confirm payment"}
+          {submitting ? "Processing…" : method === "CARD" ? "Send to terminal" : "Confirm payment"}
         </Button>
       </div>
     </Modal>

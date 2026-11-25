@@ -2,6 +2,8 @@ const { prisma } = require("@big-eds/database");
 const { ConflictError, NotFoundError } = require("../lib/errors");
 const { nextSequenceValue } = require("../lib/sequentialNumber");
 const { verifyManagerPin } = require("../lib/posPin");
+const { escapeLikeWildcards } = require("../lib/searchText");
+const { square } = require("../lib/square");
 const inventoryService = require("./inventory.service");
 const storeCreditService = require("./storeCredit.service");
 const posCustomersService = require("./posCustomers.service");
@@ -144,9 +146,15 @@ async function createPaymentEntries(tx, { orderId, registerSessionId, payments, 
 // one motion, unlike the online cart), and creates the Payment(s) + Receipt
 // records. A sale can be tendered across multiple payment entries (CASH,
 // DEPOSIT, BANK_TRANSFER, STORE_CREDIT) in one transaction; CARD is
-// rejected — no payment processor/terminal has been selected yet (see
-// docs/requirements/open-questions.md) and this function must never
-// fabricate a successful card charge.
+// rejected here and handled by createCardCheckout (below) instead — a card
+// sale can't reserve/convert stock or record SUCCEEDED synchronously the way
+// this function does, because Square Terminal confirms a card-present
+// payment asynchronously (the cashier submits the request, then the
+// customer taps/inserts on the physical terminal, then Square's webhook
+// reports the result seconds later, same "never assume terminal pending
+// means paid" rule as online checkout's Stripe->Square payment flow) — see
+// webhooks.routes.js's terminal.checkout.updated handler for where that
+// confirmation actually reserves+converts stock.
 async function ringSale({
   registerSessionId,
   lines,
@@ -589,6 +597,406 @@ async function ringSale({
   };
 }
 
+// Card-present counterpart to ringSale, for a register with a paired Square
+// Terminal (Register.squareDeviceId). Deliberately does NOT reserve/convert
+// stock or mark the sale complete here — only webhooks.routes.js's
+// terminal.checkout.updated handler does that, once Square itself confirms
+// the card was actually charged. A card sale is single-tender only (the full
+// total on one card) — split card/cash tenders would need the terminal to
+// know a smaller amount than the order total, which collectAmountMoney/
+// deviceOptions doesn't support cleanly, so this function intentionally
+// doesn't accept a `payments` array the way ringSale does.
+async function createCardCheckout({
+  registerSessionId,
+  lines,
+  discount,
+  discountReasonCode,
+  pinOverride,
+  salesAttribution,
+  requestedDeliveryAt,
+  shippingAddress,
+  billingAddress,
+  billingSameAsShipping,
+  customerId: inputCustomerId,
+  customerInput,
+  performedById,
+}) {
+  const session = await getOpenSession(registerSessionId);
+  const locationId = session.register.locationId;
+  if (!locationId) {
+    throw new ConflictError("Register is not assigned to a stock location");
+  }
+  const deviceId = session.register.squareDeviceId;
+  if (!deviceId) {
+    throw new ConflictError(
+      "This register has no paired card terminal — pair a Square Terminal device to it first, or use cash, deposit, bank transfer, or store credit."
+    );
+  }
+
+  const variantIds = lines.map((l) => l.variantId);
+  const variants = await prisma.variant.findMany({ where: { id: { in: variantIds } }, include: { product: true } });
+  const variantById = new Map(variants.map((v) => [v.id, v]));
+
+  for (const line of lines) {
+    const variant = variantById.get(line.variantId);
+    if (!variant || !variant.isActive) {
+      throw new ConflictError(`Product variant ${line.variantId} is not available`);
+    }
+  }
+
+  const subtotalCents = lines.reduce((sum, l) => sum + variantById.get(l.variantId).priceCents * l.quantity, 0);
+
+  // Same discount-resolution and tax-computation rules as ringSale — see
+  // that function's own comments for why each step is shaped this way.
+  let discountCents = 0;
+  let discountPercent = null;
+  if (discount?.mode === "PERCENT") {
+    discountPercent = discount.percent;
+    discountCents = Math.round((subtotalCents * discount.percent) / 100);
+  } else if (discount?.mode === "FLAT_CENTS") {
+    discountCents = discount.amountCents;
+  }
+
+  const effectivePercent = subtotalCents > 0 ? (discountCents / subtotalCents) * 100 : 0;
+  let discountApprovedById = null;
+  if (discountCents > 0 && effectivePercent > CASHIER_DISCOUNT_CEILING_PERCENT) {
+    if (!pinOverride?.approverPin) {
+      throw new ConflictError(
+        `Discounts over ${CASHIER_DISCOUNT_CEILING_PERCENT}% require a manager PIN override`,
+        { ceilingPercent: CASHIER_DISCOUNT_CEILING_PERCENT, effectivePercent }
+      );
+    }
+    discountApprovedById = await verifyManagerPin(pinOverride.approverPin);
+    if (!discountApprovedById) {
+      await prisma.auditLog.create({
+        data: {
+          userId: performedById,
+          action: "pos.sale.discount.pin_denied",
+          entityType: "User",
+          entityId: performedById,
+          metadata: { effectivePercent },
+        },
+      });
+      throw new ConflictError("Invalid manager PIN");
+    }
+  }
+
+  if (discountCents > subtotalCents) {
+    throw new ConflictError("Discount cannot exceed the order subtotal", { subtotalCents, discountCents });
+  }
+
+  let allocatedDiscountCents = 0;
+  const lineTaxCentsByIndex = lines.map((l, i) => {
+    const variant = variantById.get(l.variantId);
+    const lineSubtotalCents = variant.priceCents * l.quantity;
+    const isLastLine = i === lines.length - 1;
+    const lineDiscountCents = isLastLine
+      ? discountCents - allocatedDiscountCents
+      : subtotalCents > 0
+        ? Math.round((discountCents * lineSubtotalCents) / subtotalCents)
+        : 0;
+    allocatedDiscountCents += lineDiscountCents;
+    const taxableCents = lineSubtotalCents - lineDiscountCents;
+    return Math.round((taxableCents * Number(variant.taxRatePercent)) / 100);
+  });
+  const taxCents = lineTaxCentsByIndex.reduce((sum, t) => sum + t, 0);
+  const totalCents = subtotalCents - (discountCents || 0) + taxCents;
+
+  const totalCostCents = lines.reduce(
+    (sum, l) => sum + (variantById.get(l.variantId).costCents ?? 0) * l.quantity,
+    0
+  );
+  if (totalCents < totalCostCents) {
+    throw new ConflictError("This sale's total is below the cost of the items in it — adjust the discount", {
+      totalCents,
+      totalCostCents,
+    });
+  }
+  if (totalCents <= 0) {
+    throw new ConflictError("This sale's total must be greater than zero to charge a card");
+  }
+
+  let customerId = inputCustomerId || null;
+  if (!customerId && customerInput?.email) {
+    const customer = await posCustomersService.createPosCustomer({
+      firstName: customerInput.firstName,
+      lastName: customerInput.lastName,
+      phone: customerInput.phone,
+      email: customerInput.email,
+    });
+    customerId = customer.id;
+  }
+
+  const resolvedAttribution = salesAttribution?.length
+    ? salesAttribution
+    : performedById
+      ? [{ userId: performedById, role: "SALESMAN", percent: 100 }]
+      : [];
+
+  // DRAFT/UNPAID/UNALLOCATED, same as online checkout's pre-reservation
+  // state — NOT ringSale's CONFIRMED/RESERVED, because nothing has actually
+  // been charged or reserved yet. The webhook's handleTerminalCheckoutUpdated
+  // is what confirms/reserves this order, exactly as online checkout's
+  // handlePaymentUpdated does for a Stripe->Square card.
+  const order = await prisma.$transaction(async (tx) => {
+    let shippingAddressId = null;
+    let billingAddressId = null;
+    if (billingAddress) {
+      const createdBilling = await tx.address.create({
+        data: { type: "BILLING", customerId: null, ...billingAddress },
+      });
+      billingAddressId = createdBilling.id;
+
+      const shippingData = billingSameAsShipping ? billingAddress : shippingAddress;
+      if (shippingData) {
+        const createdShipping = await tx.address.create({
+          data: { type: "SHIPPING", customerId: null, ...shippingData },
+        });
+        shippingAddressId = createdShipping.id;
+      }
+    }
+
+    const orderNumber = await nextOrderNumber(tx);
+    return tx.order.create({
+      data: {
+        orderNumber,
+        channel: "POS",
+        customerId,
+        status: "DRAFT",
+        paymentStatus: "UNPAID",
+        fulfillmentStatus: "UNALLOCATED",
+        fulfillmentMethod: "IN_STORE",
+        subtotalCents,
+        taxCents,
+        discountCents: discountCents || 0,
+        discountPercent,
+        discountApprovedById,
+        requestedDeliveryAt: requestedDeliveryAt || null,
+        shippingAddressId,
+        billingAddressId,
+        totalCents,
+        lines: {
+          create: lines.map((l, i) => {
+            const variant = variantById.get(l.variantId);
+            const thisLineTaxCents = lineTaxCentsByIndex[i];
+            return {
+              variantId: variant.id,
+              skuSnapshot: variant.sku,
+              nameSnapshot: `${variant.product.name} — ${variant.name}`,
+              quantity: l.quantity,
+              unitPriceCents: variant.priceCents,
+              taxCents: thisLineTaxCents,
+              lineTotalCents: variant.priceCents * l.quantity + thisLineTaxCents,
+            };
+          }),
+        },
+        salesAttributions: {
+          create: resolvedAttribution.map((a) => ({
+            userId: a.userId,
+            role: a.role,
+            splitPercent: a.percent,
+          })),
+        },
+      },
+      include: { lines: true, customer: true, salesAttributions: true },
+    });
+  });
+
+  const payment = await prisma.payment.create({
+    data: {
+      orderId: order.id,
+      method: "CARD",
+      status: "PENDING",
+      amountCents: totalCents,
+      performedById,
+      // Payment has no registerSessionId column of its own (same gap noted
+      // in docs/database/schema.md for cash/deposit payments, attributed
+      // indirectly via Receipt instead) — but no Receipt exists yet for a
+      // still-pending card checkout, so completeCardCheckout/failCardCheckout
+      // (webhooks.routes.js) need some way back to which session this was
+      // rung up against. `reference` is otherwise just a free-text field
+      // (e.g. a check number) never used by any POS tender today, so this is
+      // the one place that stashes it.
+      reference: registerSessionId,
+    },
+  });
+
+  if (discountCents > 0) {
+    await prisma.auditLog.create({
+      data: {
+        userId: performedById,
+        action: "pos.sale.discount",
+        entityType: "Order",
+        entityId: order.id,
+        reasonCode: discountReasonCode,
+        metadata: {
+          discountCents,
+          subtotalCents,
+          discountPercent,
+          discountMode: discount?.mode ?? null,
+          approvedByUserId: discountApprovedById,
+          approvedViaPin: Boolean(discountApprovedById),
+        },
+      },
+    });
+  }
+
+  let terminalCheckout;
+  try {
+    // idempotencyKey = payment.id, same rule as online checkout's Square
+    // call: a client retry resubmitting this same pending payment reuses the
+    // same key rather than creating a second terminal checkout request.
+    const result = await square.terminal.checkouts.create({
+      idempotencyKey: payment.id,
+      checkout: {
+        amountMoney: { amount: BigInt(totalCents), currency: "USD" },
+        referenceId: order.id,
+        note: `Order ${order.orderNumber}`,
+        deviceOptions: { deviceId },
+      },
+    });
+    terminalCheckout = result.checkout;
+  } catch (err) {
+    // Square itself refused to create the checkout (bad device id, device
+    // offline/unpaired, etc.) — this pending order/payment must not be left
+    // stranded with no way forward, same "never leave CONFIRMED/RESERVED
+    // with no way to pay" rule POST /checkout follows for online orders.
+    await prisma.payment.update({ where: { id: payment.id }, data: { status: "FAILED", failureReason: err.message } });
+    await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } });
+    throw new ConflictError(`Could not send the charge to the card terminal: ${err.message}`);
+  }
+
+  await prisma.payment.update({ where: { id: payment.id }, data: { providerRef: terminalCheckout.id } });
+
+  return {
+    order,
+    payment: { ...payment, providerRef: terminalCheckout.id },
+    squareCheckoutId: terminalCheckout.id,
+    pending: true,
+  };
+}
+
+// Called only by webhooks.routes.js's terminal.checkout.updated handler, once
+// Square itself confirms the card was actually charged (TerminalCheckout
+// status COMPLETED) — this is the asynchronous counterpart to ringSale's
+// synchronous reserve+convert+receipt steps, deferred until here because a
+// card-present charge can't be assumed successful just because the API call
+// that requested it returned. performedById is the cashier who originally
+// rang up the sale (payment.performedById), not whoever/whatever triggered
+// the webhook delivery.
+async function completeCardCheckout(orderId) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { lines: true, payments: true },
+  });
+  if (!order) throw new NotFoundError("Order not found");
+  if (order.status !== "DRAFT") return; // already completed or canceled by a prior delivery of this event
+
+  const payment = order.payments.find((p) => p.method === "CARD");
+  const performedById = payment?.performedById ?? null;
+
+  // No Receipt exists yet at this point (created below), so the register
+  // session actually used isn't otherwise recoverable from the order alone —
+  // see createCardCheckout's own comment for why it's stashed on
+  // Payment.reference instead of a real column.
+  const registerSessionId = payment?.reference;
+  if (!registerSessionId) {
+    throw new ConflictError("Card checkout has no register session reference — cannot complete the sale", {
+      orderId,
+    });
+  }
+  const registerSession = await prisma.registerSession.findUnique({
+    where: { id: registerSessionId },
+    include: { register: true },
+  });
+  const locationId = registerSession?.register?.locationId;
+  if (!locationId) {
+    throw new ConflictError("Register session has no stock location — cannot complete the sale", { orderId });
+  }
+
+  const settled = await Promise.allSettled(
+    order.lines.map((line) =>
+      inventoryService.reserveAndConvertForSale({
+        variantId: line.variantId,
+        locationId,
+        quantity: line.quantity,
+        orderId: order.id,
+        performedById,
+        referenceId: order.id,
+      })
+    )
+  );
+
+  const reservationFailures = [];
+  const convertedLineVariantIds = [];
+  settled.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      convertedLineVariantIds.push(order.lines[index].variantId);
+    } else {
+      reservationFailures.push(order.lines[index].variantId);
+    }
+  });
+
+  if (reservationFailures.length > 0) {
+    // The card was actually charged, but the stock it was charged for is no
+    // longer available — this can only happen if the same stock sold out
+    // elsewhere in the seconds between the cashier submitting the sale and
+    // the customer tapping their card. Compensate every line that did
+    // convert, same as ringSale's own mid-sale failure path, and leave the
+    // order CANCELED with a SUCCEEDED-but-unfulfilled Payment — this needs a
+    // manual refund, which this function deliberately does not attempt
+    // automatically (an automatic refund is its own real-money action).
+    for (const variantId of convertedLineVariantIds) {
+      const line = order.lines.find((l) => l.variantId === variantId);
+      await inventoryService.adjustStock({
+        variantId,
+        locationId,
+        type: "ADJUSTMENT_INCREASE",
+        quantity: line.quantity,
+        reasonCode: "pos_sale_rollback",
+        performedById,
+      });
+    }
+    await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } });
+    throw new ConflictError(
+      "Card was charged but the items are no longer in stock — this sale needs a manual refund",
+      { orderId, unavailableVariantIds: reservationFailures }
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (payment) {
+      await tx.payment.update({ where: { id: payment.id }, data: { status: "SUCCEEDED" } });
+    }
+
+    await tx.order.update({
+      where: { id: order.id },
+      data: { status: "CONFIRMED", paymentStatus: "PAID", fulfillmentStatus: "RESERVED" },
+    });
+
+    const receiptNumber = await nextReceiptNumber(tx);
+    await tx.receipt.create({ data: { registerSessionId, orderId: order.id, receiptNumber } });
+  });
+}
+
+// Called only by webhooks.routes.js's terminal.checkout.updated handler when
+// a TerminalCheckout ends in CANCELED (customer declined, walked away, or
+// the deviceOptions.deadlineDuration elapsed with nobody tapping a card).
+// Nothing was ever reserved for this order (createCardCheckout leaves stock
+// untouched until completeCardCheckout above), so there's nothing to
+// release — just mark the attempt as not having happened.
+async function failCardCheckout(orderId, reason) {
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { payments: true } });
+  if (!order) throw new NotFoundError("Order not found");
+  if (order.status !== "DRAFT") return; // already resolved by a prior delivery of this event
+
+  const payment = order.payments.find((p) => p.method === "CARD");
+  if (payment && payment.status === "PENDING") {
+    await prisma.payment.update({ where: { id: payment.id }, data: { status: "FAILED", failureReason: reason } });
+  }
+  await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } });
+}
+
 // Closing a session reconciles cash collected against recorded cash
 // movements (SALE/DEPOSIT add, REFUND/PAID_OUT subtract, PAID_IN adds) so a
 // discrepancy is visible rather than silently absorbed.
@@ -857,14 +1265,15 @@ async function refund({ registerSessionId, orderId, amountCents, reasonCode, not
 async function findOrderWithBalance({ q }) {
   const query = String(q ?? "").trim();
   if (!query) throw new ConflictError("Search query is required");
+  const likeQuery = escapeLikeWildcards(query);
 
   const order = await prisma.order.findFirst({
     where: {
       paymentStatus: { in: ["PARTIALLY_PAID", "UNPAID"] },
       OR: [
-        { orderNumber: { contains: query, mode: "insensitive" } },
-        { receipts: { some: { receiptNumber: { contains: query, mode: "insensitive" } } } },
-        { customer: { phone: { contains: query, mode: "insensitive" } } },
+        { orderNumber: { contains: likeQuery, mode: "insensitive" } },
+        { receipts: { some: { receiptNumber: { contains: likeQuery, mode: "insensitive" } } } },
+        { customer: { phone: { contains: likeQuery, mode: "insensitive" } } },
       ],
     },
     include: {
@@ -1059,6 +1468,9 @@ module.exports = {
   approveReopen,
   denyReopen,
   ringSale,
+  createCardCheckout,
+  completeCardCheckout,
+  failCardCheckout,
   refund,
   findOrderWithBalance,
   settleBalance,

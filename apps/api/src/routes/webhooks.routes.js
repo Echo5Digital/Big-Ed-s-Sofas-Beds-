@@ -4,6 +4,7 @@ const { WebhooksHelper } = require("square");
 const { env } = require("../lib/env");
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { markPaymentSucceeded, markPaymentFailed } = require("../services/payments.service");
+const posService = require("../services/pos.service");
 
 const router = express.Router();
 
@@ -79,6 +80,8 @@ router.post(
 
     if (event.type === "payment.updated") {
       await handlePaymentUpdated(event.data.object.payment);
+    } else if (event.type === "terminal.checkout.updated") {
+      await handleTerminalCheckoutUpdated(event.data.object.checkout);
     }
 
     await prisma.providerEvent.update({
@@ -117,5 +120,27 @@ async function handlePaymentUpdated(squarePayment) {
   }
 }
 
+// POS card-present counterpart to handlePaymentUpdated — a Square Terminal
+// checkout (apps/api/src/services/pos.service.js's createCardCheckout)
+// resolves asynchronously via this same webhook subscription, as its own
+// event type (not payment.updated) because a TerminalCheckout has its own
+// id/status distinct from the Payment it eventually produces. PENDING/
+// IN_PROGRESS/CANCEL_REQUESTED aren't final outcomes and are left alone;
+// only COMPLETED or CANCELED is acted on (Square auto-cancels on its own
+// deviceOptions.deadlineDuration timeout, surfaced here as CANCELED too, not
+// a separate status).
+async function handleTerminalCheckoutUpdated(terminalCheckout) {
+  if (!terminalCheckout?.referenceId) return; // not one of this app's checkouts
+  const orderId = terminalCheckout.referenceId;
+
+  if (terminalCheckout.status === "COMPLETED") {
+    await posService.completeCardCheckout(orderId);
+  } else if (terminalCheckout.status === "CANCELED") {
+    const reason = terminalCheckout.cancelReason ? `Canceled: ${terminalCheckout.cancelReason}` : "Canceled";
+    await posService.failCardCheckout(orderId, reason);
+  }
+}
+
 module.exports = router;
 module.exports.handlePaymentUpdated = handlePaymentUpdated;
+module.exports.handleTerminalCheckoutUpdated = handleTerminalCheckoutUpdated;

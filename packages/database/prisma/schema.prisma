@@ -280,17 +280,33 @@ enum ContactMessageStatus {
 // of status: staff can flag a NEW or READ message as important, and
 // unflag it, without that affecting whether it's still unread.
 model ContactMessage {
-  id          String               @id @default(uuid())
-  name        String
-  email       String
-  message     String
-  status      ContactMessageStatus @default(NEW)
-  isImportant Boolean              @default(false)
-  createdAt   DateTime             @default(now())
+  id                       String               @id @default(uuid())
+  name                     String
+  email                    String
+  message                  String
+  status                   ContactMessageStatus @default(NEW)
+  isImportant              Boolean              @default(false)
+  // The four fields below are only ever populated by the storefront's
+  // "Request Return" flow (My Orders -> Contact, POST /messages/return) —
+  // every other ContactMessage (the plain /contact form) leaves them at
+  // their defaults. Kept on this same model rather than a new table since a
+  // return request is, at this stage, exactly a contact-form message with a
+  // few extra fields — it is a request staff triage manually, not a
+  // real inventory return (see ReturnTransaction for the actual in-store
+  // return/refund flow, which this is deliberately separate from).
+  isReturnRequest          Boolean              @default(false)
+  // Free-text order id / bill no / invoice the customer typed, when they
+  // didn't instead attach a file (returnAttachmentUrl). Either, both, or
+  // neither may be set — the route only requires at least one.
+  returnOrderReference     String?
+  returnAttachmentUrl      String?
+  returnAttachmentPublicId String?
+  createdAt                DateTime             @default(now())
 
   @@index([status])
   @@index([isImportant])
   @@index([createdAt])
+  @@index([isReturnRequest])
 }
 
 model Variant {
@@ -720,6 +736,14 @@ model Order {
   // free-form cashier-entered note of intent, distinct from scheduledDate
   // (which Delivery/Pickup's own fulfillment-console workflow owns).
   requestedDeliveryAt  DateTime?
+  // Stamped once, the first time staff set the unified displayStatus to
+  // "Completed" via PATCH /admin/orders/:id/status (see
+  // orders.routes.js) — never overwritten by a later status change, so it
+  // always reflects the original completion date. Null for any order that
+  // hasn't reached Completed yet, and for orders that completed before this
+  // column existed (no retroactive backfill). Backs the storefront's
+  // "Return" window (7 days from this date) on apps/storefront's My Orders.
+  completedAt          DateTime?
   // POS-captured billing/shipping address snapshots for a delivery sale —
   // freestanding Address rows (customerId null), never the customer's saved
   // address book. See Address.customerId comment.
@@ -992,19 +1016,30 @@ model ReturnLine {
 }
 
 // ---------------------------------------------------------------------------
-// POS (in-store cashier app — apps/pos). Card-present tender is stubbed until
-// a payment processor and terminal model are selected; see
-// docs/requirements/open-questions.md.
+// POS (in-store cashier app — apps/pos). Card-present tender uses Square
+// Terminal (see apps/api/src/services/pos.service.js's createCardCheckout
+// and apps/api/src/routes/webhooks.routes.js's terminal.checkout.updated
+// handler) — see docs/requirements/open-questions.md for what's still
+// pending (a register's squareDeviceId must be set, from the real Square
+// Dashboard's device-code pairing flow, before that register can take a
+// card-present sale).
 // ---------------------------------------------------------------------------
 
 model Register {
-  id         String            @id @default(uuid())
-  name       String
-  locationId String?
-  location   Location?         @relation(fields: [locationId], references: [id], onDelete: SetNull)
-  isActive   Boolean           @default(true)
-  sessions   RegisterSession[]
-  createdAt  DateTime          @default(now())
+  id             String            @id @default(uuid())
+  name           String
+  locationId     String?
+  location       Location?         @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  isActive       Boolean           @default(true)
+  // The physical Square Terminal device paired to this register, if any —
+  // null means this register can't take a card-present sale yet (ringSale's
+  // CARD rejection falls back to this case). Set via Square's device-code
+  // pairing flow (see the Square Dashboard), not something this app can
+  // provision on its own — there is no "create a device" API call, only
+  // "send a checkout to an already-paired device's ID."
+  squareDeviceId String?
+  sessions       RegisterSession[]
+  createdAt      DateTime          @default(now())
 
   @@index([locationId])
 }

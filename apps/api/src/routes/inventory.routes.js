@@ -1,5 +1,5 @@
 const express = require("express");
-const { prisma } = require("@big-eds/database");
+const { prisma, Prisma } = require("@big-eds/database");
 const { stockAdjustSchema, stockTransferSchema, countCreateSchema, countSubmitSchema } = require("@big-eds/validation");
 const { LOW_STOCK_THRESHOLD } = require("@big-eds/config");
 const { asyncHandler } = require("../middleware/asyncHandler");
@@ -30,61 +30,87 @@ router.get(
 
     await inventoryService.expireStaleReservations();
 
+    // lowStockOnly used to be filtered in JS after fetching every (variant,
+    // location) row in the store — availableToSell is a computed expression
+    // (onHand - reserved - quarantined), not a stored column, so Prisma's
+    // query builder can't filter on it directly. At catalog scale that meant
+    // transferring the *entire* StockBalance table (joined to variant/
+    // product/supplier/location) over the network just to keep the handful
+    // of low-stock rows, every time this view loaded with the low-stock
+    // toggle on — the same class of problem dashboard.routes.js's own
+    // low-stock tile already solved with a raw SQL comparison. This does the
+    // same GREATEST(onHand - reserved - quarantined, 0) <= threshold
+    // comparison in SQL, combined with the existing locationId/supplierId/q
+    // filters, via Prisma.sql/Prisma.join so every value is still a bound
+    // parameter — never raw string concatenation.
+    const conditions = [];
+    if (locationId) conditions.push(Prisma.sql`sb."locationId" = ${String(locationId)}`);
+    if (supplierId) conditions.push(Prisma.sql`p."supplierId" = ${String(supplierId)}`);
+    if (q) {
+      const likeQuery = `%${escapeLikeWildcards(String(q))}%`;
+      conditions.push(Prisma.sql`(v.sku ILIKE ${likeQuery} ESCAPE '\\' OR p.name ILIKE ${likeQuery} ESCAPE '\\')`);
+    }
+    if (lowStockOnly === "true") {
+      conditions.push(Prisma.sql`GREATEST(sb."onHand" - sb.reserved - sb.quarantined, 0) <= ${LOW_STOCK_THRESHOLD}`);
+    }
+    const whereClause = conditions.length > 0 ? Prisma.sql`WHERE ${Prisma.join(conditions, " AND ")}` : Prisma.empty;
+
     // Sorted by product/SKU/location, not by recency: sorting by updatedAt
     // made every row jump to the top of the table the moment it was adjusted
     // or transferred, so saving a change made the row you were just looking
     // at disappear from view and reappear elsewhere — confusing during the
     // normal adjust-and-verify flow. A stable sort keeps a row in the same
     // place before and after editing it.
-    const balances = await prisma.stockBalance.findMany({
-      where: {
-        ...(locationId ? { locationId: String(locationId) } : {}),
-        ...(supplierId ? { variant: { product: { supplierId: String(supplierId) } } } : {}),
-        ...(q
-          ? {
-              OR: [
-                { variant: { sku: { contains: escapeLikeWildcards(String(q)), mode: "insensitive" } } },
-                { variant: { product: { name: { contains: escapeLikeWildcards(String(q)), mode: "insensitive" } } } },
-              ],
-            }
-          : {}),
-      },
-      include: {
-        variant: { include: { product: { include: { supplier: true } } } },
-        location: true,
-      },
-      orderBy: [{ variant: { product: { name: "asc" } } }, { variant: { sku: "asc" } }, { location: { name: "asc" } }],
-    });
+    const rows = await prisma.$queryRaw`
+      SELECT
+        sb.id AS id,
+        sb."variantId" AS "variantId",
+        v.sku AS sku,
+        p.name AS "productName",
+        v.name AS "variantName",
+        v."costCents" AS "costCents",
+        p."supplierId" AS "supplierId",
+        s.name AS "supplierName",
+        sb."locationId" AS "locationId",
+        l.name AS "locationName",
+        sb."onHand" AS "onHand",
+        sb.reserved AS reserved,
+        sb.quarantined AS quarantined,
+        GREATEST(sb."onHand" - sb.reserved - sb.quarantined, 0) AS "availableToSell",
+        sb."updatedAt" AS "updatedAt"
+      FROM "StockBalance" sb
+      JOIN "Variant" v ON v.id = sb."variantId"
+      JOIN "Product" p ON p.id = v."productId"
+      JOIN "Location" l ON l.id = sb."locationId"
+      LEFT JOIN "Supplier" s ON s.id = p."supplierId"
+      ${whereClause}
+      ORDER BY p.name ASC, v.sku ASC, l.name ASC
+    `;
 
-    const shaped = balances.map((b) => {
-      const availableToSell = Math.max(0, b.onHand - b.reserved - b.quarantined);
-      return {
-        id: b.id,
-        variantId: b.variantId,
-        sku: b.variant.sku,
-        productName: b.variant.product.name,
-        variantName: b.variant.name,
-        costCents: b.variant.costCents,
-        supplierId: b.variant.product.supplierId,
-        supplierName: b.variant.product.supplier?.name ?? null,
-        locationId: b.locationId,
-        locationName: b.location.name,
-        onHand: b.onHand,
-        reserved: b.reserved,
-        quarantined: b.quarantined,
-        availableToSell,
-        // Suggestion only — tops back up to 2x the low-stock threshold. A
-        // manager must still review and approve any PO created from this
-        // (see purchase-orders/:id/approve); nothing here orders automatically.
-        suggestedReorderQty:
-          availableToSell <= LOW_STOCK_THRESHOLD ? Math.max(0, LOW_STOCK_THRESHOLD * 2 - availableToSell) : 0,
-        updatedAt: b.updatedAt,
-      };
-    });
+    const balances = rows.map((b) => ({
+      id: b.id,
+      variantId: b.variantId,
+      sku: b.sku,
+      productName: b.productName,
+      variantName: b.variantName,
+      costCents: b.costCents,
+      supplierId: b.supplierId,
+      supplierName: b.supplierName,
+      locationId: b.locationId,
+      locationName: b.locationName,
+      onHand: b.onHand,
+      reserved: b.reserved,
+      quarantined: b.quarantined,
+      availableToSell: b.availableToSell,
+      // Suggestion only — tops back up to 2x the low-stock threshold. A
+      // manager must still review and approve any PO created from this
+      // (see purchase-orders/:id/approve); nothing here orders automatically.
+      suggestedReorderQty:
+        b.availableToSell <= LOW_STOCK_THRESHOLD ? Math.max(0, LOW_STOCK_THRESHOLD * 2 - b.availableToSell) : 0,
+      updatedAt: b.updatedAt,
+    }));
 
-    const result = lowStockOnly === "true" ? shaped.filter((b) => b.availableToSell <= LOW_STOCK_THRESHOLD) : shaped;
-
-    res.json({ balances: result });
+    res.json({ balances });
   })
 );
 
@@ -142,9 +168,14 @@ router.get(
   "/counts",
   requirePermission("inventory:read"),
   asyncHandler(async (req, res) => {
+    // Hard-capped (same convention as orders.routes.js/reports.routes.js) —
+    // previously had no take at all, so every cycle count ever submitted,
+    // with all of its lines, was fetched on every call. No admin UI calls
+    // this endpoint today, so a cap rather than true pagination for now.
     const counts = await prisma.count.findMany({
       include: { location: true, lines: true },
       orderBy: { createdAt: "desc" },
+      take: 200,
     });
     res.json({ counts });
   })

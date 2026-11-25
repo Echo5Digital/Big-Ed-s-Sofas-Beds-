@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Star, Archive, Trash2, Mail, MailOpen } from "lucide-react";
+import { Star, Archive, Trash2, Mail, MailOpen, Undo2, ChevronDown, Paperclip } from "lucide-react";
 import RequireAuth from "@/components/layout/RequireAuth";
 import PageHeader from "@/components/ui/PageHeader";
 import Badge from "@/components/ui/Badge";
@@ -18,6 +18,10 @@ function MessagesContent() {
   const [messages, setMessages] = useState(null);
   const [error, setError] = useState(null);
   const [actioningId, setActioningId] = useState(null);
+  // Separate from the mark-read click below — only Return requests carry
+  // extra detail (order reference / attachment) worth collapsing by default,
+  // so a plain message never needs this state at all.
+  const [detailOpenId, setDetailOpenId] = useState(null);
   const canWrite = hasPermission("messages:write");
 
   const load = useCallback(() => {
@@ -100,16 +104,23 @@ function MessagesContent() {
         <p className="text-sm text-brand-charcoal/60">No messages yet.</p>
       ) : (
         <ul className="flex flex-col gap-3">
-          {messages.map((message) => (
+          {messages.map((message) => {
+            const isReturn = message.isReturnRequest;
+            const isDetailOpen = detailOpenId === message.id;
+            return (
             <li
               key={message.id}
               onClick={() => handleToggleOpen(message)}
               className={`flex flex-col gap-2 rounded-xl border p-4 ${
-                message.status === "NEW" ? "cursor-pointer border-brand-gold-dark/30 bg-brand-gold/5" : "border-black/10"
+                isReturn
+                  ? "cursor-pointer border-red-200 bg-red-50"
+                  : message.status === "NEW"
+                    ? "cursor-pointer border-brand-gold-dark/30 bg-brand-gold/5"
+                    : "border-black/10"
               }`}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {message.status === "NEW" ? (
                     <Mail className="size-4 text-brand-gold-dark" aria-hidden="true" />
                   ) : (
@@ -119,6 +130,12 @@ function MessagesContent() {
                     {message.status === "NEW" ? "Unread" : "Read"}
                   </Badge>
                   {message.isImportant && <Badge tone="danger">Important</Badge>}
+                  {isReturn && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">
+                      <Undo2 className="size-3.5" aria-hidden="true" />
+                      Return
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-brand-charcoal/50">{new Date(message.createdAt).toLocaleString()}</p>
               </div>
@@ -126,6 +143,49 @@ function MessagesContent() {
               <p className="text-sm font-semibold text-brand-charcoal">{message.name}</p>
               <p className="text-xs text-brand-charcoal/60">{message.email}</p>
               <p className="text-sm whitespace-pre-wrap text-brand-charcoal">{message.message}</p>
+
+              {isReturn && (
+                <div onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={() => setDetailOpenId((prev) => (prev === message.id ? null : message.id))}
+                    className="inline-flex items-center gap-1 self-start text-xs font-semibold text-red-700 hover:text-red-800"
+                  >
+                    <ChevronDown
+                      className={`size-3.5 transition-transform ${isDetailOpen ? "rotate-180" : ""}`}
+                      aria-hidden="true"
+                    />
+                    {isDetailOpen ? "Hide return details" : "View return details"}
+                  </button>
+
+                  {isDetailOpen && (
+                    <dl className="mt-2 flex flex-col gap-2 rounded-lg border border-red-200 bg-white p-3 text-sm">
+                      <div className="flex flex-wrap gap-x-2">
+                        <dt className="font-semibold text-brand-charcoal">Order reference:</dt>
+                        <dd className="text-brand-charcoal/80">{message.returnOrderReference || "Not provided"}</dd>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-2">
+                        <dt className="font-semibold text-brand-charcoal">Attachment:</dt>
+                        <dd>
+                          {message.returnAttachmentUrl ? (
+                            <a
+                              href={message.returnAttachmentUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-brand-red hover:text-brand-red-dark"
+                            >
+                              <Paperclip className="size-3.5" aria-hidden="true" />
+                              View file
+                            </a>
+                          ) : (
+                            <span className="text-brand-charcoal/60">None</span>
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+                  )}
+                </div>
+              )}
 
               {canWrite && (
                 <div
@@ -164,7 +224,8 @@ function MessagesContent() {
                 </div>
               )}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </div>

@@ -11,6 +11,12 @@ function getTransporter() {
       port: env.smtpPort,
       secure: env.smtpSecure,
       auth: env.smtpUser ? { user: env.smtpUser, pass: env.smtpPass } : undefined,
+      // nodemailer's own default (socketTimeout) is 10 minutes of inactivity
+      // before it gives up — far longer than this should ever hold open the
+      // customer sign-up/resend-code request that awaits sendVerificationCode
+      // inline. connectionTimeout/greetingTimeout keep their already-sane
+      // defaults (2 min / 30s); only the inactivity window is tightened.
+      socketTimeout: 30 * 1000,
     });
   }
   return transporter;

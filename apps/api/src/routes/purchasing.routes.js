@@ -26,7 +26,12 @@ router.get(
   "/suppliers",
   requirePermission("purchasing:read"),
   asyncHandler(async (req, res) => {
-    const suppliers = await prisma.supplier.findMany({ orderBy: { name: "asc" } });
+    // No search/pagination UI exists for this list yet (small today), but a
+    // hard cap here matches the convention used elsewhere in this file/app
+    // (purchase-orders below, orders.routes.js, reports.routes.js) so this
+    // endpoint can never return a truly unbounded result set as the
+    // supplier list grows.
+    const suppliers = await prisma.supplier.findMany({ orderBy: { name: "asc" }, take: 500 });
     res.json({ suppliers });
   })
 );
@@ -101,10 +106,16 @@ router.get(
   requirePermission("purchasing:read"),
   asyncHandler(async (req, res) => {
     const { status } = req.query;
+    // Hard-capped (same convention as orders.routes.js/reports.routes.js) —
+    // previously had no take/skip at all, so every PO ever created, with all
+    // of its lines, was fetched on every list-page load/tab switch, growing
+    // linearly with PO history forever. No search/pagination UI exists for
+    // this list yet, so a cap rather than true pagination for now.
     const purchaseOrders = await prisma.purchaseOrder.findMany({
       where: status ? { status: statusFilterFromQuery(status) } : undefined,
       include: { supplier: true, lines: true },
       orderBy: { createdAt: "desc" },
+      take: 200,
     });
     res.json({ purchaseOrders: purchaseOrders.map(serializePO) });
   })

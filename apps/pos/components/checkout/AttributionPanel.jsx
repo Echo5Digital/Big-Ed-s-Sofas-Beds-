@@ -111,6 +111,7 @@ function AttributionRow({ entry, staff, onChange, onRemove, showPercent }) {
                 type="button"
                 onClick={() => {
                   setQuery(s.employeeId);
+                  setNotFound(false);
                   onChange({ userId: s.id, employeeId: s.employeeId, role: roleForStaff(s) });
                 }}
                 className="w-full rounded-md px-2 py-1 text-left font-mono text-xs font-semibold hover:bg-brand-cream/60"
@@ -120,7 +121,14 @@ function AttributionRow({ entry, staff, onChange, onRemove, showPercent }) {
             </li>
           ))}
         </ul>
-      ) : notFound ? (
+      ) : notFound && !resolved ? (
+        // `resolved` (computed fresh every render from the staff roster, not
+        // from `notFound` state) is the real source of truth for whether
+        // this entry has a match — guarding on it here means a stale
+        // `notFound: true` from an earlier failed attempt can never outlive
+        // an actual successful resolution, regardless of which code path
+        // set it (picking from the list above, or the staff roster simply
+        // finishing its fetch after an earlier keystroke failed to match).
         <p className="text-xs font-medium text-red-600">No staff member with that employee ID.</p>
       ) : null}
     </div>
