@@ -31,13 +31,16 @@ export default function ClientPagination({ page, totalPages, onPageChange }) {
   }
 
   return (
-    <nav aria-label="Pagination" className="mt-8 flex items-center justify-center gap-1.5 sm:gap-2">
+    <nav
+      aria-label="Pagination"
+      className="mt-8 flex items-center justify-center gap-1.5 overflow-x-auto scrollbar-none sm:gap-2"
+    >
       <button
         type="button"
         onClick={() => goTo(page - 1)}
         aria-label="Previous page"
         disabled={page <= 1}
-        className={`flex size-10 items-center justify-center rounded-full border border-brand-charcoal/15 text-brand-charcoal transition-colors ${
+        className={`flex size-8 shrink-0 items-center justify-center rounded-full border border-brand-charcoal/15 text-brand-charcoal transition-colors sm:size-10 ${
           page <= 1 ? "pointer-events-none opacity-40" : "hover:border-brand-red hover:text-brand-red-dark"
         }`}
       >
@@ -56,7 +59,7 @@ export default function ClientPagination({ page, totalPages, onPageChange }) {
               onClick={() => goTo(pageNumber)}
               aria-label={`Page ${pageNumber}`}
               aria-current={pageNumber === page ? "page" : undefined}
-              className={`flex size-10 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
+              className={`flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold transition-colors sm:size-10 ${
                 pageNumber === page ? "bg-brand-red text-white" : "text-brand-charcoal hover:bg-brand-charcoal/5"
               }`}
             >
@@ -71,7 +74,7 @@ export default function ClientPagination({ page, totalPages, onPageChange }) {
         onClick={() => goTo(page + 1)}
         aria-label="Next page"
         disabled={page >= totalPages}
-        className={`flex size-10 items-center justify-center rounded-full border border-brand-charcoal/15 text-brand-charcoal transition-colors ${
+        className={`flex size-8 shrink-0 items-center justify-center rounded-full border border-brand-charcoal/15 text-brand-charcoal transition-colors sm:size-10 ${
           page >= totalPages ? "pointer-events-none opacity-40" : "hover:border-brand-red hover:text-brand-red-dark"
         }`}
       >

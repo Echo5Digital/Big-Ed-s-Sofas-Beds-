@@ -189,7 +189,7 @@ function MessagesContent() {
 
               {canWrite && (
                 <div
-                  className="mt-1 flex gap-2"
+                  className="mt-1 flex flex-wrap gap-2"
                   // Prevent the row's own open/mark-read click from firing
                   // when an action button inside it is clicked.
                   onClick={(e) => e.stopPropagation()}

@@ -45,7 +45,7 @@ function StarPicker({ value, onChange }) {
           onMouseEnter={() => setHovered(star)}
           aria-label={`Rate ${star} star${star === 1 ? "" : "s"}`}
           aria-pressed={value === star}
-          className="p-0.5"
+          className="p-1.5"
         >
           <Star
             className={`size-6 transition-colors ${display >= star ? "text-brand-gold" : "text-brand-charcoal/20"}`}

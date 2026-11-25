@@ -305,8 +305,10 @@ function OrderCard({ order }) {
             )}
           </span>
           <div className="min-w-0">
-            <p className="font-display text-base font-bold text-brand-charcoal">Order {order.orderNumber}</p>
-            <p className="mt-0.5 text-sm text-brand-charcoal/60">
+            <p className="truncate font-display text-base font-bold text-brand-charcoal" title={order.orderNumber}>
+              Order {order.orderNumber}
+            </p>
+            <p className="mt-0.5 truncate text-sm text-brand-charcoal/60">
               Placed {formatPlacedDate(order.placedAt)}
               {method ? ` · ${method}` : ""}
             </p>

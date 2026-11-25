@@ -81,7 +81,7 @@ export default function ProductCard({ product, showRatingValue = false }) {
           onClick={() => toggleWishlist(product.id)}
           aria-pressed={isWishlisted}
           aria-label={isWishlisted ? `Remove ${plainName} from wishlist` : `Add ${plainName} to wishlist`}
-          className="absolute right-2 top-2 flex size-9 shrink-0 items-center justify-center rounded-full bg-white/90 text-brand-charcoal shadow-sm hover:text-brand-red focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red sm:right-2.5 sm:top-2.5 sm:size-10"
+          className="absolute right-2 top-2 flex size-10 shrink-0 items-center justify-center rounded-full bg-white/90 text-brand-charcoal shadow-sm hover:text-brand-red focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red sm:right-2.5 sm:top-2.5"
         >
           <Heart
             className="size-4 sm:size-4.5"
