@@ -411,17 +411,6 @@ async function ProductDetailPage({ product }) {
         </div>
       </Container>
 
-      {frequentlyBoughtTogether.length > 1 && (
-        <Container className="mt-12 border-t border-brand-charcoal/10 pt-10 sm:mt-14 sm:pt-12">
-          <h2 className="font-display text-xl font-semibold text-brand-charcoal sm:text-2xl">
-            Frequently Bought Together
-          </h2>
-          <div className="mt-5">
-            <FrequentlyBoughtTogether items={frequentlyBoughtTogether} />
-          </div>
-        </Container>
-      )}
-
       {product.description && (
         <Container className="mt-12 border-t border-brand-charcoal/10 pt-10 sm:mt-14 sm:pt-12">
           <h2 className="font-display text-xl font-semibold text-brand-charcoal sm:text-2xl">Description</h2>
@@ -434,6 +423,17 @@ async function ProductDetailPage({ product }) {
       <Container className="mt-12 border-t border-brand-charcoal/10 pt-10 sm:mt-14 sm:pt-12">
         <ReviewsSection productSlug={product.slug} reviews={product.reviews ?? []} />
       </Container>
+
+      {frequentlyBoughtTogether.length > 1 && (
+        <Container className="mt-12 border-t border-brand-charcoal/10 pt-10 sm:mt-14 sm:pt-12">
+          <h2 className="font-display text-xl font-semibold text-brand-charcoal sm:text-2xl">
+            Frequently Bought Together
+          </h2>
+          <div className="mt-5">
+            <FrequentlyBoughtTogether items={frequentlyBoughtTogether} />
+          </div>
+        </Container>
+      )}
 
       {/* The API only returns warrantyNote while isWarrantied is true. */}
       {product.isWarrantied && product.warrantyNote && (
