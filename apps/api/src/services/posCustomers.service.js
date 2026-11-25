@@ -1,5 +1,6 @@
 const { prisma } = require("@big-eds/database");
 const { escapeLikeWildcards } = require("../lib/searchText");
+const { findDuplicateAddress } = require("./customerAccount.service");
 
 const MAX_SEARCH_TERMS = 5;
 const MAX_RESULTS = 25;
@@ -106,7 +107,20 @@ async function createPosCustomer({ firstName, lastName, phone, email, address })
     // new one this visit) — clear the old default first so there's never
     // more than one, same rule customerAccount.service.js's createAddress
     // follows for storefront-managed addresses.
+    //
+    // A repeat walk-in matched by email (the upsert above) re-giving the
+    // cashier the same address every visit used to create a fresh row each
+    // time — findDuplicateAddress (same case/whitespace-insensitive match
+    // customerAccount.service.js's own createAddress uses) reuses that row
+    // instead, just promoting it back to default.
     savedAddress = await prisma.$transaction(async (tx) => {
+      const duplicate = await findDuplicateAddress(tx, customer.id, address);
+      if (duplicate) {
+        if (duplicate.isDefault) return duplicate;
+        await tx.address.updateMany({ where: { customerId: customer.id, isDefault: true }, data: { isDefault: false } });
+        return tx.address.update({ where: { id: duplicate.id }, data: { isDefault: true } });
+      }
+
       await tx.address.updateMany({ where: { customerId: customer.id, isDefault: true }, data: { isDefault: false } });
       return tx.address.create({
         data: {

@@ -72,7 +72,7 @@ const DISPLAY_STATUS = {
 // 3-step progress reading of the unified status, for the stepper shown in
 // the expanded order view. "Ordered"/"Processing" both read as step 1 (the
 // order is confirmed and being prepared); "Ready" is step 2 — labeled
-// "Shipped" for delivery orders and "Ready for Pickup" for pickup/in-store,
+// "Ready" for delivery orders and "Ready for Pickup" for pickup/in-store,
 // since fulfillment only ever tracks readiness, not a carrier shipment;
 // "Completed" is step 3, labeled by how it was actually fulfilled.
 // "Canceled" has no step position — callers should not render the stepper
@@ -81,7 +81,7 @@ function stepperStepsFor(order) {
   const isDelivery = order.fulfillmentMethod === "DELIVERY";
   const steps = [
     { key: "confirmed", label: "Order Confirmed" },
-    { key: "shipped", label: isDelivery ? "Shipped" : "Ready for Pickup" },
+    { key: "shipped", label: isDelivery ? "Ready" : "Ready for Pickup" },
     { key: "delivered", label: isDelivery ? "Delivered" : "Picked Up" },
   ];
   const activeIndex =

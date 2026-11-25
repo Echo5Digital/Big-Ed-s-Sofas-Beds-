@@ -170,6 +170,31 @@ describe("posCustomers.service", () => {
     expect(defaults[0].line1).toBe("2 New St");
   });
 
+  it("reuses the existing address instead of creating a duplicate row when a repeat walk-in gives the same one again", async () => {
+    const email = `pos-samereaddr-${stamp}@example.com`;
+    const first = await posCustomersService.createPosCustomer({
+      firstName: "Same",
+      lastName: "Address",
+      phone: `555-${(stamp + 10).toString().slice(-7)}`,
+      email,
+      address: { line1: "1 Repeat St", city: "Sameville", state: "OH", postalCode: "43002" },
+    });
+    createdCustomerIds.push(first.id);
+
+    const second = await posCustomersService.createPosCustomer({
+      firstName: "Same",
+      lastName: "Address",
+      phone: first.phone,
+      email,
+      address: { line1: "  1 repeat st  ", city: "SAMEVILLE", state: "oh", postalCode: "43002" },
+    });
+
+    expect(second.address.line1).toBe("1 Repeat St");
+    const addresses = await prisma.address.findMany({ where: { customerId: first.id } });
+    expect(addresses).toHaveLength(1);
+    expect(addresses[0].isDefault).toBe(true);
+  });
+
   it("includes address on search results via the default-address include", async () => {
     const customer = await posCustomersService.createPosCustomer({
       firstName: "Searchable",
