@@ -397,26 +397,40 @@ async function ProductDetailPage({ product }) {
               </div>
             ))}
           </div>
+        </div>
+      </Container>
+
+      {/* Description + "Available As" share one row. Any product with linked
+          products gets a 50/50 split on desktop (stacked on mobile), whether
+          or not it has a description — with no description, "Available As"
+          stays in the right half so it sits in the same place on every
+          product. A product with no linked products keeps the description
+          full width, as it always did. */}
+      {(product.description || linkedProducts.length > 0) && (
+        <Container
+          className={`mt-12 border-t border-brand-charcoal/10 pt-10 sm:mt-14 sm:pt-12 ${
+            linkedProducts.length > 0 ? "grid grid-cols-1 gap-10 lg:grid-cols-2 lg:gap-14" : ""
+          }`}
+        >
+          {product.description && (
+            <div>
+              <h2 className="font-display text-xl font-semibold text-brand-charcoal sm:text-2xl">Description</h2>
+              <p className="mt-3 max-w-3xl whitespace-pre-line text-sm leading-relaxed text-brand-charcoal/75 sm:text-base">
+                <InlineMarkdown text={product.description} />
+              </p>
+            </div>
+          )}
 
           {linkedProducts.length > 0 && (
-            <div className="flex flex-col gap-3">
-              <h2 className="font-display text-base font-semibold text-brand-charcoal">Available As</h2>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="lg:col-start-2">
+              <h2 className="font-display text-xl font-semibold text-brand-charcoal sm:text-2xl">Available As</h2>
+              <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {linkedProducts.map((item) => (
                   <ProductCard key={item.id} product={item} />
                 ))}
               </div>
             </div>
           )}
-        </div>
-      </Container>
-
-      {product.description && (
-        <Container className="mt-12 border-t border-brand-charcoal/10 pt-10 sm:mt-14 sm:pt-12">
-          <h2 className="font-display text-xl font-semibold text-brand-charcoal sm:text-2xl">Description</h2>
-          <p className="mt-3 max-w-3xl whitespace-pre-line text-sm leading-relaxed text-brand-charcoal/75 sm:text-base">
-            <InlineMarkdown text={product.description} />
-          </p>
         </Container>
       )}
 
