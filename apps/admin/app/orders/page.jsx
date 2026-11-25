@@ -17,8 +17,19 @@ const PAYMENT_TONE = { UNPAID: "danger", PARTIALLY_PAID: "warning", PAID: "succe
 const PAGE_SIZE = 25;
 const SEARCH_DEBOUNCE_MS = 300;
 
-const ORDER_STATUSES = ["DRAFT", "CONFIRMED", "CANCELED", "CLOSED"];
-const FULFILLMENT_STATUSES = ["UNALLOCATED", "RESERVED", "PROCESSING", "READY", "PICKED_UP", "DELIVERED"];
+// Same unified labels as OrderStatusDropdown/orderStatus.service.js's
+// displayStatus — filtering on this instead of the raw status/
+// fulfillmentStatus enums means "Status: Ordered" here matches exactly the
+// rows whose own badge reads "Ordered", regardless of channel.
+const DISPLAY_STATUSES = ["Ordered", "Processing", "Ready", "Completed", "Canceled"];
+// { value, label } pairs (rather than plain strings like DISPLAY_STATUSES,
+// which already read fine as-is) since the raw PaymentStatus enum values
+// this sends to the server (PAID/UNPAID) are all-caps and shouldn't be shown
+// to staff that way.
+const PAYMENT_STATUSES = [
+  { value: "PAID", label: "Paid" },
+  { value: "UNPAID", label: "Unpaid" },
+];
 const CHANNEL_TABS = [
   { value: "", label: "All" },
   { value: "POS", label: "POS" },
@@ -35,11 +46,15 @@ function SelectFilter({ label, value, onChange, options }) {
         className="rounded-lg border border-black/15 px-2.5 py-1.5 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
       >
         <option value="">All</option>
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt.replaceAll("_", " ")}
-          </option>
-        ))}
+        {options.map((opt) => {
+          const optValue = typeof opt === "string" ? opt : opt.value;
+          const optLabel = typeof opt === "string" ? opt.replaceAll("_", " ") : opt.label;
+          return (
+            <option key={optValue} value={optValue}>
+              {optLabel}
+            </option>
+          );
+        })}
       </select>
     </label>
   );
@@ -48,8 +63,8 @@ function SelectFilter({ label, value, onChange, options }) {
 function OrdersContent() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [status, setStatus] = useState("");
-  const [fulfillmentStatus, setFulfillmentStatus] = useState("");
+  const [displayStatus, setDisplayStatus] = useState("");
+  const [paymentStatus, setPaymentStatus] = useState("");
   const [channel, setChannel] = useState("");
   const [page, setPage] = useState(1);
   // The latest response, tagged with the query it answers — same
@@ -58,7 +73,7 @@ function OrdersContent() {
   // overwrite a newer one's results.
   const [result, setResult] = useState(null);
 
-  const queryKey = `${debouncedSearch}|${status}|${fulfillmentStatus}|${channel}|${page}`;
+  const queryKey = `${debouncedSearch}|${displayStatus}|${paymentStatus}|${channel}|${page}`;
   const loading = result?.key !== queryKey;
 
   useEffect(() => {
@@ -80,8 +95,8 @@ function OrdersContent() {
     let cancelled = false;
     const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
     if (debouncedSearch) params.set("q", debouncedSearch);
-    if (status) params.set("status", status);
-    if (fulfillmentStatus) params.set("fulfillmentStatus", fulfillmentStatus);
+    if (displayStatus) params.set("displayStatus", displayStatus);
+    if (paymentStatus) params.set("paymentStatus", paymentStatus);
     if (channel) params.set("channel", channel);
 
     api
@@ -98,7 +113,7 @@ function OrdersContent() {
     return () => {
       cancelled = true;
     };
-  }, [queryKey, debouncedSearch, status, fulfillmentStatus, channel, page]);
+  }, [queryKey, debouncedSearch, displayStatus, paymentStatus, channel, page]);
 
   const orders = result?.orders ?? null;
   const total = result?.pagination?.total ?? 0;
@@ -154,12 +169,17 @@ function OrdersContent() {
         subtitle="Online and in-store sales"
         action={
           <div className="flex flex-wrap items-center gap-4">
-            <SelectFilter label="Status" value={status} onChange={handleFilterChange(setStatus)} options={ORDER_STATUSES} />
             <SelectFilter
-              label="Fulfillment"
-              value={fulfillmentStatus}
-              onChange={handleFilterChange(setFulfillmentStatus)}
-              options={FULFILLMENT_STATUSES}
+              label="Status"
+              value={displayStatus}
+              onChange={handleFilterChange(setDisplayStatus)}
+              options={DISPLAY_STATUSES}
+            />
+            <SelectFilter
+              label="Payment"
+              value={paymentStatus}
+              onChange={handleFilterChange(setPaymentStatus)}
+              options={PAYMENT_STATUSES}
             />
           </div>
         }

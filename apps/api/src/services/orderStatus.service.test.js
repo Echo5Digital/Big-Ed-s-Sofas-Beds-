@@ -2,7 +2,31 @@ const {
   computeOrderDisplayStatus,
   legalTargetStatusesForChannel,
   resolveOrderStatusFieldWrites,
+  orderWhereForDisplayStatus,
 } = require("./orderStatus.service");
+
+// Minimal in-memory predicate matcher for the small subset of Prisma
+// where-clause shapes orderWhereForDisplayStatus actually produces (plain
+// equality, { not }, { in }, and a top-level AND/OR array of the same) — just
+// enough to let these tests assert the where-clause and
+// computeOrderDisplayStatus never disagree, without a real database.
+function matches(where, order) {
+  // AND/OR/NOT can appear ALONGSIDE plain field conditions in the same
+  // where-object (Prisma ANDs every top-level key together) — e.g.
+  // { AND: [...], fulfillmentStatus: "READY" } requires both the AND group
+  // AND fulfillmentStatus to hold, so these are checked as conditions to
+  // combine with the rest below, never as an early return on their own.
+  return Object.entries(where).every(([key, condition]) => {
+    if (key === "AND") return condition.every((w) => matches(w, order));
+    if (key === "OR") return condition.some((w) => matches(w, order));
+    if (key === "NOT") return !matches(condition, order);
+    if (condition && typeof condition === "object") {
+      if ("not" in condition) return order[key] !== condition.not;
+      if ("in" in condition) return condition.in.includes(order[key]);
+    }
+    return order[key] === condition;
+  });
+}
 
 // Pure functions, no Prisma/DB involved — see the module's own header
 // comment for why these are the one deliberate exception to "never conflate
@@ -72,6 +96,42 @@ describe("orderStatus.service — computeOrderDisplayStatus", () => {
         computeOrderDisplayStatus({ channel: "POS", status: "DRAFT", paymentStatus: "UNPAID", fulfillmentStatus: "UNALLOCATED" })
       ).toBe("Draft");
     });
+  });
+});
+
+describe("orderStatus.service — orderWhereForDisplayStatus", () => {
+  // Every order from the computeOrderDisplayStatus suite above, re-used here
+  // so the two functions are tested against the exact same fixtures — the
+  // property under test is that they never disagree, for either channel.
+  const sampleOrders = [
+    { channel: "ONLINE", status: "CANCELED", paymentStatus: "PAID", fulfillmentStatus: "READY" },
+    { channel: "POS", status: "CANCELED", paymentStatus: "PARTIALLY_PAID", fulfillmentStatus: "RESERVED" },
+    { channel: "ONLINE", status: "CONFIRMED", paymentStatus: "UNPAID", fulfillmentStatus: "UNALLOCATED" },
+    { channel: "ONLINE", status: "CONFIRMED", paymentStatus: "UNPAID", fulfillmentStatus: "RESERVED" },
+    { channel: "ONLINE", status: "CONFIRMED", paymentStatus: "UNPAID", fulfillmentStatus: "PROCESSING" },
+    { channel: "ONLINE", status: "CONFIRMED", paymentStatus: "UNPAID", fulfillmentStatus: "READY" },
+    { channel: "ONLINE", status: "CONFIRMED", paymentStatus: "UNPAID", fulfillmentStatus: "PICKED_UP" },
+    { channel: "ONLINE", status: "CONFIRMED", paymentStatus: "UNPAID", fulfillmentStatus: "DELIVERED" },
+    { channel: "POS", status: "CONFIRMED", paymentStatus: "PARTIALLY_PAID", fulfillmentStatus: "RESERVED" },
+    { channel: "POS", status: "CONFIRMED", paymentStatus: "PARTIALLY_PAID", fulfillmentStatus: "READY" },
+    { channel: "POS", status: "CONFIRMED", paymentStatus: "PAID", fulfillmentStatus: "RESERVED" },
+    { channel: "POS", status: "CONFIRMED", paymentStatus: "PAID", fulfillmentStatus: "READY" },
+    { channel: "POS", status: "CONFIRMED", paymentStatus: "PAID", fulfillmentStatus: "PICKED_UP" },
+    { channel: "POS", status: "DRAFT", paymentStatus: "UNPAID", fulfillmentStatus: "UNALLOCATED" },
+  ];
+
+  it.each(["Ordered", "Processing", "Ready", "Completed", "Canceled"])(
+    "%s matches exactly the orders computeOrderDisplayStatus also labels %s",
+    (label) => {
+      const where = orderWhereForDisplayStatus(label);
+      for (const order of sampleOrders) {
+        expect(matches(where, order)).toBe(computeOrderDisplayStatus(order) === label);
+      }
+    }
+  );
+
+  it("throws for a label that isn't one of the five filterable statuses", () => {
+    expect(() => orderWhereForDisplayStatus("Draft")).toThrow(/not a filterable order status/);
   });
 });
 

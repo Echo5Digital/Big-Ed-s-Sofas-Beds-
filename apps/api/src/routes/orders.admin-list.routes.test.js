@@ -116,13 +116,38 @@ describe("orders.routes — GET /admin/orders", () => {
     expect(ids).not.toContain(createdOrderIds[2]);
   });
 
-  it("still honors the existing status/fulfillmentStatus/channel filters alongside q", async () => {
+  it("filters by the unified displayStatus alongside channel and q", async () => {
+    // Fixture orders are ONLINE/CONFIRMED/UNPAID/RESERVED, which
+    // computeOrderDisplayStatus reads as "Ordered" — see orderStatus.service.js.
     const res = await request(app)
-      .get(`/api/admin/orders?q=${encodeURIComponent(`BE-ADMINLIST-TEST-${suffix}`)}&channel=ONLINE&status=CONFIRMED`)
+      .get(`/api/admin/orders?q=${encodeURIComponent(`BE-ADMINLIST-TEST-${suffix}`)}&channel=ONLINE&displayStatus=Ordered`)
       .set("Cookie", managerCookie);
 
     expect(res.status).toBe(200);
     expect(res.body.orders.length).toBe(3);
+  });
+
+  it("a displayStatus that doesn't match any fixture order excludes them all", async () => {
+    const res = await request(app)
+      .get(`/api/admin/orders?q=${encodeURIComponent(`BE-ADMINLIST-TEST-${suffix}`)}&displayStatus=Completed`)
+      .set("Cookie", managerCookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.orders.length).toBe(0);
+  });
+
+  it("filters by paymentStatus=UNPAID (fixture orders) and excludes them under PAID", async () => {
+    const unpaid = await request(app)
+      .get(`/api/admin/orders?q=${encodeURIComponent(`BE-ADMINLIST-TEST-${suffix}`)}&paymentStatus=UNPAID`)
+      .set("Cookie", managerCookie);
+    expect(unpaid.status).toBe(200);
+    expect(unpaid.body.orders.length).toBe(3);
+
+    const paid = await request(app)
+      .get(`/api/admin/orders?q=${encodeURIComponent(`BE-ADMINLIST-TEST-${suffix}`)}&paymentStatus=PAID`)
+      .set("Cookie", managerCookie);
+    expect(paid.status).toBe(200);
+    expect(paid.body.orders.length).toBe(0);
   });
 
   it("paginates correctly across two pages", async () => {

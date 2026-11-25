@@ -85,8 +85,59 @@ function resolveOrderStatusFieldWrites(order, displayStatus) {
   return { fulfillmentStatus: "RESERVED" }; // "Ordered"
 }
 
+// The inverse of computeOrderDisplayStatus: a Prisma where-clause matching
+// every order whose computed label equals displayStatus, across both
+// channels at once (the admin orders list filters without a channel
+// restriction) — mirrors that function's branches exactly rather than
+// re-deriving the rule, so a filtered list can never disagree with what the
+// row's own badge shows. Throws on an unrecognized label; callers validate
+// against this same five-value list (Ordered/Processing/Ready/Completed/
+// Canceled) before calling.
+function orderWhereForDisplayStatus(displayStatus) {
+  // Both of computeOrderDisplayStatus's own short-circuits, reproduced as
+  // negative conditions: CANCELED always wins regardless of channel, and a
+  // POS order's own PARTIALLY_PAID deposit state always reads as Draft
+  // regardless of fulfillmentStatus (see that function) — so every bucket
+  // below except Canceled itself must also exclude a POS PARTIALLY_PAID
+  // order, or e.g. a Draft deposit sitting at fulfillmentStatus READY would
+  // wrongly match the "Ready" filter too.
+  const notCanceled = { status: { not: "CANCELED" } };
+  const notPosDraft = { NOT: { channel: "POS", paymentStatus: "PARTIALLY_PAID" } };
+  const base = { AND: [notCanceled, notPosDraft] };
+
+  switch (displayStatus) {
+    case "Canceled":
+      return { status: "CANCELED" };
+    case "Completed":
+      return { ...base, fulfillmentStatus: { in: ["PICKED_UP", "DELIVERED"] } };
+    case "Ready":
+      return { ...base, fulfillmentStatus: "READY" };
+    case "Processing":
+      // POS has no Processing rung (see computeOrderDisplayStatus) — scoping
+      // to ONLINE here keeps this filter from ever matching a POS order no
+      // admin would recognize as "Processing".
+      return { ...base, channel: "ONLINE", fulfillmentStatus: "PROCESSING" };
+    case "Ordered":
+      // Channel-dependent, same as computeOrderDisplayStatus: POS only
+      // reads as Ordered once PAID (a PARTIALLY_PAID deposit reads as Draft
+      // instead, already excluded by notPosDraft above), while ONLINE reads
+      // as Ordered for either pre-reservation (UNALLOCATED) or reserved
+      // (RESERVED).
+      return {
+        ...base,
+        OR: [
+          { channel: "POS", paymentStatus: "PAID", fulfillmentStatus: "RESERVED" },
+          { channel: "ONLINE", fulfillmentStatus: { in: ["UNALLOCATED", "RESERVED"] } },
+        ],
+      };
+    default:
+      throw new Error(`"${displayStatus}" is not a filterable order status`);
+  }
+}
+
 module.exports = {
   computeOrderDisplayStatus,
   legalTargetStatusesForChannel,
   resolveOrderStatusFieldWrites,
+  orderWhereForDisplayStatus,
 };

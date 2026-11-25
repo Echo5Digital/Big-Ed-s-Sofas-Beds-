@@ -11,6 +11,7 @@ const {
   computeOrderDisplayStatus,
   legalTargetStatusesForChannel,
   resolveOrderStatusFieldWrites,
+  orderWhereForDisplayStatus,
 } = require("../services/orderStatus.service");
 const { square } = require("../lib/square");
 const { SquareError } = require("square");
@@ -383,15 +384,24 @@ router.get(
   requireAuth,
   requirePermission("orders:read"),
   asyncHandler(async (req, res) => {
-    const { status, fulfillmentStatus, channel, q, page, pageSize } = req.query;
+    const { displayStatus, paymentStatus, channel, q, page, pageSize } = req.query;
     const take = Math.min(ORDERS_MAX_PAGE_SIZE, Math.max(1, Math.floor(Number(pageSize)) || ORDERS_DEFAULT_PAGE_SIZE));
     const currentPage = Math.max(1, Math.floor(Number(page)) || 1);
-    const where = {
-      ...(status ? { status: String(status) } : {}),
-      ...(fulfillmentStatus ? { fulfillmentStatus: String(fulfillmentStatus) } : {}),
-      ...(channel ? { channel: String(channel) } : {}),
-      ...buildOrdersSearchWhere(q),
-    };
+    // Combined via AND (not a flat spread) since orderWhereForDisplayStatus
+    // can itself contain channel/OR clauses (e.g. "Processing" scopes to
+    // ONLINE) that a flat spread would silently clobber or be clobbered by.
+    const conditions = [
+      ...(displayStatus ? [orderWhereForDisplayStatus(String(displayStatus))] : []),
+      // Admin-facing filter is deliberately just Paid/Unpaid (not every
+      // PaymentStatus enum value) — PARTIALLY_PAID/REFUNDED orders still
+      // show up under Unpaid here, matching the plain two-state choice this
+      // filter offers rather than exposing the full raw enum.
+      ...(paymentStatus === "PAID" ? [{ paymentStatus: "PAID" }] : []),
+      ...(paymentStatus === "UNPAID" ? [{ paymentStatus: { not: "PAID" } }] : []),
+      ...(channel ? [{ channel: String(channel) }] : []),
+      buildOrdersSearchWhere(q),
+    ];
+    const where = conditions.length > 0 ? { AND: conditions } : {};
 
     const [orders, total] = await Promise.all([
       prisma.order.findMany({
