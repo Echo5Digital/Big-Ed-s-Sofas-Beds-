@@ -61,4 +61,20 @@ describe("orders.service — saveCheckoutDeliveryAddress", () => {
     expect(defaults).toHaveLength(1);
     expect(defaults[0].line1).toBe("1 Checkout Way");
   });
+
+  it("reuses an existing matching address instead of creating a duplicate row", async () => {
+    const before = await prisma.address.count({ where: { customerId: customer.id } });
+
+    const result = await saveCheckoutDeliveryAddress(customer.id, {
+      line1: "  1 checkout way  ",
+      line2: "unit 2",
+      city: "LAKE WALES",
+      state: "fl",
+      postalCode: "33853",
+    });
+
+    const after = await prisma.address.count({ where: { customerId: customer.id } });
+    expect(after).toBe(before);
+    expect(result.line1).toBe("1 Checkout Way");
+  });
 });

@@ -366,5 +366,6 @@ module.exports = {
   setDefaultAddress,
   deleteAddress,
   listOrders,
+  findDuplicateAddress,
   MAX_ADDRESSES,
 };

@@ -11,7 +11,7 @@ import { useDemoCart } from "@/components/layout/DemoCartProvider";
 import { formatCurrency } from "@/utils/formatCurrency";
 import { api, ApiClientError } from "@/lib/api/client";
 import { getCurrentCustomer } from "@/lib/api/customerAuth";
-import { getProfile, listAddresses, createAddress } from "@/lib/api/customerAccount";
+import { getProfile, listAddresses } from "@/lib/api/customerAccount";
 import { siteConfig } from "@/lib/mock-data/site-config";
 
 const NEW_ADDRESS_OPTION = "__new__";
@@ -138,28 +138,17 @@ export default function CheckoutPage() {
             : null,
       });
 
-      // Saving to the account's address book is a separate, additive step
-      // from the order's own delivery-address snapshot above (checkout
-      // always writes its own Address row for the order regardless) — only
-      // attempted for a signed-in customer who typed a new address and
-      // ticked "save this address." A failure here must never block the
-      // order that already succeeded, so it's fire-and-forget.
-      if (
-        authStatus === "signed-in" &&
-        fulfillment === "delivery" &&
-        selectedAddressId === NEW_ADDRESS_OPTION &&
-        saveNewAddress
-      ) {
-        createAddress({
-          line1: address.address1,
-          line2: address.address2 || null,
-          city: address.city,
-          state: address.state,
-          postalCode: address.zip,
-        }).catch(() => {
-          // Non-fatal: the order already placed successfully either way.
-        });
-      }
+      // No separate "save to address book" call here: POST /checkout's own
+      // saveCheckoutDeliveryAddress (orders.service.js) already links the
+      // exact same address data to this customer, deduped against their
+      // existing addresses. A second, independent createAddress call here
+      // used to race that same-moment save — two concurrent transactions,
+      // each checking "does a duplicate exist?" before the other had
+      // committed, so both decided no and inserted — producing two rows for
+      // the same real-world address every time "Save this address" was
+      // checked. The checkbox and saveNewAddress state are left in place for
+      // now (unchanged markup below) since removing them is a separate,
+      // bigger behavior change than fixing the duplication itself.
 
       setOrder(createdOrder);
       setPaymentId(createdPaymentId);
@@ -256,6 +245,20 @@ export default function CheckoutPage() {
   }
 
   if (checkoutState === "payment" && order && paymentId) {
+    // A declined/failed charge already cancels this order server-side (see
+    // orders.routes.js's /checkout/:id/pay -> markPaymentFailed, which
+    // releases the reservation and sets Order -> CANCELED) — there is no
+    // "retry the same order" path, so both Cancel and a failed payment send
+    // the shopper back to the checkout form to place a fresh order. The cart
+    // itself is untouched here (only onComplete's success path clears it),
+    // so nothing the shopper already entered is lost.
+    function handleBackToCheckout() {
+      setOrder(null);
+      setPaymentId(null);
+      setError(null);
+      setCheckoutState("form");
+    }
+
     return (
       <div className="pb-10">
         <Container className="mt-8">
@@ -272,7 +275,7 @@ export default function CheckoutPage() {
                   clearCart();
                   setCheckoutState("complete");
                 }}
-                onError={(msg) => setError(msg)}
+                onCancel={handleBackToCheckout}
               />
             ) : (
               <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -281,11 +284,6 @@ export default function CheckoutPage() {
               </p>
             )}
           </div>
-          {error && (
-            <p role="alert" className="mt-3 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
-            </p>
-          )}
         </Container>
       </div>
     );
@@ -553,13 +551,22 @@ export default function CheckoutPage() {
 // browser-only Square globals. The card payment form is mounted into a div
 // that Square's SDK owns — we keep a ref to that container div and call
 // card.attach() once the SDK has loaded.
-function PaymentForm({ orderId, paymentId, onComplete, onError }) {
+function PaymentForm({ orderId, paymentId, onComplete, onCancel }) {
   const cardContainerRef = useRef(null);
   const cardRef = useRef(null);
   const paymentsRef = useRef(null);
   const [sdkReady, setSdkReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState(null);
+  // A declined/failed charge already cancels this order and releases its
+  // stock reservation server-side (orders.routes.js's /checkout/:id/pay ->
+  // markPaymentFailed) — retrying Pay Now against the same orderId would
+  // only ever hit "This order has no payment awaiting charge" (the payment
+  // row is no longer PENDING). So once a real decline comes back from the
+  // server (not a client-side tokenization error, which is just a bad card
+  // number/expiry and is still retryable), Pay Now is retired in favor of
+  // Cancel, which sends the shopper back to place a fresh order.
+  const [declined, setDeclined] = useState(false);
 
   useEffect(() => {
     let destroyed = false;
@@ -652,15 +659,22 @@ function PaymentForm({ orderId, paymentId, onComplete, onError }) {
           ? err.message
           : "Payment failed. Please try again.";
       setLocalError(msg);
-      onError(msg);
+      setDeclined(true);
       setSubmitting(false);
     }
   }
 
   return (
-    <form onSubmit={handlePaymentSubmit} className="flex flex-col gap-4">
+    <form
+      onSubmit={handlePaymentSubmit}
+      className="flex flex-col gap-4 rounded-2xl border border-brand-charcoal/10 bg-white p-5 shadow-sm"
+    >
       {/* Square mounts its card fields into this div */}
-      <div ref={cardContainerRef} id="square-card-container" />
+      <div
+        ref={cardContainerRef}
+        id="square-card-container"
+        className="rounded-lg border border-brand-charcoal/20 bg-white px-1 py-1 transition-colors focus-within:border-brand-red"
+      />
       {!sdkReady && !localError && (
         <p className="text-sm text-brand-charcoal/50">Loading payment form…</p>
       )}
@@ -669,13 +683,22 @@ function PaymentForm({ orderId, paymentId, onComplete, onError }) {
           {localError}
         </p>
       )}
-      <button
-        type="submit"
-        disabled={!sdkReady || submitting}
-        className="w-full rounded-full bg-brand-red px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark disabled:opacity-60"
-      >
-        {submitting ? "Processing…" : "Pay Now"}
-      </button>
+      <div className="flex flex-col gap-2 sm:flex-row-reverse">
+        <button
+          type="submit"
+          disabled={!sdkReady || submitting || declined}
+          className="flex-1 rounded-full bg-brand-red px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-red-dark disabled:opacity-60"
+        >
+          {submitting ? "Processing…" : "Pay Now"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex-1 rounded-full border border-brand-charcoal/20 px-6 py-3 text-sm font-semibold text-brand-charcoal transition-colors hover:border-brand-charcoal/40 hover:bg-brand-charcoal/5"
+        >
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }
