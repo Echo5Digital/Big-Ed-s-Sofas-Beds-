@@ -105,11 +105,23 @@ router.get(
       }),
       // Outstanding = total of orders not yet fully paid, less whatever has
       // already been collected toward them (UNPAID counts the full order
-      // total; PARTIALLY_PAID counts only the remainder).
-      prisma.order.findMany({
-        where: { paymentStatus: { in: ["UNPAID", "PARTIALLY_PAID"] }, status: { not: "CANCELED" } },
-        include: { payments: { where: { status: "SUCCEEDED" } } },
-      }),
+      // total; PARTIALLY_PAID counts only the remainder). Computed in SQL
+      // rather than fetching every unpaid/partially-paid order (plus all
+      // their payments) and reducing in JS — that previously had no `take`
+      // at all and would grow unbounded as deposit/layaway orders
+      // accumulate over the store's lifetime, same class of issue already
+      // fixed for the dashboard's low-stock tile and /inventory/balances.
+      prisma.$queryRaw`
+        SELECT COALESCE(SUM(GREATEST(o."totalCents" - COALESCE(paid.amount, 0), 0)), 0)::bigint AS "outstandingCents"
+        FROM "Order" o
+        LEFT JOIN (
+          SELECT "orderId", SUM("amountCents") AS amount
+          FROM "Payment"
+          WHERE status = 'SUCCEEDED'
+          GROUP BY "orderId"
+        ) paid ON paid."orderId" = o.id
+        WHERE o."paymentStatus" IN ('UNPAID', 'PARTIALLY_PAID') AND o.status != 'CANCELED'
+      `,
       prisma.payment.aggregate({
         where: { status: "SUCCEEDED", method: "DEPOSIT" },
         _sum: { amountCents: true },
@@ -134,10 +146,7 @@ router.get(
       }),
     ]);
 
-    const outstandingCents = outstandingAgg.reduce((sum, order) => {
-      const paid = order.payments.reduce((s, p) => s + p.amountCents, 0);
-      return sum + Math.max(order.totalCents - paid, 0);
-    }, 0);
+    const outstandingCents = Number(outstandingAgg[0]?.outstandingCents ?? 0);
 
     res.json({
       collectedTodayCents: collectedTodayAgg._sum.amountCents ?? 0,

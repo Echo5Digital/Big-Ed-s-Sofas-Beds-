@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { LogOut, ShoppingCart, ChevronDown } from "lucide-react";
 import { api, ApiClientError } from "@/lib/api/client";
 import { useRegisterSession } from "@/lib/hooks/useRegisterSession";
@@ -152,8 +152,11 @@ export default function CheckoutScreen() {
 
   // Shared by a synchronous sale's success and a card sale's eventual
   // resolution (via CardCheckoutModal) — both start the next sale from the
-  // same clean slate.
-  function resetSaleForm() {
+  // same clean slate. useCallback with an empty dependency array is safe
+  // here since the body only calls setState functions, which React
+  // guarantees are stable across renders — this gives handleCardResolved
+  // below a stable identity to depend on in turn.
+  const resetSaleForm = useCallback(() => {
     setCartOpen(false);
     setCart([]);
     setSelectedCustomer(null);
@@ -162,7 +165,7 @@ export default function CheckoutScreen() {
     setBillingAddress(EMPTY_ADDRESS);
     setBillingSameAsShipping(true);
     setSalesAttribution([]);
-  }
+  }, []);
 
   async function handleConfirmPayment({ payments, discount, discountReasonCode, pinOverride }) {
     setError(null);
@@ -211,26 +214,37 @@ export default function CheckoutScreen() {
     }
   }
 
-  function handleCardResolved(data) {
-    setPendingCardOrderId(null);
-    if (data.canceled) {
-      // Reopen the tender modal (rather than leaving no modal open at all)
-      // so the error is actually visible and the cashier can immediately
-      // retry with another tender — the cart/customer/etc. are all still
-      // intact since resetSaleForm only ever runs on an actual success.
-      setError(data.failureReason || "The card payment was not completed.");
-      setTenderOpen(true);
-      return;
-    }
-    setCompletedSale(data);
-    resetSaleForm();
-  }
+  // useCallback so CardCheckoutModal's polling effect (keyed on this
+  // function's identity, see its own [orderId, onResolved] dependency
+  // array) doesn't tear down and restart its interval on every unrelated
+  // re-render of this screen — e.g. a cashier adjusting cart quantities
+  // while a card payment is pending (the cart stays interactive underneath
+  // the "waiting for card" modal) would otherwise reset the 2s poll cadence
+  // on every keystroke/click, purely because this prop got a new identity
+  // each render.
+  const handleCardResolved = useCallback(
+    (data) => {
+      setPendingCardOrderId(null);
+      if (data.canceled) {
+        // Reopen the tender modal (rather than leaving no modal open at all)
+        // so the error is actually visible and the cashier can immediately
+        // retry with another tender — the cart/customer/etc. are all still
+        // intact since resetSaleForm only ever runs on an actual success.
+        setError(data.failureReason || "The card payment was not completed.");
+        setTenderOpen(true);
+        return;
+      }
+      setCompletedSale(data);
+      resetSaleForm();
+    },
+    [resetSaleForm]
+  );
 
-  function handleCardCanceled() {
+  const handleCardCanceled = useCallback(() => {
     setPendingCardOrderId(null);
     setError("Card payment canceled.");
     setTenderOpen(true);
-  }
+  }, []);
 
   return (
     <div className="flex h-[calc(100vh-56px)] flex-col lg:flex-row">

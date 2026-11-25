@@ -168,9 +168,14 @@ router.get(
   "/counts",
   requirePermission("inventory:read"),
   asyncHandler(async (req, res) => {
+    // Hard-capped (same convention as orders.routes.js/reports.routes.js) —
+    // previously had no take at all, so every cycle count ever submitted,
+    // with all of its lines, was fetched on every call. No admin UI calls
+    // this endpoint today, so a cap rather than true pagination for now.
     const counts = await prisma.count.findMany({
       include: { location: true, lines: true },
       orderBy: { createdAt: "desc" },
+      take: 200,
     });
     res.json({ counts });
   })
