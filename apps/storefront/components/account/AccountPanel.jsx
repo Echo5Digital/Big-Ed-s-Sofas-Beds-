@@ -244,6 +244,20 @@ export default function AccountPanel({ onSignedIn = () => {}, onViewChange = () 
 
   function handleLogin(event) {
     event.preventDefault();
+    // Checked explicitly (the form itself is noValidate, see below) rather
+    // than relying on the inputs' own `required` — a mobile browser's
+    // autofill/password-manager can visibly fill a field without firing the
+    // input event React's controlled value depends on, leaving form.password
+    // empty here even though the field looks filled in. Native HTML5
+    // validation would then silently block submission and try to show its
+    // own validation bubble, which this card's overflow-hidden can clip
+    // off-screen entirely — reading as the button doing nothing at all, with
+    // no visible error anywhere. Catching it here instead always surfaces a
+    // real, visible notice.
+    if (!form.email.trim() || !form.password) {
+      setNotice({ type: "error", message: "Enter your email and password to sign in." });
+      return undefined;
+    }
     return run(async () => {
       try {
         const signedIn = await loginCustomer({ email: form.email, password: form.password });
@@ -400,7 +414,7 @@ export default function AccountPanel({ onSignedIn = () => {}, onViewChange = () 
       ) : null}
 
       {view === "signin" ? (
-        <form onSubmit={handleLogin} className="animate-account-view-in mt-6 flex flex-col gap-4">
+        <form onSubmit={handleLogin} noValidate className="animate-account-view-in mt-6 flex flex-col gap-4">
           <Field
             id={`${uid}-email`}
             label="Email Address"
