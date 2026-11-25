@@ -427,6 +427,7 @@ async function createReturn({
           notes: `Exchange balance for return ${returnTransaction.receiptNumber}`,
           paymentId,
           performedById,
+          refundMethod,
         });
       }
       await prisma.order.update({
@@ -478,6 +479,7 @@ async function createReturn({
         notes: `Return ${returnTransaction.receiptNumber}`,
         paymentId,
         performedById,
+        refundMethod,
       });
     }
   }

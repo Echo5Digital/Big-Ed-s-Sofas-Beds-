@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LogOut, ShoppingCart, ChevronDown } from "lucide-react";
 import { api, ApiClientError } from "@/lib/api/client";
 import { useRegisterSession } from "@/lib/hooks/useRegisterSession";
@@ -52,6 +52,13 @@ export default function CheckoutScreen() {
   const [shippingAddress, setShippingAddress] = useState(EMPTY_ADDRESS);
   const [billingAddress, setBillingAddress] = useState(EMPTY_ADDRESS);
   const [billingSameAsShipping, setBillingSameAsShipping] = useState(true);
+  // Guards handleConfirmPayment against a double-tap/double-click submitting
+  // the same sale twice. `submitting` state alone isn't enough: setState is
+  // async, so a second click landing before the first's setSubmitting(true)
+  // actually re-renders (and disables the Confirm button) would still pass
+  // the disabled check and POST /pos/sales a second time. A ref is read/set
+  // synchronously, closing that gap.
+  const submittingRef = useRef(false);
 
   // Cost is fetched separately from the (unauthenticated, storefront-shared)
   // product search results — see GET /pos/cart-costs in pos.routes.js for
@@ -183,6 +190,8 @@ export default function CheckoutScreen() {
   }, []);
 
   async function handleConfirmPayment({ payments, discount, discountReasonCode, pinOverride }) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setError(null);
     setSubmitting(true);
     try {
@@ -225,6 +234,7 @@ export default function CheckoutScreen() {
     } catch (err) {
       setError(err instanceof ApiClientError ? describeApiError(err) : "Unable to complete sale");
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }

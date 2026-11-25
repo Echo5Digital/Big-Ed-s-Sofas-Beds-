@@ -104,6 +104,26 @@ describe("pos.service", () => {
     await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 10000 });
   });
 
+  it("rejects a second concurrent open for the same register (RegisterSession_registerId_open_unique)", async () => {
+    const results = await Promise.allSettled([
+      posService.openRegister({ registerId: register.id, openingCashCents: 10000 }),
+      posService.openRegister({ registerId: register.id, openingCashCents: 5000 }),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason.message).toMatch(/already has an open session/);
+
+    const openSessions = await prisma.registerSession.findMany({
+      where: { registerId: register.id, status: "OPEN" },
+    });
+    expect(openSessions).toHaveLength(1);
+
+    await posService.closeRegister({ registerSessionId: fulfilled[0].value.id, closingCashCents: fulfilled[0].value.openingCashCents });
+  });
+
   it("rings a cash sale, decrements stock, and computes change due", async () => {
     await seedStock(5);
     const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
@@ -465,28 +485,65 @@ describe("pos.service", () => {
   });
 
   describe("sales attribution", () => {
-    it("defaults to crediting the cashier 100% when no attribution is provided", async () => {
+    it("defaults to crediting the performer 100% when no attribution is provided and they hold a SALESMAN/MANAGER role", async () => {
       await seedStock(5);
       const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
-      const cashier = await prisma.user.create({
-        data: { email: `pos-attr-default-${Date.now()}@test.local`, passwordHash: "unused", firstName: "Attr", lastName: "Default" },
+      const salesmanRole = await prisma.role.findUniqueOrThrow({ where: { name: "SALESMAN" } });
+      const salesperson = await prisma.user.create({
+        data: {
+          email: `pos-attr-default-${Date.now()}@test.local`,
+          passwordHash: "unused",
+          firstName: "Attr",
+          lastName: "Default",
+          roles: { create: [{ roleId: salesmanRole.id }] },
+        },
       });
 
       const result = await posService.ringSale({
         registerSessionId: session.id,
         lines: [{ variantId: variant.id, quantity: 1 }],
         payments: [{ method: "CASH", amountCents: 50000 }],
-          performedById: cashier.id,
+          performedById: salesperson.id,
       });
 
       const attributions = await prisma.orderSalesAttribution.findMany({ where: { orderId: result.order.id } });
       expect(attributions).toHaveLength(1);
-      expect(attributions[0].userId).toBe(cashier.id);
+      expect(attributions[0].userId).toBe(salesperson.id);
       expect(attributions[0].role).toBe("SALESMAN");
       expect(attributions[0].splitPercent).toBe(100);
 
       await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 50000 });
       await prisma.orderSalesAttribution.deleteMany({ where: { orderId: result.order.id } });
+      await prisma.userRole.deleteMany({ where: { userId: salesperson.id } });
+      await prisma.user.delete({ where: { id: salesperson.id } });
+    });
+
+    it("leaves a sale with no attribution rows when the performer holds no SALESMAN/MANAGER role and none was provided", async () => {
+      await seedStock(5);
+      const session = await posService.openRegister({ registerId: register.id, openingCashCents: 0 });
+      const cashierRole = await prisma.role.findUniqueOrThrow({ where: { name: "CASHIER" } });
+      const cashier = await prisma.user.create({
+        data: {
+          email: `pos-attr-cashier-${Date.now()}@test.local`,
+          passwordHash: "unused",
+          firstName: "Attr",
+          lastName: "Cashier",
+          roles: { create: [{ roleId: cashierRole.id }] },
+        },
+      });
+
+      const result = await posService.ringSale({
+        registerSessionId: session.id,
+        lines: [{ variantId: variant.id, quantity: 1 }],
+        payments: [{ method: "CASH", amountCents: 50000 }],
+        performedById: cashier.id,
+      });
+
+      const attributions = await prisma.orderSalesAttribution.findMany({ where: { orderId: result.order.id } });
+      expect(attributions).toHaveLength(0);
+
+      await posService.closeRegister({ registerSessionId: session.id, closingCashCents: 50000 });
+      await prisma.userRole.deleteMany({ where: { userId: cashier.id } });
       await prisma.user.delete({ where: { id: cashier.id } });
     });
 

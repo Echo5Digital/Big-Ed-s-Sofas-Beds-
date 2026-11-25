@@ -47,9 +47,15 @@ function setCustomerSessionCookies(res, customerId) {
 }
 
 function clearCustomerSessionCookies(res) {
-  // Must match the attributes (secure, sameSite) of the original Set-Cookie or
-  // some browsers won't actually clear it — same reasoning as staff /logout.
-  const clearOptions = { path: "/", secure: env.cookieSecure, sameSite: env.cookieSameSite };
+  // Must match the attributes (secure, sameSite, partitioned) of the original
+  // Set-Cookie or some browsers won't actually clear it — same reasoning as
+  // staff /logout.
+  const clearOptions = {
+    path: "/",
+    secure: env.cookieSecure,
+    sameSite: env.cookieSameSite,
+    partitioned: env.cookieSameSite === "none",
+  };
   res.clearCookie(CUSTOMER_ACCESS_COOKIE, clearOptions);
   res.clearCookie(CUSTOMER_REFRESH_COOKIE, clearOptions);
 }

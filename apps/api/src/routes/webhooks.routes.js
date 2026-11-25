@@ -134,7 +134,14 @@ async function handleTerminalCheckoutUpdated(terminalCheckout) {
   const orderId = terminalCheckout.referenceId;
 
   if (terminalCheckout.status === "COMPLETED") {
-    await posService.completeCardCheckout(orderId);
+    // amountMoney.amount comes back as a string/BigInt-like value over the
+    // wire (same Square SDK convention createCardCheckout's own request
+    // uses), not a plain JS number — Number(...) here mirrors that, and
+    // completeCardCheckout only compares it when it parsed to a real number.
+    const confirmedAmountCents = terminalCheckout.amountMoney?.amount
+      ? Number(terminalCheckout.amountMoney.amount)
+      : undefined;
+    await posService.completeCardCheckout(orderId, confirmedAmountCents);
   } else if (terminalCheckout.status === "CANCELED") {
     const reason = terminalCheckout.cancelReason ? `Canceled: ${terminalCheckout.cancelReason}` : "Canceled";
     await posService.failCardCheckout(orderId, reason);

@@ -1080,6 +1080,13 @@ model RegisterSession {
   reopenDeniedAt      DateTime?
   reopenDenialReason  String?
 
+  // A second partial-unique index enforces at most one OPEN/PENDING_REOPEN_
+  // APPROVAL session per register — Prisma's schema DSL can't express a
+  // partial (WHERE-filtered) unique index, so it's added via raw SQL in
+  // migration 20261125_register_session_one_open_per_register and only
+  // documented here; openRegister() in pos.service.js catches the resulting
+  // unique-violation and surfaces it as the same ConflictError the
+  // check-then-create path already throws.
   @@index([registerId])
   @@index([status])
   @@index([openedById])

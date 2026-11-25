@@ -87,7 +87,15 @@ In-Store POS (apps/pos, :3002)         ─┘
   `SameSite=None` is required for the browser to send the cookie on a
   cross-site request at all, and browsers reject `None` without `Secure`.
   Override via `COOKIE_SAME_SITE=lax` once both are under one shared parent
-  domain via subdomains.
+  domain via subdomains. Whenever `SameSite=None` is in effect, every cookie
+  also carries `Partitioned` (CHIPS — `apps/api/src/lib/tokens.js`'s shared
+  `cookieOptions()`): without it, Chrome's third-party cookie phase-out
+  (enforced today in Incognito) lets the login response set the cookie but
+  then silently withholds it on every subsequent cross-site request, which
+  looks like "login succeeds, then immediately appears logged out."
+  `res.clearCookie` calls (`/logout`, customer logout) mirror the same
+  `partitioned` flag — mismatched attributes mean the browser won't actually
+  clear a partitioned cookie.
 - Permissions are re-read from the database on every request (not baked into
   the JWT), so disabling a user or changing their role takes effect
   immediately rather than waiting for token expiry.

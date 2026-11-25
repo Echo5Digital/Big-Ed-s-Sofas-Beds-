@@ -84,7 +84,7 @@ function AttributionRow({ entry, staff, onChange, onRemove, showPercent }) {
               max="100"
               inputMode="numeric"
               value={entry.percent}
-              onChange={(e) => onChange({ ...entry, percent: Number(e.target.value) })}
+              onChange={(e) => onChange({ ...entry, percent: Number(e.target.value) || 0 })}
               className="w-16 rounded-lg border border-black/15 px-2 py-2 text-sm tabular-nums focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
             />
             <span className="text-sm text-brand-charcoal/50">%</span>

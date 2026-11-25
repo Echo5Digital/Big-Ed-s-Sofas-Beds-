@@ -124,9 +124,15 @@ router.post(
 router.post(
   "/logout",
   asyncHandler(async (req, res) => {
-    // clearCookie must be called with matching attributes (secure, sameSite)
-    // to the original Set-Cookie, or some browsers won't actually clear it.
-    const clearOptions = { path: "/", secure: env.cookieSecure, sameSite: env.cookieSameSite };
+    // clearCookie must be called with matching attributes (secure, sameSite,
+    // partitioned) to the original Set-Cookie, or some browsers won't
+    // actually clear it.
+    const clearOptions = {
+      path: "/",
+      secure: env.cookieSecure,
+      sameSite: env.cookieSameSite,
+      partitioned: env.cookieSameSite === "none",
+    };
     res.clearCookie(ACCESS_COOKIE, clearOptions);
     res.clearCookie(REFRESH_COOKIE, clearOptions);
     res.json({ success: true });

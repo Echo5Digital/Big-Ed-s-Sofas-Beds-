@@ -15,6 +15,29 @@ const posCustomersService = require("./posCustomers.service");
 // of the subtotal still requires the override.
 const CASHIER_DISCOUNT_CEILING_PERCENT = 10;
 
+// Falls back to crediting the sale to whoever rang it up when the cashier
+// leaves the "Sold by" panel blank — but only when that performer actually
+// holds a SALESMAN/MANAGER role. Sales attribution is never an Admin or
+// Cashier role (same rule GET /pos/staff's own picker enforces — it only
+// ever lists SALESMAN/MANAGER users to choose from), so a sale rung up by a
+// plain CASHIER login with nothing filled in is left with no attribution
+// rows at all rather than silently crediting the cashier as if they were a
+// salesperson.
+async function resolveDefaultAttribution(salesAttribution, performedById) {
+  if (salesAttribution?.length) return salesAttribution;
+  if (!performedById) return [];
+
+  const performer = await prisma.user.findUnique({
+    where: { id: performedById },
+    include: { roles: { include: { role: true } } },
+  });
+  const roleNames = performer?.roles.map((ur) => ur.role.name) ?? [];
+  const creditableRole = roleNames.includes("MANAGER") ? "MANAGER" : roleNames.includes("SALESMAN") ? "SALESMAN" : null;
+  if (!creditableRole) return [];
+
+  return [{ userId: performedById, role: creditableRole, percent: 100 }];
+}
+
 // Shared with orders.routes.js and posReturns.service.js's own
 // nextOrderNumber — every Order, regardless of channel, draws from this one
 // "order" counter so numbers never collide across ONLINE/POS/exchange orders.
@@ -70,12 +93,24 @@ async function openRegister({ registerId, openingCashCents, openedById }) {
     });
   }
 
-  const session = await prisma.registerSession.create({
-    data: { registerId, openedById, openingCashCents, status: "OPEN" },
-    include: { register: { include: { location: true } } },
-  });
+  try {
+    const session = await prisma.registerSession.create({
+      data: { registerId, openedById, openingCashCents, status: "OPEN" },
+      include: { register: { include: { location: true } } },
+    });
 
-  return serializeSession(session);
+    return serializeSession(session);
+  } catch (err) {
+    // The findFirst check above is a TOCTOU-vulnerable fast path for a clear
+    // error message; RegisterSession_registerId_open_unique (a partial
+    // unique index — see schema.prisma, Prisma's DSL can't express the WHERE
+    // clause) is the actual guarantee against two concurrent opens for the
+    // same register both succeeding.
+    if (err?.code === "P2002") {
+      throw new ConflictError("Register already has an open session");
+    }
+    throw err;
+  }
 }
 
 async function getOpenSession(registerSessionId) {
@@ -340,17 +375,14 @@ async function ringSale({
     });
   }
 
-  // Defaults the sale's credit to the cashier themself when the frontend
-  // sends nothing — defense-in-depth, the frontend should always send at
-  // least one attribution entry. OrderSalesAttribution.userId is a required
-  // FK, so there's nothing to default to (and nothing to create) when this
-  // call has no real performer — same "unattributed system action" case
-  // AuditLog.userId already tolerates elsewhere in this service.
-  const resolvedAttribution = salesAttribution?.length
-    ? salesAttribution
-    : performedById
-      ? [{ userId: performedById, role: "SALESMAN", percent: 100 }]
-      : [];
+  // See resolveDefaultAttribution: defaults to crediting whoever rang up the
+  // sale only when they actually hold a SALESMAN/MANAGER role; otherwise
+  // (no attribution sent, no performer, or performer is a plain cashier)
+  // the sale is left with no attribution rows at all. OrderSalesAttribution.
+  // userId is a required FK, so there's nothing to default to regardless
+  // when this call has no real performer — same "unattributed system
+  // action" case AuditLog.userId already tolerates elsewhere in this service.
+  const resolvedAttribution = await resolveDefaultAttribution(salesAttribution, performedById);
 
   const order = await prisma.$transaction(async (tx) => {
     // Resolve billing/shipping address snapshots inside the same
@@ -461,21 +493,34 @@ async function ringSale({
   if (reservationFailures.length > 0) {
     // Compensate every line that did succeed before cancelling the order —
     // a sale that's half rung up must never be left ambiguous, regardless of
-    // which lines happened to win the race.
+    // which lines happened to win the race. Each compensation runs in its
+    // own try/catch: one line's adjustStock throwing (e.g. a transient DB
+    // error) must not abort the loop and leave the remaining converted
+    // lines un-rolled-back while the order still gets marked CANCELED below.
+    const compensationFailures = [];
     for (const variantId of convertedLineVariantIds) {
       const line = lines.find((l) => l.variantId === variantId);
-      await inventoryService.adjustStock({
-        variantId,
-        locationId,
-        type: "ADJUSTMENT_INCREASE",
-        quantity: line.quantity,
-        reasonCode: "pos_sale_rollback",
-        performedById,
-      });
+      try {
+        await inventoryService.adjustStock({
+          variantId,
+          locationId,
+          type: "ADJUSTMENT_INCREASE",
+          quantity: line.quantity,
+          reasonCode: "pos_sale_rollback",
+          performedById,
+        });
+      } catch (compensationError) {
+        compensationFailures.push(variantId);
+        console.error(
+          `[pos.service] ringSale rollback failed for order ${order.id}, variant ${variantId} — stock is now out of sync and needs manual reconciliation`,
+          compensationError
+        );
+      }
     }
     await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } });
     throw new ConflictError("One or more items went out of stock while ringing up this sale", {
       unavailableVariantIds: reservationFailures,
+      ...(compensationFailures.length > 0 && { compensationFailedVariantIds: compensationFailures }),
     });
   }
 
@@ -727,11 +772,7 @@ async function createCardCheckout({
     customerId = customer.id;
   }
 
-  const resolvedAttribution = salesAttribution?.length
-    ? salesAttribution
-    : performedById
-      ? [{ userId: performedById, role: "SALESMAN", percent: 100 }]
-      : [];
+  const resolvedAttribution = await resolveDefaultAttribution(salesAttribution, performedById);
 
   // DRAFT/UNPAID/UNALLOCATED, same as online checkout's pre-reservation
   // state — NOT ringSale's CONFIRMED/RESERVED, because nothing has actually
@@ -884,7 +925,7 @@ async function createCardCheckout({
 // that requested it returned. performedById is the cashier who originally
 // rang up the sale (payment.performedById), not whoever/whatever triggered
 // the webhook delivery.
-async function completeCardCheckout(orderId) {
+async function completeCardCheckout(orderId, confirmedAmountCents) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: { lines: true, payments: true },
@@ -894,6 +935,19 @@ async function completeCardCheckout(orderId) {
 
   const payment = order.payments.find((p) => p.method === "CARD");
   const performedById = payment?.performedById ?? null;
+
+  // Trust Square's own confirmed charge amount over whatever this sale's
+  // Payment row says was requested — the request amount is what createCard-
+  // Checkout asked Square to charge, not proof of what was actually charged.
+  // A mismatch (device-side amount override, a Square-side bug, anything)
+  // must never auto-complete the sale; it needs a human to look at it before
+  // the order gets marked PAID and stock gets sold.
+  if (typeof confirmedAmountCents === "number" && payment && confirmedAmountCents !== payment.amountCents) {
+    throw new ConflictError(
+      "Square confirmed a different amount than this sale was rung up for — refusing to complete it automatically",
+      { orderId, expectedCents: payment.amountCents, confirmedCents: confirmedAmountCents }
+    );
+  }
 
   // No Receipt exists yet at this point (created below), so the register
   // session actually used isn't otherwise recoverable from the order alone —
@@ -946,21 +1000,37 @@ async function completeCardCheckout(orderId) {
     // order CANCELED with a SUCCEEDED-but-unfulfilled Payment — this needs a
     // manual refund, which this function deliberately does not attempt
     // automatically (an automatic refund is its own real-money action).
+    // Each compensation runs in its own try/catch — see ringSale's identical
+    // rollback loop for why one line's adjustStock throwing must not abort
+    // the loop and leave the remaining converted lines un-rolled-back.
+    const compensationFailures = [];
     for (const variantId of convertedLineVariantIds) {
       const line = order.lines.find((l) => l.variantId === variantId);
-      await inventoryService.adjustStock({
-        variantId,
-        locationId,
-        type: "ADJUSTMENT_INCREASE",
-        quantity: line.quantity,
-        reasonCode: "pos_sale_rollback",
-        performedById,
-      });
+      try {
+        await inventoryService.adjustStock({
+          variantId,
+          locationId,
+          type: "ADJUSTMENT_INCREASE",
+          quantity: line.quantity,
+          reasonCode: "pos_sale_rollback",
+          performedById,
+        });
+      } catch (compensationError) {
+        compensationFailures.push(variantId);
+        console.error(
+          `[pos.service] completeCardCheckout rollback failed for order ${orderId}, variant ${variantId} — stock is now out of sync and needs manual reconciliation`,
+          compensationError
+        );
+      }
     }
     await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } });
     throw new ConflictError(
       "Card was charged but the items are no longer in stock — this sale needs a manual refund",
-      { orderId, unavailableVariantIds: reservationFailures }
+      {
+        orderId,
+        unavailableVariantIds: reservationFailures,
+        ...(compensationFailures.length > 0 && { compensationFailedVariantIds: compensationFailures }),
+      }
     );
   }
 
@@ -1180,11 +1250,36 @@ async function denyReopen({ registerSessionId, reason, performedById }) {
 // `paymentId` optionally attributes this refund to a specific original
 // tender (populating the previously-unused Refund.paymentId) — falls back to
 // orderId-only exactly as before when not specified.
-async function refund({ registerSessionId, orderId, amountCents, reasonCode, notes, restock, paymentId, performedById }) {
+async function refund({
+  registerSessionId,
+  orderId,
+  amountCents,
+  reasonCode,
+  notes,
+  restock,
+  paymentId,
+  performedById,
+  refundMethod,
+}) {
   const session = await getOpenSession(registerSessionId);
 
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { lines: true } });
   if (!order) throw new NotFoundError("Order not found");
+
+  // This endpoint has no line-item/quantity concept — restock always means
+  // "every line's full original quantity goes back on hand" (below). That's
+  // only ever correct for a full refund; honoring it on a partial refund
+  // (e.g. $20 back on a $200 order) would put the whole order's quantity
+  // back in sellable stock for goods that were never actually returned. A
+  // return with real per-line quantities/conditions should go through
+  // posReturns.service.js's createReturn instead, which restocks/quarantines
+  // per line itself and never sets restock here.
+  if (restock && amountCents !== order.totalCents) {
+    throw new ConflictError("restock is only allowed on a full refund of the order total", {
+      orderTotalCents: order.totalCents,
+      requestedCents: amountCents,
+    });
+  }
 
   const result = await prisma.$transaction(async (tx) => {
     // Lock the order row before re-reading how much has already been
@@ -1225,14 +1320,24 @@ async function refund({ registerSessionId, orderId, amountCents, reasonCode, not
 
     await tx.order.update({ where: { id: orderId }, data: { paymentStatus } });
 
-    await tx.cashMovement.create({
-      data: {
-        registerSessionId,
-        type: "REFUND",
-        amountCents,
-        notes: `Refund for order ${order.orderNumber}${notes ? ` — ${notes}` : ""}`,
-      },
-    });
+    // A CashMovement only belongs here when money actually left this
+    // register's physical drawer. CARD/BANK_TRANSFER/STORE_CREDIT refunds
+    // never touch the drawer, so recording one for them would understate
+    // expected cash at closeout for money that was never physically there.
+    // refundMethod is optional (the standalone POST /pos/refunds endpoint
+    // predates it and has no tender concept of its own) — omitted defaults
+    // to the drawer-affecting CASH behavior this endpoint always had.
+    const affectsCashDrawer = !refundMethod || refundMethod === "CASH" || refundMethod === "DEPOSIT";
+    if (affectsCashDrawer) {
+      await tx.cashMovement.create({
+        data: {
+          registerSessionId,
+          type: "REFUND",
+          amountCents,
+          notes: `Refund for order ${order.orderNumber}${notes ? ` — ${notes}` : ""}`,
+        },
+      });
+    }
 
     return refundRecord;
   });
