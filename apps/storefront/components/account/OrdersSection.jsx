@@ -62,7 +62,7 @@ const PAYMENT_DETAIL_STATUS_LABEL = {
 // online ladder (listOrders scopes to channel: "ONLINE"), so "Draft" never
 // appears here.
 const DISPLAY_STATUS = {
-  Ordered: { label: "Ordered", tone: "neutral" },
+  Ordered: { label: "Order Confirmed", tone: "neutral" },
   Processing: { label: "Processing", tone: "neutral" },
   Ready: { label: "Ready", tone: "warn" },
   Completed: { label: "Completed", tone: "good" },
