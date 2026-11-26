@@ -11,7 +11,6 @@ import {
   ShoppingCart,
   Boxes,
   Package,
-  LayoutGrid,
   Wallet,
   Mail,
 } from "lucide-react";
@@ -217,12 +216,6 @@ function DashboardContent({ overview, trend, error }) {
           label="Active Products"
           value={overview ? overview.catalog.activeProducts : "—"}
           icon={Package}
-          tone="default"
-        />
-        <StatCard
-          label="Categories"
-          value={overview ? overview.catalog.categories : "—"}
-          icon={LayoutGrid}
           tone="default"
         />
         <StatCard

@@ -180,19 +180,9 @@ async function main() {
 
   console.log("Seeding POS register...");
   const existingRegister = await prisma.register.findFirst({ where: { locationId: showroom.id } });
-  const registerName = new Date().toLocaleDateString("en-US", {
-    month: "2-digit",
-    day: "2-digit",
-    year: "numeric",
-  });
   if (!existingRegister) {
     await prisma.register.create({
-      data: { name: registerName, locationId: showroom.id, isActive: true },
-    });
-  } else if (existingRegister.name === "Register 01") {
-    await prisma.register.update({
-      where: { id: existingRegister.id },
-      data: { name: registerName },
+      data: { name: "Showroom Register", locationId: showroom.id, isActive: true },
     });
   }
 
