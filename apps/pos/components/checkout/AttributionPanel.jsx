@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { UserCheck, Plus, X, Search, Check } from "lucide-react";
 import { api } from "@/lib/api/client";
 
@@ -143,7 +143,7 @@ const EMPTY_ENTRY = { userId: "", employeeId: "", role: "SALESMAN", percent: 100
 // staff member. Lives outside TenderModal: attribution is a property of
 // the sale itself, independent of how it's eventually tendered, so a
 // cashier can set it up while still browsing the cart.
-export default function AttributionPanel({ attribution, onChange }) {
+export default function AttributionPanel({ attribution, onChange, resetKey }) {
   const [staff, setStaff] = useState([]);
   const rows = attribution.length > 0 ? attribution : [EMPTY_ENTRY];
 
@@ -188,7 +188,11 @@ export default function AttributionPanel({ attribution, onChange }) {
       <div className="flex flex-col gap-3">
         {rows.map((entry, index) => (
           <AttributionRow
-            key={index}
+            // resetKey forces a remount (fresh local `query` state) when the
+            // sale is reset — AttributionRow's typed text is otherwise local
+            // state that index alone wouldn't invalidate, since attribution
+            // going from [] back to [EMPTY_ENTRY] reuses the same index 0.
+            key={`${resetKey}-${index}`}
             entry={entry}
             staff={staff}
             showPercent={rows.length === 2}

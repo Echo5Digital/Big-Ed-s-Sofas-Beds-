@@ -49,6 +49,10 @@ export default function CheckoutScreen() {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [requestedDeliveryAt, setRequestedDeliveryAt] = useState("");
   const [salesAttribution, setSalesAttribution] = useState([]);
+  // Bumped on every completed sale so AttributionPanel remounts its rows —
+  // see its resetKey prop for why clearing salesAttribution to [] alone
+  // doesn't erase a cashier's already-typed, not-yet-resolved employee ID text.
+  const [attributionResetKey, setAttributionResetKey] = useState(0);
   const [shippingAddress, setShippingAddress] = useState(EMPTY_ADDRESS);
   const [billingAddress, setBillingAddress] = useState(EMPTY_ADDRESS);
   const [billingSameAsShipping, setBillingSameAsShipping] = useState(true);
@@ -187,6 +191,7 @@ export default function CheckoutScreen() {
     setBillingAddress(EMPTY_ADDRESS);
     setBillingSameAsShipping(true);
     setSalesAttribution([]);
+    setAttributionResetKey((prev) => prev + 1);
   }, []);
 
   async function handleConfirmPayment({ payments, discount, discountReasonCode, pinOverride }) {
@@ -316,7 +321,7 @@ export default function CheckoutScreen() {
           onRemove={handleRemoveCustomer}
         />
 
-        <AttributionPanel attribution={salesAttribution} onChange={setSalesAttribution} />
+        <AttributionPanel attribution={salesAttribution} onChange={setSalesAttribution} resetKey={attributionResetKey} />
 
         <DeliveryAddressPanel
           shippingAddress={shippingAddress}
