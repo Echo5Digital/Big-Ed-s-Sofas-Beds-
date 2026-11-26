@@ -11,12 +11,14 @@ const {
   posSettleBalanceSchema,
   posCustomerCreateSchema,
   posReturnCreateSchema,
+  pinOverrideSchema,
 } = require("@big-eds/validation");
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
 const { NotFoundError, ConflictError } = require("../lib/errors");
 const { square } = require("../lib/square");
+const { verifyManagerPin } = require("../lib/posPin");
 const posService = require("../services/pos.service");
 const posCustomersService = require("../services/posCustomers.service");
 const posReturnsService = require("../services/posReturns.service");
@@ -240,6 +242,24 @@ router.post(
       performedById: req.user.id,
     });
     res.json({ session });
+  })
+);
+
+// Lets the tender modal check a manager PIN the moment the cashier finishes
+// typing it, rather than only finding out it was wrong after Confirm Payment
+// re-runs the whole sale. Pure verify — no side effects, no audit log entry
+// (the real ringSale/createCardCheckout PIN check still owns the
+// pos.sale.discount.pin_denied audit trail on an actual denied sale). Shares
+// saleLimiter with /sales since this is the same credential-guessing surface
+// described above, just reachable from an earlier point in the flow.
+router.post(
+  "/verify-manager-pin",
+  requirePermission("pos:sell"),
+  saleLimiter,
+  validateBody(pinOverrideSchema),
+  asyncHandler(async (req, res) => {
+    const approvedById = await verifyManagerPin(req.body.approverPin);
+    res.json({ valid: Boolean(approvedById) });
   })
 );
 

@@ -12,7 +12,9 @@ export default function CartPanel({
   onTakePayment,
   requestedDeliveryAt,
   onRequestedDeliveryAtChange,
+  hasCustomer,
 }) {
+  const takePaymentDisabled = cart.length === 0 || !hasCustomer;
   return (
     <div className="flex h-full flex-col">
       <h2 className="mb-3 font-display text-sm font-bold uppercase tracking-wide text-brand-charcoal/60">
@@ -21,11 +23,11 @@ export default function CartPanel({
 
       <div className="mb-3 flex flex-col gap-1">
         <label htmlFor="requestedDeliveryAt" className="text-xs font-medium text-brand-charcoal/60">
-          Delivery time said by customer (optional)
+          Delivery date said by customer (optional)
         </label>
         <input
           id="requestedDeliveryAt"
-          type="datetime-local"
+          type="date"
           value={requestedDeliveryAt}
           onChange={(e) => onRequestedDeliveryAtChange(e.target.value)}
           className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
@@ -95,7 +97,10 @@ export default function CartPanel({
       )}
 
       <div className="mt-4 border-t border-black/10 pt-4">
-        <Button size="lg" disabled={cart.length === 0} onClick={onTakePayment} className="w-full">
+        {cart.length > 0 && !hasCustomer && (
+          <p className="mb-2 text-xs font-medium text-red-600">Add a customer above before taking payment.</p>
+        )}
+        <Button size="lg" disabled={takePaymentDisabled} onClick={onTakePayment} className="w-full">
           Take payment
         </Button>
       </div>

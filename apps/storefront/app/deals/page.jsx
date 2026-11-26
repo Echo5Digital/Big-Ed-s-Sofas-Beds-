@@ -4,7 +4,7 @@ export const instant = false;
 import { Tag } from "lucide-react";
 import Container from "@/components/ui/Container";
 import EmptyState from "@/components/ui/EmptyState";
-import PageHero from "@/components/ui/PageHero";
+import DealsPageHero from "@/components/ui/DealsPageHero";
 import ProductCard from "@/components/home/ProductCard";
 import { getProducts } from "@/lib/api/catalog";
 import { normalizeProductForCard } from "@/lib/api/normalize";
@@ -25,10 +25,9 @@ export default async function DealsPage() {
 
   return (
     <div className="pb-10">
-      <PageHero
-        title="UnBEARably Good Deals"
+      <DealsPageHero
+        title="Unbearably Good Deals"
         subtitle="Real markdowns on in-stock furniture — no gimmicks, just big savings while supplies last."
-        mascotPose="thumbsup"
       />
 
       <Container className="mt-8">

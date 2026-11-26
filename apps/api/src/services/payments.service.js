@@ -18,7 +18,14 @@ async function markPaymentSucceeded(paymentId, orderId) {
     await inventoryService.convertReservationToSale(reservation.id, { referenceId: orderId });
   }
 
-  await prisma.order.update({ where: { id: orderId }, data: { paymentStatus: "PAID", fulfillmentStatus: "READY" } });
+  // fulfillmentStatus is deliberately left untouched here — it stays at
+  // RESERVED (displayStatus "Ordered") until staff manually progress it
+  // through PROCESSING -> READY -> PICKED_UP/DELIVERED via the admin
+  // order-status endpoint (see orderStatus.service.js). Payment succeeding
+  // is not a fulfillment milestone; jumping straight to READY here used to
+  // make every freshly-paid storefront order display as "Ready" instead of
+  // "Ordered" the moment checkout completed.
+  await prisma.order.update({ where: { id: orderId }, data: { paymentStatus: "PAID" } });
 }
 
 async function markPaymentFailed(paymentId, orderId, failureReason) {

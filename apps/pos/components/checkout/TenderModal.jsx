@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Banknote, CreditCard, HandCoins, AlertTriangle, Plus, X } from "lucide-react";
 import { formatCents } from "@/lib/format";
+import { api } from "@/lib/api/client";
 import Modal from "../ui/Modal";
 import Button from "../ui/Button";
 
@@ -44,6 +45,14 @@ export default function TenderModal({
   const [discountValue, setDiscountValue] = useState("");
   const [discountReasonCode, setDiscountReasonCode] = useState("");
   const [approverPin, setApproverPin] = useState("");
+  // Records the server's verdict for whichever exact PIN string it was
+  // asked about ({ pin, valid }) — not the live approverPin itself. The
+  // displayed/gating status is derived during render by comparing
+  // approverPin to checkedPin.pin (see pinStatus below), so an edit after a
+  // check immediately reads as "checking" again rather than letting a
+  // stale verdict linger attached to digits that have since changed.
+  const [checkedPin, setCheckedPin] = useState(null);
+  const pinCheckIdRef = useRef(0);
 
   // Reset the form the moment `open` flips to false — covers both an
   // explicit cancel (handleClose below) and the parent closing this modal
@@ -61,6 +70,7 @@ export default function TenderModal({
       setDiscountValue("");
       setDiscountReasonCode("");
       setApproverPin("");
+      setCheckedPin(null);
       setMethod("CASH");
     }
   }
@@ -106,6 +116,39 @@ export default function TenderModal({
   const belowCost = totalCostCents > 0 && totalCents < totalCostCents;
   const effectiveDiscountPercent = subtotalCents > 0 ? (discountCents / subtotalCents) * 100 : 0;
   const pinRequired = discountCents > 0 && effectiveDiscountPercent > CASHIER_DISCOUNT_CEILING_PERCENT;
+  const pinFormatValid = /^\d{4,6}$/.test(approverPin);
+
+  // "checking" while a complete-format PIN hasn't been confirmed/denied by
+  // the server yet (covers both the debounce window and the request itself),
+  // "valid"/"invalid" once checkedPin's verdict matches the PIN currently in
+  // the box, "idle" otherwise (empty or still mid-entry). Purely derived
+  // during render — no synchronous setState in the effect below, which only
+  // ever writes checkedPin from inside the async .then/.catch once a
+  // request actually resolves.
+  const pinStatus = !pinRequired || !approverPin ? "idle" : !pinFormatValid ? "checking" : checkedPin?.pin === approverPin ? (checkedPin.valid ? "valid" : "invalid") : "checking";
+
+  // Checks the PIN against the server the moment it reaches a complete 4-6
+  // digit format, debounced so a cashier still mid-keystroke doesn't fire a
+  // request per digit. The requestId ref discards a check whose answer
+  // arrives after the box has already moved on to different digits.
+  useEffect(() => {
+    if (!pinRequired || !pinFormatValid) return;
+    const requestId = ++pinCheckIdRef.current;
+    const pin = approverPin;
+    const timeout = setTimeout(() => {
+      api
+        .post("/pos/verify-manager-pin", { approverPin: pin })
+        .then((data) => {
+          if (requestId !== pinCheckIdRef.current) return;
+          setCheckedPin({ pin, valid: Boolean(data.valid) });
+        })
+        .catch(() => {
+          if (requestId !== pinCheckIdRef.current) return;
+          setCheckedPin({ pin, valid: false });
+        });
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [approverPin, pinRequired, pinFormatValid]);
 
   const amountAddedCents = entries.reduce((sum, e) => sum + e.amountCents, 0);
   const remainingBalanceCents = Math.max(0, totalCents - amountAddedCents);
@@ -141,7 +184,7 @@ export default function TenderModal({
   const canConfirm = (() => {
     if (discountCents > subtotalCents) return false;
     if (discountCents > 0 && !discountReasonCode.trim()) return false;
-    if (pinRequired && !/^\d{4,6}$/.test(approverPin)) return false;
+    if (pinRequired && pinStatus !== "valid") return false;
     if (belowCost) return false;
     // Card never uses the entries list (see canAddEntry) — it's confirmable
     // on its own once the total is a real, chargeable amount.
@@ -222,8 +265,20 @@ export default function TenderModal({
                 placeholder="Manager PIN"
                 value={approverPin}
                 onChange={(e) => setApproverPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                className="rounded-lg border border-black/15 px-3 py-3 text-base tracking-widest transition-shadow focus:border-brand-red focus:outline-none focus:ring-2 focus:ring-brand-red/20"
+                className={`rounded-lg border px-3 py-3 text-base tracking-widest transition-shadow focus:outline-none focus:ring-2 ${
+                  pinStatus === "invalid"
+                    ? "border-red-400 focus:border-red-400 focus:ring-red-500/20"
+                    : pinStatus === "valid"
+                      ? "border-green-500 focus:border-green-500 focus:ring-green-500/20"
+                      : "border-black/15 focus:border-brand-red focus:ring-brand-red/20"
+                }`}
               />
+              {pinStatus === "checking" && <p className="text-xs text-brand-charcoal/50">Checking PIN…</p>}
+              {pinStatus === "invalid" && (
+                <p role="alert" className="text-xs font-medium text-red-600">
+                  Invalid manager PIN.
+                </p>
+              )}
             </>
           )}
         </div>

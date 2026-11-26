@@ -698,6 +698,7 @@ module.exports = {
   registerReopenDenySchema,
   posPaymentEntrySchema,
   salesAttributionEntrySchema,
+  pinOverrideSchema,
   posAddressInputSchema,
   posSaleSchema,
   posRefundSchema,

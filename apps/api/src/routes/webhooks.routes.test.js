@@ -99,7 +99,7 @@ describe("webhooks.routes — Square payment.updated handler", () => {
 
     const updatedOrder = await prisma.order.findUnique({ where: { id: order.id } });
     expect(updatedOrder.paymentStatus).toBe("PAID");
-    expect(updatedOrder.fulfillmentStatus).toBe("READY");
+    expect(updatedOrder.fulfillmentStatus).toBe("RESERVED");
 
     const updatedPayment = await prisma.payment.findUnique({ where: { id: payment.id } });
     expect(updatedPayment.status).toBe("SUCCEEDED");

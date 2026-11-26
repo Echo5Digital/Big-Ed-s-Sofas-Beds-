@@ -334,6 +334,7 @@ export default function CheckoutScreen() {
           onTakePayment={() => setTenderOpen(true)}
           requestedDeliveryAt={requestedDeliveryAt}
           onRequestedDeliveryAtChange={setRequestedDeliveryAt}
+          hasCustomer={Boolean(selectedCustomer)}
         />
 
         <button

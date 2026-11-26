@@ -2,7 +2,6 @@ import Image from "next/image";
 import { MapPin, Phone, Clock, Heart, Handshake, Sparkles } from "lucide-react";
 import Container from "@/components/ui/Container";
 import Button from "@/components/ui/Button";
-import BearMascot from "@/components/ui/BearMascot";
 import { siteConfig } from "@/lib/mock-data/site-config";
 
 export const metadata = {
@@ -31,18 +30,37 @@ const values = [
 export default function AboutPage() {
   return (
     <div className="pb-10">
-      <section className="bg-brand-charcoal py-12 sm:py-16">
-        <Container className="flex flex-col items-center gap-6 text-center sm:flex-row sm:items-center sm:text-left">
-          <BearMascot className="h-28 w-28 shrink-0 drop-shadow-xl sm:h-32 sm:w-32" pose="wave" />
-          <div>
-            <h1 className="font-display text-3xl font-bold text-brand-gold sm:text-4xl">
-              Big Comfort. Bigger Savings.
-            </h1>
-            <p className="mt-3 max-w-xl text-sm text-white/80 sm:text-base">
-              Big Ed&rsquo;s Sofas &amp; Beds is a local furniture showroom built around one idea:
-              everyone deserves a comfortable home without an uncomfortable price tag.
-            </p>
-          </div>
+      {/* Image-background hero, same technique as SaleHeader
+          (components/sale/SaleHeader.jsx) for a wide (2048x768) banner image:
+          the section takes the image's own aspect ratio so object-cover
+          never over-crops it, with a min-height floor below sm so it doesn't
+          get too short to read on narrow phones. The image's plain wall
+          spans the full left ~45% of the frame at any height, so copy stays
+          left-aligned and vertically centered at every breakpoint — the
+          gradient direction is the only thing that changes (top-to-bottom
+          below sm, where the crop is short/wide and that's the stronger
+          axis; left-to-right at sm+ to match the image's own layout). */}
+      <section className="relative min-h-80 overflow-hidden bg-brand-charcoal sm:aspect-8/3 sm:min-h-0">
+        <div className="absolute inset-0 h-full w-full">
+          <Image
+            src="/About_US_Big_EDs.webp"
+            alt=""
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-brand-charcoal/85 via-brand-charcoal/35 to-transparent sm:bg-gradient-to-r sm:from-brand-charcoal/80 sm:via-brand-charcoal/45 sm:to-transparent" />
+        </div>
+
+        <Container className="relative flex h-full min-h-80 flex-col items-start justify-center gap-2 py-8 text-left sm:gap-3 sm:py-10">
+          <h1 className="max-w-52 font-display text-2xl leading-tight font-bold text-brand-gold drop-shadow-md sm:max-w-xl sm:text-4xl lg:text-5xl">
+            Big Comfort. Bigger Savings.
+          </h1>
+          <p className="max-w-60 text-xs leading-snug text-white/90 drop-shadow-md sm:max-w-xl sm:text-base lg:text-lg">
+            Big Ed&rsquo;s Sofas &amp; Beds is a local furniture showroom built around one idea:
+            everyone deserves a comfortable home without an uncomfortable price tag.
+          </p>
         </Container>
       </section>
 
