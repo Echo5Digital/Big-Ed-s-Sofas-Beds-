@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/hooks/useAuth";
+import { useAuth, isCashierOnlyUser } from "@/lib/hooks/useAuth";
 import AppShell from "./AppShell";
 
 // Pass `permission` on any page whose entire content requires a specific
@@ -11,14 +11,24 @@ import AppShell from "./AppShell";
 // that only gate individual actions (not the whole page) should omit this
 // and use `useAuth().hasPermission()` inline instead.
 export default function RequireAuth({ children, permission }) {
-  const { status, hasPermission } = useAuth();
+  const { status, user, hasPermission, logout } = useAuth();
   const router = useRouter();
+  const isCashierOnly = isCashierOnlyUser(user);
 
   useEffect(() => {
     if (status === "unauthenticated") {
       router.replace("/login");
     }
   }, [status, router]);
+
+  // A Cashier is POS-only — caught here too (not just the login page) so a
+  // session cookie already set before this restriction, or any direct
+  // navigation into admin, can't be used to browse admin pages instead.
+  useEffect(() => {
+    if (status === "authenticated" && isCashierOnly) {
+      logout().then(() => router.replace("/login"));
+    }
+  }, [status, isCashierOnly, logout, router]);
 
   if (status === "loading") {
     return (
@@ -28,7 +38,7 @@ export default function RequireAuth({ children, permission }) {
     );
   }
 
-  if (status === "unauthenticated") {
+  if (status === "unauthenticated" || isCashierOnly) {
     return null;
   }
 

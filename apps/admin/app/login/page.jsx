@@ -3,8 +3,10 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, Eye, EyeOff } from "lucide-react";
-import { useAuth } from "@/lib/hooks/useAuth";
+import { useAuth, isCashierOnlyUser } from "@/lib/hooks/useAuth";
 import { ApiClientError } from "@/lib/api/client";
+
+const CASHIER_LOGIN_ERROR = "Cashier accounts can't sign in to the admin dashboard. Use the POS app instead.";
 
 // Salesman/Manager land on Orders first — Salesman has no reports:read
 // permission so "/" would otherwise just show a "Not authorized" block, and
@@ -15,7 +17,7 @@ function landingPathForRoles(roles) {
 }
 
 export default function LoginPage() {
-  const { login, status, user } = useAuth();
+  const { login, logout, status, user } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,10 +26,16 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (status === "authenticated") {
-      router.replace(landingPathForRoles(user?.roles));
+    if (status !== "authenticated") return;
+    // A stale Cashier session cookie reused by visiting /login directly —
+    // sign them back out rather than redirecting; handleSubmit covers the
+    // explicit-login path and surfaces CASHIER_LOGIN_ERROR there instead.
+    if (isCashierOnlyUser(user)) {
+      logout();
+      return;
     }
-  }, [status, user, router]);
+    router.replace(landingPathForRoles(user?.roles));
+  }, [status, user, router, logout]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -35,6 +43,11 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       const loggedInUser = await login(email, password);
+      if (isCashierOnlyUser(loggedInUser)) {
+        await logout();
+        setError(CASHIER_LOGIN_ERROR);
+        return;
+      }
       router.replace(landingPathForRoles(loggedInUser?.roles));
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "Unable to sign in. Please try again.");

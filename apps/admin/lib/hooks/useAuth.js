@@ -66,6 +66,16 @@ export function AuthProvider({ children }) {
   );
 }
 
+// Cashier is a POS-only role — this is a dedicated admin-app check, not a
+// permission gate, because Cashier legitimately holds some admin-relevant
+// permissions (catalog:read, inventory:read, orders:read) for other reasons;
+// the point here is to keep Cashiers in POS entirely, not to withhold a
+// specific permission. "Cashier-only" (not just "has Cashier") so a user
+// holding Cashier plus a real admin role, e.g. Manager, is unaffected.
+export function isCashierOnlyUser(user) {
+  return Boolean(user?.roles?.includes("CASHIER") && user.roles.length === 1);
+}
+
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {
