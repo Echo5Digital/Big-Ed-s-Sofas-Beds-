@@ -6,8 +6,16 @@ import { Lock, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { ApiClientError } from "@/lib/api/client";
 
+// Salesman/Manager land on Orders first — Salesman has no reports:read
+// permission so "/" would otherwise just show a "Not authorized" block, and
+// Orders is Manager's primary workflow too. Admin/Super Admin are unchanged.
+function landingPathForRoles(roles) {
+  if (roles?.includes("SALESMAN") || roles?.includes("MANAGER")) return "/orders";
+  return "/";
+}
+
 export default function LoginPage() {
-  const { login, status } = useAuth();
+  const { login, status, user } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -17,17 +25,17 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (status === "authenticated") {
-      router.replace("/");
+      router.replace(landingPathForRoles(user?.roles));
     }
-  }, [status, router]);
+  }, [status, user, router]);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
-      await login(email, password);
-      router.replace("/");
+      const loggedInUser = await login(email, password);
+      router.replace(landingPathForRoles(loggedInUser?.roles));
     } catch (err) {
       setError(err instanceof ApiClientError ? err.message : "Unable to sign in. Please try again.");
     } finally {

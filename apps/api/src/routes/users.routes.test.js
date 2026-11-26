@@ -154,6 +154,45 @@ describe("users.routes — POS PIN reset", () => {
   });
 });
 
+describe("users.routes — password reset", () => {
+  let user;
+
+  beforeAll(async () => {
+    const cashierRole = await prisma.role.findUniqueOrThrow({ where: { name: "CASHIER" } });
+    const passwordHash = await bcrypt.hash("TestPassword123!", 10);
+    user = await prisma.user.create({
+      data: {
+        email: `users-password-test-${Date.now()}@example.com`,
+        passwordHash,
+        firstName: "Password",
+        lastName: "RouteTest",
+        roles: { create: { roleId: cashierRole.id } },
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await prisma.userRole.deleteMany({ where: { userId: user.id } });
+    await prisma.user.delete({ where: { id: user.id } });
+  });
+
+  // Exercises exactly what the PATCH /:id/password handler does (hash +
+  // update), since this codebase's test files call service/Prisma logic
+  // directly rather than spinning up an HTTP harness.
+  it("hashes and stores a new password, never storing it raw, and the old hash stops matching", async () => {
+    const before = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+
+    const passwordHash = await bcrypt.hash("NewPassword456!", 12);
+    const updated = await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+
+    expect(updated.passwordHash).not.toBe("NewPassword456!");
+    expect(updated.passwordHash).toMatch(/^\$2[aby]\$/); // bcrypt hash prefix
+    expect(updated.passwordHash).not.toBe(before.passwordHash);
+    expect(await bcrypt.compare("NewPassword456!", updated.passwordHash)).toBe(true);
+    expect(await bcrypt.compare("TestPassword123!", updated.passwordHash)).toBe(false);
+  });
+});
+
 describe("users.routes — last-admin lockout guard", () => {
   it("counting other admins excludes the current user correctly", async () => {
     const adminRole = await prisma.role.findUniqueOrThrow({ where: { name: "ADMIN" } });

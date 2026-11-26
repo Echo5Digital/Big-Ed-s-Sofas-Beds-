@@ -171,3 +171,108 @@ describe("orders.routes — GET /admin/orders", () => {
     expect(res.status).toBe(401);
   });
 });
+
+// A Salesman only sees orders they're attributed to (OrderSalesAttribution),
+// unlike Manager/Admin/Super Admin who see everything — RBAC requirement
+// added alongside the post-login redirect to /orders for Salesman/Manager.
+describe("orders.routes — GET /admin/orders salesman scoping", () => {
+  const app = createApp();
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  let salesmanUser;
+  let otherSalesmanUser;
+  let managerUser;
+  let salesmanCookie;
+  let managerCookie;
+  const createdOrderIds = [];
+
+  beforeAll(async () => {
+    const salesmanRole = await prisma.role.findUniqueOrThrow({ where: { name: "SALESMAN" } });
+    const managerRole = await prisma.role.findUniqueOrThrow({ where: { name: "MANAGER" } });
+    const passwordHash = await bcrypt.hash("TestPassword123!", 10);
+
+    salesmanUser = await prisma.user.create({
+      data: {
+        email: `admin-orders-scope-salesman-${suffix}@example.com`,
+        passwordHash,
+        firstName: "Scope",
+        lastName: "Salesman",
+        isActive: true,
+        roles: { create: { roleId: salesmanRole.id } },
+      },
+    });
+    otherSalesmanUser = await prisma.user.create({
+      data: {
+        email: `admin-orders-scope-other-salesman-${suffix}@example.com`,
+        passwordHash,
+        firstName: "Other",
+        lastName: "Salesman",
+        isActive: true,
+        roles: { create: { roleId: salesmanRole.id } },
+      },
+    });
+    managerUser = await prisma.user.create({
+      data: {
+        email: `admin-orders-scope-manager-${suffix}@example.com`,
+        passwordHash,
+        firstName: "Scope",
+        lastName: "Manager",
+        isActive: true,
+        roles: { create: { roleId: managerRole.id } },
+      },
+    });
+    salesmanCookie = `${ACCESS_COOKIE}=${signAccessToken({ sub: salesmanUser.id })}`;
+    managerCookie = `${ACCESS_COOKIE}=${signAccessToken({ sub: managerUser.id })}`;
+
+    async function createOrder({ orderNumber, attributedUserId }) {
+      const order = await prisma.order.create({
+        data: {
+          orderNumber,
+          channel: "POS",
+          status: "CONFIRMED",
+          paymentStatus: "UNPAID",
+          fulfillmentStatus: "RESERVED",
+          ...(attributedUserId
+            ? { salesAttributions: { create: { userId: attributedUserId, role: "SALESMAN", splitPercent: 100 } } }
+            : {}),
+        },
+      });
+      createdOrderIds.push(order.id);
+      return order;
+    }
+
+    await createOrder({ orderNumber: `BE-SCOPE-TEST-${suffix}-mine`, attributedUserId: salesmanUser.id });
+    await createOrder({ orderNumber: `BE-SCOPE-TEST-${suffix}-other`, attributedUserId: otherSalesmanUser.id });
+    await createOrder({ orderNumber: `BE-SCOPE-TEST-${suffix}-unattributed`, attributedUserId: null });
+  });
+
+  afterAll(async () => {
+    for (const id of createdOrderIds) {
+      await prisma.orderSalesAttribution.deleteMany({ where: { orderId: id } });
+      await prisma.orderLine.deleteMany({ where: { orderId: id } });
+      await prisma.order.delete({ where: { id } }).catch(() => {});
+    }
+    for (const user of [salesmanUser, otherSalesmanUser, managerUser]) {
+      await prisma.userRole.deleteMany({ where: { userId: user.id } });
+      await prisma.user.delete({ where: { id: user.id } });
+    }
+  });
+
+  it("a Salesman only sees orders attributed to them", async () => {
+    const res = await request(app)
+      .get(`/api/admin/orders?q=${encodeURIComponent(`BE-SCOPE-TEST-${suffix}`)}`)
+      .set("Cookie", salesmanCookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.orders).toHaveLength(1);
+    expect(res.body.orders[0].orderNumber).toBe(`BE-SCOPE-TEST-${suffix}-mine`);
+  });
+
+  it("a Manager sees all orders regardless of attribution", async () => {
+    const res = await request(app)
+      .get(`/api/admin/orders?q=${encodeURIComponent(`BE-SCOPE-TEST-${suffix}`)}`)
+      .set("Cookie", managerCookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.orders).toHaveLength(3);
+  });
+});

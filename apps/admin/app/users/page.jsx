@@ -258,6 +258,71 @@ function PosPinSection({ user, onDone }) {
   );
 }
 
+function PasswordResetSection({ user, onDone }) {
+  const [editing, setEditing] = useState(false);
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSave(e) {
+    e.preventDefault();
+    setError(null);
+
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await api.patch(`/users/${user.id}/password`, { password });
+      setPassword("");
+      setEditing(false);
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "Failed to update password.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="border-t border-black/10 pt-4">
+      <p className="text-sm font-medium text-brand-charcoal">Login password</p>
+      <p className="mt-1 text-xs text-brand-charcoal/50">
+        Sets a new login password for this account. The user isn&apos;t notified — share the new password with them
+        directly.
+      </p>
+
+      {editing ? (
+        <form onSubmit={handleSave} className="mt-3 flex flex-col gap-2">
+          <input
+            type="password"
+            placeholder="New password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            minLength={8}
+            className="rounded-lg border border-black/15 px-3 py-2 text-sm focus:border-brand-red focus:outline-none focus:ring-1 focus:ring-brand-red"
+          />
+          {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" disabled={submitting}>
+              {submitting ? "Saving…" : "Save Password"}
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => { setEditing(false); setPassword(""); setError(null); }}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => setEditing(true)}>
+          Change Password
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function EditUserModal({ user, isSelf, onClose, onDone }) {
   const [roleNames, setRoleNames] = useState(user?.roles ?? []);
   const [error, setError] = useState(null);
@@ -316,6 +381,8 @@ function EditUserModal({ user, isSelf, onClose, onDone }) {
         </form>
 
         {user.roles.some((role) => PIN_ELIGIBLE_ROLES.includes(role)) && <PosPinSection user={user} onDone={onDone} />}
+
+        <PasswordResetSection user={user} onDone={onDone} />
 
         <div className="border-t border-black/10 pt-4">
           {isSelf ? (

@@ -42,6 +42,14 @@ const userPinUpdateSchema = z.object({
   pin: z.string().regex(/^\d{4,6}$/, "PIN must be 4-6 digits"),
 });
 
+// Login password reset for a staff user — set by an admin from the Users
+// page. No "current password" check (the admin isn't the account owner,
+// unlike customerChangePasswordSchema's self-service flow) and no confirm
+// field, same reasoning as userPinUpdateSchema above.
+const userPasswordUpdateSchema = z.object({
+  password: z.string().min(8).max(200),
+});
+
 // ---------------------------------------------------------------------------
 // Customer accounts (storefront sign-up / sign-in)
 // ---------------------------------------------------------------------------
@@ -666,6 +674,7 @@ module.exports = {
   userUpdateSchema,
   userRolesUpdateSchema,
   userPinUpdateSchema,
+  userPasswordUpdateSchema,
   customerRegisterSchema,
   customerVerifyOtpSchema,
   customerResendOtpSchema,

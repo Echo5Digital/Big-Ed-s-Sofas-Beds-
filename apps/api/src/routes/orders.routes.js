@@ -392,6 +392,14 @@ router.get(
     const { displayStatus, paymentStatus, channel, q, page, pageSize } = req.query;
     const take = Math.min(ORDERS_MAX_PAGE_SIZE, Math.max(1, Math.floor(Number(pageSize)) || ORDERS_DEFAULT_PAGE_SIZE));
     const currentPage = Math.max(1, Math.floor(Number(page)) || 1);
+    // A Salesman only sees orders they're attributed to; Manager/Admin/Super
+    // Admin see everything. Checked as "holds SALESMAN but none of the
+    // broader roles" so a user with both SALESMAN and MANAGER (multi-role
+    // accounts are allowed — see users.routes.js) still gets the unrestricted
+    // Manager view rather than being narrowed.
+    const isSalesmanOnly =
+      req.user.roles.includes("SALESMAN") &&
+      !req.user.roles.some((role) => ["MANAGER", "ADMIN", "SUPER_ADMIN"].includes(role));
     // Combined via AND (not a flat spread) since orderWhereForDisplayStatus
     // can itself contain channel/OR clauses (e.g. "Processing" scopes to
     // ONLINE) that a flat spread would silently clobber or be clobbered by.
@@ -404,6 +412,7 @@ router.get(
       ...(paymentStatus === "PAID" ? [{ paymentStatus: "PAID" }] : []),
       ...(paymentStatus === "UNPAID" ? [{ paymentStatus: { not: "PAID" } }] : []),
       ...(channel ? [{ channel: String(channel) }] : []),
+      ...(isSalesmanOnly ? [{ salesAttributions: { some: { userId: req.user.id } } }] : []),
       buildOrdersSearchWhere(q),
     ];
     const where = conditions.length > 0 ? { AND: conditions } : {};

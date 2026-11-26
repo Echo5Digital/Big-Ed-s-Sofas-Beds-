@@ -6,6 +6,7 @@ const {
   userUpdateSchema,
   userRolesUpdateSchema,
   userPinUpdateSchema,
+  userPasswordUpdateSchema,
 } = require("@big-eds/validation");
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
@@ -277,6 +278,34 @@ router.patch(
       data: {
         userId: req.user.id,
         action: "user.pin.reset",
+        entityType: "User",
+        entityId: target.id,
+      },
+    });
+
+    res.json({ success: true });
+  })
+);
+
+// Resets a staff user's login password. No "current password" check — unlike
+// customerAccount.service.js's self-service change, the admin isn't the
+// account owner — and no confirm field, same low-stakes-reset simplicity as
+// the PIN route above (an admin can just reset again if mistyped). Never
+// echoes the password or its hash back.
+router.patch(
+  "/:id/password",
+  validateBody(userPasswordUpdateSchema),
+  asyncHandler(async (req, res) => {
+    const target = await prisma.user.findUnique({ where: { id: req.params.id }, include: ROLE_INCLUDE });
+    if (!target || isHiddenFromCaller(target, req)) throw new NotFoundError("User not found");
+
+    const passwordHash = await bcrypt.hash(req.body.password, 12);
+    await prisma.user.update({ where: { id: req.params.id }, data: { passwordHash } });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: "user.password.reset",
         entityType: "User",
         entityId: target.id,
       },
