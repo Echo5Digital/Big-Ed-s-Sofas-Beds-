@@ -39,7 +39,7 @@ function AttributionRow({ entry, staff, onChange, onRemove, showPercent }) {
     }
     const match = staff.find((s) => s.employeeId && s.employeeId.toLowerCase() === value.trim().toLowerCase());
     if (match) {
-      onChange({ userId: match.id, employeeId: match.employeeId, role: roleForStaff(match) });
+      onChange({ ...entry, userId: match.id, employeeId: match.employeeId, role: roleForStaff(match) });
     } else {
       onChange({ ...entry, userId: "", employeeId: value });
       setNotFound(true);
@@ -112,7 +112,7 @@ function AttributionRow({ entry, staff, onChange, onRemove, showPercent }) {
                 onClick={() => {
                   setQuery(s.employeeId);
                   setNotFound(false);
-                  onChange({ userId: s.id, employeeId: s.employeeId, role: roleForStaff(s) });
+                  onChange({ ...entry, userId: s.id, employeeId: s.employeeId, role: roleForStaff(s) });
                 }}
                 className="w-full rounded-md px-2 py-1 text-left font-mono text-xs font-semibold hover:bg-brand-cream/60"
               >
