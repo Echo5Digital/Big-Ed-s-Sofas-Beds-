@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeftRight, PackagePlus, Search, SlidersHorizontal } from "lucide-react";
+import { ArrowLeftRight, PackagePlus, Search, SlidersHorizontal, TrendingUp } from "lucide-react";
 import RequireAuth from "@/components/layout/RequireAuth";
 import PageHeader from "@/components/ui/PageHeader";
 import DataTable from "@/components/ui/DataTable";
@@ -473,6 +473,53 @@ function InventoryContent() {
     [supplierFilter, router, locations]
   );
 
+  const [bulkIncreaseError, setBulkIncreaseError] = useState(null);
+  const [increasingStock, setIncreasingStock] = useState(false);
+
+  // Direct stock increase for every selected row, skipping the purchase/
+  // receiving flow entirely — e.g. stock already arrived on the floor and
+  // just needs correcting on hand right away. A selected row may have a
+  // balance at more than one location (see groupedBalances above), and only
+  // some of those locations may actually be low, so this fires one
+  // POST /inventory/adjust per (variant, location) with suggestedReorderQty
+  // > 0 — the same per-location suggestion already shown in the table and
+  // already reused by sendToPurchaseOrder above, not a flat qty applied
+  // everywhere regardless of how low that location actually is. Uses one
+  // fixed reasonCode for the whole batch (adjustStock still writes a normal
+  // StockMovement + AuditLog row per adjustment, so every increase stays
+  // fully traceable) rather than prompting for a reason per row/location,
+  // which a bulk action has no good place to collect.
+  const increaseStockForSelection = useCallback((rows) => {
+    const targets = rows.flatMap((r) =>
+      r.locationBalances
+        .filter((lb) => lb.suggestedReorderQty > 0)
+        .map((lb) => ({ variantId: lb.variantId, locationId: lb.locationId, quantity: lb.suggestedReorderQty }))
+    );
+    if (targets.length === 0) return;
+
+    setBulkIncreaseError(null);
+    setIncreasingStock(true);
+    Promise.all(
+      targets.map((t) =>
+        api.post("/inventory/adjust", {
+          variantId: t.variantId,
+          locationId: t.locationId,
+          type: "ADJUSTMENT_INCREASE",
+          quantity: t.quantity,
+          reasonCode: "bulk_restock_low_stock",
+        })
+      )
+    )
+      .then(() => {
+        setSelectedVariantIds(new Set());
+        load();
+      })
+      .catch((err) => {
+        setBulkIncreaseError(err instanceof ApiClientError ? err.message : "Failed to increase stock for one or more items.");
+      })
+      .finally(() => setIncreasingStock(false));
+  }, [load]);
+
   const openAdjust = useCallback((product) => {
     if (product.locationBalances.length === 1) {
       setAdjustTarget(product.locationBalances[0]);
@@ -595,6 +642,15 @@ function InventoryContent() {
     [groupedBalances, selectedVariantIds]
   );
 
+  const selectedIncreaseTargetCount = useMemo(
+    () =>
+      selectedRows.reduce(
+        (sum, r) => sum + r.locationBalances.filter((lb) => lb.suggestedReorderQty > 0).length,
+        0
+      ),
+    [selectedRows]
+  );
+
   const selectedSupplierCount = useMemo(
     () => new Set(selectedRows.map((r) => r.supplierId).filter(Boolean)).size,
     [selectedRows]
@@ -671,16 +727,33 @@ function InventoryContent() {
                 </p>
               )}
             </div>
-            <Button
-              size="sm"
-              icon={PackagePlus}
-              disabled={creatingBulkPos}
-              onClick={() => sendToPurchaseOrder(selectedRows)}
-            >
-              {creatingBulkPos ? "Creating…" : "Create Purchase Order"}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                icon={TrendingUp}
+                disabled={increasingStock || selectedIncreaseTargetCount === 0}
+                onClick={() => increaseStockForSelection(selectedRows)}
+                title={
+                  selectedIncreaseTargetCount === 0
+                    ? "None of the selected items are currently below the low-stock threshold"
+                    : undefined
+                }
+              >
+                {increasingStock ? "Increasing…" : "Increase Stock"}
+              </Button>
+              <Button
+                size="sm"
+                icon={PackagePlus}
+                disabled={creatingBulkPos}
+                onClick={() => sendToPurchaseOrder(selectedRows)}
+              >
+                {creatingBulkPos ? "Creating…" : "Create Purchase Order"}
+              </Button>
+            </div>
           </div>
           {bulkPoError && <p className="text-sm text-red-700">{bulkPoError}</p>}
+          {bulkIncreaseError && <p className="text-sm text-red-700">{bulkIncreaseError}</p>}
         </div>
       )}
 
