@@ -1,5 +1,4 @@
 import Image from "next/image";
-import Link from "next/link";
 import DealsCarousel from "@/components/home/DealsCarousel";
 import Container from "@/components/ui/Container";
 import { normalizeProductForCard } from "@/lib/api/normalize";
@@ -38,14 +37,15 @@ export default function DealsBanner({ deals: rawDeals }) {
 
           <ul className="grid w-full grid-cols-3 gap-x-2 gap-y-4 sm:grid-cols-6">
             {categories.map(({ name, slug, icon, width, height }) => (
-              <li key={slug}>
-                <Link
-                  href={`/shop/${slug}`}
-                  className="flex flex-col items-center gap-1.5 text-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-gold"
-                >
-                  <Image src={icon} alt="" width={width} height={height} className="h-11 w-auto sm:h-12" />
-                  <span className="text-xs font-bold text-white sm:text-sm">{name}</span>
-                </Link>
+              <li key={slug} className="group flex flex-col items-center gap-1.5 text-center">
+                <Image
+                  src={icon}
+                  alt={name}
+                  width={width}
+                  height={height}
+                  className="h-11 w-auto transition-transform duration-200 ease-out group-hover:-translate-y-1 group-hover:scale-110 sm:h-12"
+                />
+                <span className="text-xs font-bold text-white sm:text-sm">{name}</span>
               </li>
             ))}
           </ul>
