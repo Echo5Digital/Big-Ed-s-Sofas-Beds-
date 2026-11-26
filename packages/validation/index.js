@@ -448,8 +448,14 @@ const checkoutCreateSchema = z.object({
 // result's `token` field, submitted once the order itself already exists
 // (see POST /checkout above). sourceId is Square's name for this value
 // (a single-use token, or "cnon:..." for a card nonce) in CreatePayment.
+// verificationToken is the result of the SDK's separate verifyBuyer() call
+// (3D Secure / SCA buyer authentication) — optional because verifyBuyer()
+// only forces an interactive challenge when the card issuer actually
+// requires one; CreatePayment itself treats verification_token as optional
+// for the same reason.
 const checkoutPaySchema = z.object({
   sourceId: z.string().min(1).max(255),
+  verificationToken: z.string().min(1).max(255).optional(),
 });
 
 // Mirrors the unified display-status ladder computeOrderDisplayStatus()

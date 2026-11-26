@@ -1,7 +1,7 @@
 "use client";
 
-import { Suspense, useId, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useId, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { MapPin, Phone, Clock, Mail, Undo2, Paperclip, X } from "lucide-react";
 import Container from "@/components/ui/Container";
 import PageHero from "@/components/ui/PageHero";
@@ -13,6 +13,7 @@ const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 const ALLOWED_ATTACHMENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
 
 function ContactForm() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   // "Request Return" mode is entered only via the My Orders -> Return link
   // (apps/storefront/components/account/OrdersSection.jsx), never typed by a
@@ -103,7 +104,12 @@ function ContactForm() {
           message: form.message.trim(),
         });
       }
-      setStatus({ type: "success", message: "Thanks for reaching out! We'll get back to you soon." });
+      setStatus({
+        type: "success",
+        message: isReturnMode
+          ? "Return request submitted! We'll follow up by email. Taking you back to My Orders…"
+          : "Thanks for reaching out! We'll get back to you soon.",
+      });
       setForm({ name: "", email: "", message: "" });
       if (isReturnMode) {
         setOrderReference(orderNumber);
@@ -121,6 +127,20 @@ function ContactForm() {
       setSubmitting(false);
     }
   }
+
+  // Once a Return request succeeds, there's nothing left to do on this page
+  // — send the customer back to My Orders rather than leaving them stranded
+  // on the contact form with just a success message. A short delay lets them
+  // actually read that message first; the regular (non-return) contact form
+  // is unaffected and stays put after submitting. Guarded by isReturnMode in
+  // the dependency array (not just inside the effect body) so a later
+  // non-return submission on this same mounted page can never accidentally
+  // fire this redirect from a stale success status.
+  useEffect(() => {
+    if (!isReturnMode || status?.type !== "success") return undefined;
+    const timeout = setTimeout(() => router.push("/account?tab=orders"), 2500);
+    return () => clearTimeout(timeout);
+  }, [isReturnMode, status, router]);
 
   return (
     <div className="pb-10">

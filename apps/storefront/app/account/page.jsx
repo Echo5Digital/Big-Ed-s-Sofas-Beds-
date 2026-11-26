@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import AccountHero from "@/components/account/AccountHero";
 
 export const metadata = {
@@ -7,5 +8,13 @@ export const metadata = {
 };
 
 export default function AccountPage() {
-  return <AccountHero />;
+  return (
+    // AccountDashboard reads ?tab= (e.g. the Return flow's post-submit
+    // redirect) via useSearchParams, which needs a Suspense boundary to
+    // still allow this route to be prerendered — same reason
+    // app/contact/page.jsx wraps its own form in one.
+    <Suspense fallback={null}>
+      <AccountHero />
+    </Suspense>
+  );
 }

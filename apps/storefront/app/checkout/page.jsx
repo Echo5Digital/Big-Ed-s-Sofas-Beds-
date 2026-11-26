@@ -271,6 +271,11 @@ export default function CheckoutPage() {
               <PaymentForm
                 orderId={order.id}
                 paymentId={paymentId}
+                amountCents={order.totalCents ?? 0}
+                billingContact={{
+                  fullName: contact.fullName,
+                  address: fulfillment === "delivery" ? address : null,
+                }}
                 onComplete={() => {
                   clearCart();
                   setCheckoutState("complete");
@@ -551,7 +556,27 @@ export default function CheckoutPage() {
 // browser-only Square globals. The card payment form is mounted into a div
 // that Square's SDK owns — we keep a ref to that container div and call
 // card.attach() once the SDK has loaded.
-function PaymentForm({ orderId, paymentId, onComplete, onCancel }) {
+// Builds Square's billingContact shape for verifyBuyer() from whatever this
+// checkout already collected — never a separate billing-address form of its
+// own. A pickup order has no address at all (see CheckoutPage's fulfillment
+// branch), so this degrades to name-only rather than fabricating an address;
+// Square's buyer verification accepts a partial billingContact.
+function buildBillingContact({ fullName, address }) {
+  const [givenName, ...rest] = fullName.trim().split(/\s+/).filter(Boolean);
+  const contact = {};
+  if (givenName) contact.givenName = givenName;
+  if (rest.length > 0) contact.familyName = rest.join(" ");
+  if (address?.address1) {
+    contact.addressLines = [address.address1, address.address2].filter(Boolean);
+    contact.city = address.city || undefined;
+    contact.state = address.state || undefined;
+    contact.postalCode = address.zip || undefined;
+    contact.countryCode = "US";
+  }
+  return contact;
+}
+
+function PaymentForm({ orderId, paymentId, amountCents, billingContact, onComplete, onCancel }) {
   const cardContainerRef = useRef(null);
   const cardRef = useRef(null);
   const paymentsRef = useRef(null);
@@ -650,8 +675,30 @@ function PaymentForm({ orderId, paymentId, onComplete, onCancel }) {
       return;
     }
 
+    // Buyer verification is a separate step from tokenization — this is what
+    // actually presents the card issuer's 3D Secure / SCA challenge (an OTP
+    // text, or an approval prompt in the customer's banking app) when their
+    // bank requires one, and produces the verificationToken CreatePayment
+    // needs to prove it happened. Square test cards in sandbox never trigger
+    // a real challenge, which is why this step could be skipped entirely
+    // before and still look like it worked in every sandbox test.
+    let verificationToken;
     try {
-      await api.post(`/checkout/${orderId}/pay`, { sourceId: tokenResult.token });
+      const verification = await paymentsRef.current.verifyBuyer(tokenResult.token, {
+        amount: (amountCents / 100).toFixed(2),
+        currencyCode: "USD",
+        intent: "CHARGE",
+        billingContact: buildBillingContact(billingContact),
+      });
+      verificationToken = verification?.token;
+    } catch (err) {
+      setLocalError(err.message || "Card verification failed. Please try again.");
+      setSubmitting(false);
+      return;
+    }
+
+    try {
+      await api.post(`/checkout/${orderId}/pay`, { sourceId: tokenResult.token, verificationToken });
       onComplete();
     } catch (err) {
       const msg =

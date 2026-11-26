@@ -290,6 +290,11 @@ router.post(
       result = await square.payments.create({
         idempotencyKey: payment.id,
         sourceId: req.body.sourceId,
+        // Carries the result of the storefront's verifyBuyer() 3D Secure/SCA
+        // challenge (apps/storefront/app/checkout/page.jsx's PaymentForm) —
+        // without it, CreatePayment has no proof buyer verification ran, and
+        // a card issuer that requires it will simply decline the charge.
+        verificationToken: req.body.verificationToken,
         amountMoney: { amount: BigInt(payment.amountCents), currency: "USD" },
         locationId: env.squareLocationId,
         referenceId: order.id,

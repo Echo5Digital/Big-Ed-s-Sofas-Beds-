@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { User, MapPin, Package, Settings } from "lucide-react";
 import ProfileSection from "@/components/account/ProfileSection";
 import AddressesSection from "@/components/account/AddressesSection";
@@ -13,6 +14,7 @@ const SECTIONS = [
   { key: "orders", label: "My Orders", title: "My Orders", Icon: Package },
   { key: "settings", label: "Settings", title: "Settings", Icon: Settings },
 ];
+const SECTION_KEYS = new Set(SECTIONS.map((section) => section.key));
 
 function initialsOf(customer) {
   const letters = [customer.firstName, customer.lastName]
@@ -26,7 +28,16 @@ function initialsOf(customer) {
 // one on the right. Only the active section is mounted, and each one loads its
 // own data when opened.
 export default function AccountDashboard({ customer, onProfileSaved, onSessionExpired, onSignOut, signingOut }) {
-  const [active, setActive] = useState("profile");
+  const searchParams = useSearchParams();
+  // Lets a link from elsewhere (e.g. the Return flow's post-submit redirect,
+  // app/contact/page.jsx) land directly on a specific section instead of
+  // always opening to Profile — read once on mount via lazy useState
+  // initializer, same as a normal default, so switching sections by clicking
+  // the sidebar afterward isn't fighting a URL that no longer matches.
+  const [active, setActive] = useState(() => {
+    const requested = searchParams.get("tab");
+    return SECTION_KEYS.has(requested) ? requested : "profile";
+  });
   const section = SECTIONS.find((item) => item.key === active);
 
   return (
