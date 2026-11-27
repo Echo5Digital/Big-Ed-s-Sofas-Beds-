@@ -102,6 +102,16 @@ router.get(
   })
 );
 
+// Notification bell's return-request entries — a short, capped preview list,
+// not the full inbox (see listMessages for that).
+router.get(
+  "/return-requests",
+  requirePermission("messages:read"),
+  asyncHandler(async (req, res) => {
+    res.json({ messages: await messagesService.listReturnRequests() });
+  })
+);
+
 router.patch(
   "/:id/read",
   requirePermission("messages:read"),

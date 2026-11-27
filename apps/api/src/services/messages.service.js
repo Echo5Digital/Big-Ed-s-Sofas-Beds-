@@ -70,12 +70,29 @@ async function listMessages() {
 }
 
 async function countUnreadAndImportant() {
-  const [unread, important, total] = await Promise.all([
+  const [unread, important, total, returnRequests] = await Promise.all([
     prisma.contactMessage.count({ where: { status: "NEW" } }),
     prisma.contactMessage.count({ where: { isImportant: true, status: { not: "ARCHIVED" } } }),
     prisma.contactMessage.count(),
+    // Unactioned return requests — the notification bell's "needs a
+    // decision" entry, same isReturnRequest index used by the storefront's
+    // "Request Return" flow comment in schema.prisma.
+    prisma.contactMessage.count({ where: { isReturnRequest: true, status: { not: "ARCHIVED" } } }),
   ]);
-  return { unread, important, total };
+  return { unread, important, total, returnRequests };
+}
+
+// Lightweight list for the notification bell's return-request dropdown
+// entries — same shape/ordering convention as listMessages() above, filtered
+// and capped since the bell only needs enough to show a short preview list,
+// not the full triage inbox.
+async function listReturnRequests() {
+  const messages = await prisma.contactMessage.findMany({
+    where: { isReturnRequest: true, status: { not: "ARCHIVED" } },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+  });
+  return messages.map(serializeMessage);
 }
 
 async function findOwnedMessage(id) {
@@ -111,6 +128,7 @@ module.exports = {
   createMessage,
   createReturnMessage,
   listMessages,
+  listReturnRequests,
   countUnreadAndImportant,
   markRead,
   setImportant,

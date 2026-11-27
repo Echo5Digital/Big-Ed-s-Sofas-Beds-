@@ -39,6 +39,18 @@ function lineSpendCents(line) {
   return line.expectedQty * line.unitCostCents + line.taxCents + line.freightCents;
 }
 
+// Shared by /overview and /products so the two can never silently diverge —
+// a current stock snapshot, not scoped to any date/month range (there's no
+// "low stock as of last month" concept, only "low stock right now").
+async function getLowStockCount() {
+  const rows = await prisma.$queryRaw`
+    SELECT COUNT(*)::int AS count
+    FROM "StockBalance" sb
+    WHERE GREATEST(sb."onHand" - sb.reserved - sb.quarantined, 0) <= 2
+  `;
+  return rows[0]?.count ?? 0;
+}
+
 // Date-scoped version of /dashboard/overview's stat tiles, so the Reports
 // page can show any selected day (or, with ?month=YYYY-MM, a whole calendar
 // month) rather than always "today". Low stock is a current snapshot (not a
@@ -58,7 +70,7 @@ router.get(
     const [
       ordersInRange,
       salesAgg,
-      lowStockCountRow,
+      lowStockCount,
       newCustomers,
       poByStatus,
       poLinesInRange,
@@ -68,11 +80,7 @@ router.get(
         where: { createdAt: { gte: start, lt: end }, status: { not: "CANCELED" } },
         _sum: { totalCents: true },
       }),
-      prisma.$queryRaw`
-        SELECT COUNT(*)::int AS count
-        FROM "StockBalance" sb
-        WHERE GREATEST(sb."onHand" - sb.reserved - sb.quarantined, 0) <= 2
-      `,
+      getLowStockCount(),
       prisma.customer.count({ where: { createdAt: { gte: start, lt: end } } }),
       prisma.purchaseOrder.groupBy({
         by: ["status"],
@@ -85,7 +93,6 @@ router.get(
       }),
     ]);
 
-    const lowStockCount = lowStockCountRow[0]?.count ?? 0;
     const purchasingSpendCents = poLinesInRange.reduce((sum, line) => sum + lineSpendCents(line), 0);
 
     res.json({
@@ -314,6 +321,226 @@ router.get(
       marginPercent: revenueCents > 0 ? (marginCents / revenueCents) * 100 : 0,
       unknownCostQuantity,
       products,
+    });
+  })
+);
+
+// Products tab: catalog size, current low-stock snapshot (shared with
+// /overview via getLowStockCount so the two numbers can't diverge), top 10
+// best-selling products by quantity in the selected range, and top 10 most
+// reviewed products all-time (reviews aren't a "this period" concept the way
+// sales are, so this intentionally ignores the date/month range).
+router.get(
+  "/products",
+  asyncHandler(async (req, res) => {
+    const { start, end } = req.query.month ? parseMonthRange(req.query.month) : parseDayRange(req.query.date);
+
+    const [totalProducts, totalVariants, lowStockCount, soldLines, reviewGroups] = await Promise.all([
+      prisma.product.count(),
+      prisma.variant.count(),
+      getLowStockCount(),
+      prisma.orderLine.findMany({
+        where: { order: { createdAt: { gte: start, lt: end }, status: { not: "CANCELED" } } },
+        select: { quantity: true, lineTotalCents: true, variantId: true, nameSnapshot: true, skuSnapshot: true },
+      }),
+      prisma.review.groupBy({
+        by: ["productId"],
+        _count: { _all: true },
+        _avg: { rating: true },
+        orderBy: { _count: { _all: "desc" } },
+        take: 10,
+      }),
+    ]);
+
+    const byVariant = new Map();
+    for (const line of soldLines) {
+      const existing = byVariant.get(line.variantId) ?? {
+        variantId: line.variantId,
+        name: line.nameSnapshot,
+        sku: line.skuSnapshot,
+        quantity: 0,
+        revenueCents: 0,
+      };
+      existing.quantity += line.quantity;
+      existing.revenueCents += line.lineTotalCents;
+      byVariant.set(line.variantId, existing);
+    }
+    const mostSold = [...byVariant.values()].sort((a, b) => b.quantity - a.quantity).slice(0, 10);
+
+    const reviewedProductIds = reviewGroups.map((g) => g.productId);
+    const reviewedProducts = reviewedProductIds.length
+      ? await prisma.product.findMany({
+          where: { id: { in: reviewedProductIds } },
+          select: { id: true, name: true, slug: true },
+        })
+      : [];
+    const productById = new Map(reviewedProducts.map((p) => [p.id, p]));
+    const mostReviewed = reviewGroups
+      .map((g) => ({
+        productId: g.productId,
+        name: productById.get(g.productId)?.name ?? "—",
+        slug: productById.get(g.productId)?.slug ?? null,
+        reviewCount: g._count._all,
+        averageRating: g._avg.rating ?? 0,
+      }))
+      .filter((p) => productById.has(p.productId));
+
+    res.json({
+      date: start.toISOString(),
+      rangeEnd: end.toISOString(),
+      totalProducts,
+      totalVariants,
+      lowStockCount,
+      mostSold,
+      mostReviewed,
+    });
+  })
+);
+
+// Orders tab: counts bucketed from the real FulfillmentStatus enum (never a
+// standalone "booked/processing/ready/complete" status — see
+// docs/workflows/order-lifecycle.md's "three independent dimensions" rule).
+// Booked = not yet allocated or on hold (UNALLOCATED/RESERVED); Processing =
+// online-only intermediate step; Ready = picked/packed, awaiting pickup or
+// delivery; Complete = handed off (PICKED_UP/DELIVERED). Canceled orders are
+// reported separately rather than silently excluded from the total.
+router.get(
+  "/orders-breakdown",
+  asyncHandler(async (req, res) => {
+    const { start, end } = req.query.month ? parseMonthRange(req.query.month) : parseDayRange(req.query.date);
+
+    const [fulfillmentGroups, canceled] = await Promise.all([
+      prisma.order.groupBy({
+        by: ["fulfillmentStatus"],
+        where: { createdAt: { gte: start, lt: end }, status: { not: "CANCELED" } },
+        _count: { _all: true },
+      }),
+      prisma.order.count({ where: { createdAt: { gte: start, lt: end }, status: "CANCELED" } }),
+    ]);
+
+    const countByStatus = Object.fromEntries(fulfillmentGroups.map((g) => [g.fulfillmentStatus, g._count._all]));
+    const booked = (countByStatus.UNALLOCATED ?? 0) + (countByStatus.RESERVED ?? 0);
+    const processing = countByStatus.PROCESSING ?? 0;
+    const ready = countByStatus.READY ?? 0;
+    const complete = (countByStatus.PICKED_UP ?? 0) + (countByStatus.DELIVERED ?? 0);
+
+    res.json({
+      date: start.toISOString(),
+      rangeEnd: end.toISOString(),
+      booked,
+      processing,
+      ready,
+      complete,
+      canceled,
+    });
+  })
+);
+
+// PO tab alerts: a current-snapshot view (not date/month-range scoped — "what
+// needs attention right now", same semantics as lowStockCount) of open PO
+// lines with a per-line expectedDate, bucketed by how close/overdue that
+// date is. Only lines still owed (receivedQty < expectedQty) on a PO that
+// hasn't reached RECEIVED/CANCELED/DRAFT matter here.
+router.get(
+  "/po-alerts",
+  asyncHandler(async (req, res) => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(todayStart);
+    todayEnd.setDate(todayEnd.getDate() + 1);
+    const dueSoonStart = new Date(todayStart);
+    dueSoonStart.setDate(dueSoonStart.getDate() + 2);
+    const dueSoonEnd = new Date(dueSoonStart);
+    dueSoonEnd.setDate(dueSoonEnd.getDate() + 1);
+
+    const openLines = await prisma.pOLine.findMany({
+      where: {
+        expectedDate: { not: null },
+        purchaseOrder: { status: { in: ["AWAITING_APPROVAL", "APPROVED", "SENT_TO_VENDOR", "PARTIALLY_RECEIVED"] } },
+      },
+      select: {
+        id: true,
+        expectedQty: true,
+        receivedQty: true,
+        expectedDate: true,
+        skuSnapshot: true,
+        purchaseOrder: { select: { poNumber: true, supplier: { select: { name: true } } } },
+      },
+    });
+
+    function toAlert(line) {
+      return {
+        poLineId: line.id,
+        poNumber: line.purchaseOrder.poNumber,
+        supplierName: line.purchaseOrder.supplier.name,
+        sku: line.skuSnapshot,
+        qtyOwed: line.expectedQty - line.receivedQty,
+        expectedDate: line.expectedDate,
+      };
+    }
+
+    const owedLines = openLines.filter((line) => line.expectedQty > line.receivedQty);
+    const overdue = owedLines.filter((line) => line.expectedDate < todayStart).map(toAlert);
+    const dueToday = owedLines
+      .filter((line) => line.expectedDate >= todayStart && line.expectedDate < todayEnd)
+      .map(toAlert);
+    const dueSoon = owedLines
+      .filter((line) => line.expectedDate >= dueSoonStart && line.expectedDate < dueSoonEnd)
+      .map(toAlert);
+
+    res.json({ overdue, dueToday, dueSoon });
+  })
+);
+
+// Performance tab: ranks staff by revenue attributed to them via
+// OrderSalesAttribution (see schema.prisma — a sale can be split between up
+// to 2 staff by splitPercent). Attributed revenue is each order's totalCents
+// times the staff member's own splitPercent, summed across their orders in
+// range; saleCount is a simple unweighted count of how many orders they're
+// attributed to. Staff with no attributed sales in range are omitted rather
+// than shown as a padded zero row.
+router.get(
+  "/performance",
+  asyncHandler(async (req, res) => {
+    const { start, end } = req.query.month ? parseMonthRange(req.query.month) : parseDayRange(req.query.date);
+
+    const attributions = await prisma.orderSalesAttribution.findMany({
+      where: {
+        order: { createdAt: { gte: start, lt: end }, status: { not: "CANCELED" } },
+      },
+      select: {
+        userId: true,
+        role: true,
+        splitPercent: true,
+        user: { select: { firstName: true, lastName: true } },
+        order: { select: { totalCents: true } },
+      },
+    });
+
+    const byUser = new Map();
+    for (const attribution of attributions) {
+      const existing = byUser.get(attribution.userId) ?? {
+        userId: attribution.userId,
+        name: `${attribution.user.firstName} ${attribution.user.lastName}`,
+        role: attribution.role,
+        attributedRevenueCents: 0,
+        saleCount: 0,
+      };
+      existing.attributedRevenueCents += Math.round(
+        (attribution.order.totalCents * attribution.splitPercent) / 100
+      );
+      existing.saleCount += 1;
+      byUser.set(attribution.userId, existing);
+    }
+
+    const ranked = [...byUser.values()]
+      .sort((a, b) => b.attributedRevenueCents - a.attributedRevenueCents)
+      .map((entry, index) => ({ ...entry, rank: index + 1 }));
+
+    res.json({
+      date: start.toISOString(),
+      rangeEnd: end.toISOString(),
+      staff: ranked,
     });
   })
 );

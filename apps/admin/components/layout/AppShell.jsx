@@ -205,7 +205,9 @@ export default function AppShell({ children }) {
           </button>
           <span className="flex-1 font-display text-base font-bold text-brand-red lg:hidden">BIG ED OS</span>
           <div className="ml-auto flex items-center gap-2">
-            {hasPermission("pos:register:approve-reopen") && <NotificationBell />}
+            {(hasPermission("reports:read") ||
+              hasPermission("pos:register:approve-reopen") ||
+              hasPermission("messages:read")) && <NotificationBell />}
           </div>
         </header>
 
