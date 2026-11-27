@@ -15,7 +15,7 @@ const {
 } = require("@big-eds/validation");
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
-const { requireAuth, requirePermission } = require("../middleware/auth");
+const { requireAuthAllowCashier: requireAuth, requirePermission } = require("../middleware/auth");
 const { NotFoundError, ConflictError } = require("../lib/errors");
 const { square } = require("../lib/square");
 const { verifyManagerPin } = require("../lib/posPin");

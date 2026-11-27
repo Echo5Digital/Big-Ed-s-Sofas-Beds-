@@ -39,11 +39,18 @@ describe("orders.routes — POST /checkout tax", () => {
   afterAll(async () => {
     const variantIds = [taxedVariant.id, zeroTaxVariant.id];
     const orders = await prisma.order.findMany({ where: { lines: { some: { variantId: { in: variantIds } } } } });
+    // checkoutPayload() creates a fresh Customer per call (unique email via
+    // Date.now()) through /api/checkout's upsert — collect them here so this
+    // cleanup doesn't leave one stranded row behind per test.
+    const customerIds = [...new Set(orders.map((o) => o.customerId).filter(Boolean))];
     for (const order of orders) {
       await prisma.payment.deleteMany({ where: { orderId: order.id } });
       await prisma.reservation.deleteMany({ where: { orderId: order.id } });
       await prisma.orderLine.deleteMany({ where: { orderId: order.id } });
       await prisma.order.delete({ where: { id: order.id } });
+    }
+    if (customerIds.length) {
+      await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
     }
     await prisma.stockMovement.deleteMany({ where: { variantId: { in: variantIds } } });
     await prisma.reservation.deleteMany({ where: { variantId: { in: variantIds } } });

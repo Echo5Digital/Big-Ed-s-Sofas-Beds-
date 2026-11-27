@@ -4,6 +4,7 @@ const { checkoutCreateSchema, checkoutPaySchema, orderStatusUpdateSchema } = req
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
 const { requireAuth, requirePermission } = require("../middleware/auth");
+const { requireCustomer } = require("../middleware/customerAuth");
 const { NotFoundError, ConflictError, ApiError } = require("../lib/errors");
 const inventoryService = require("../services/inventory.service");
 const { saveCheckoutDeliveryAddress } = require("../services/orders.service");
@@ -337,14 +338,19 @@ router.post(
   })
 );
 
+// Signed-in-customer-only, same scoping as customerAccount.service.js's
+// listOrders — an order id alone (e.g. leaked via a forwarded confirmation
+// link, proxy log, or browser history) must never be enough to pull another
+// customer's name/address/order contents.
 router.get(
   "/orders/:id",
+  requireCustomer,
   asyncHandler(async (req, res) => {
     const order = await prisma.order.findUnique({
       where: { id: req.params.id },
       include: { lines: true, customer: true },
     });
-    if (!order) throw new NotFoundError("Order not found");
+    if (!order || order.customerId !== req.customer.id) throw new NotFoundError("Order not found");
     res.json({ order: serializeOrder(order) });
   })
 );

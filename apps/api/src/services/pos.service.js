@@ -515,6 +515,25 @@ async function ringSale({
           `[pos.service] ringSale rollback failed for order ${order.id}, variant ${variantId} — stock is now out of sync and needs manual reconciliation`,
           compensationError
         );
+        // Logs rotate/scroll out of view, so a failed compensation also gets
+        // a durable, queryable record — otherwise the only trace of a stock
+        // mismatch needing manual reconciliation is a console line.
+        await prisma.auditLog
+          .create({
+            data: {
+              userId: performedById,
+              action: "pos.sale.rollback.compensation_failed",
+              entityType: "Variant",
+              entityId: variantId,
+              metadata: {
+                orderId: order.id,
+                locationId,
+                quantity: line.quantity,
+                error: compensationError?.message || String(compensationError),
+              },
+            },
+          })
+          .catch(() => {});
       }
     }
     await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } });
@@ -1021,6 +1040,26 @@ async function completeCardCheckout(orderId, confirmedAmountCents) {
           `[pos.service] completeCardCheckout rollback failed for order ${orderId}, variant ${variantId} — stock is now out of sync and needs manual reconciliation`,
           compensationError
         );
+        // Logs rotate/scroll out of view, so a failed compensation also gets
+        // a durable, queryable record — this case is a charged card on top
+        // of a stock mismatch, so losing track of it is worse than ringSale's
+        // equivalent path.
+        await prisma.auditLog
+          .create({
+            data: {
+              userId: performedById,
+              action: "pos.sale.rollback.compensation_failed",
+              entityType: "Variant",
+              entityId: variantId,
+              metadata: {
+                orderId: order.id,
+                locationId,
+                quantity: line.quantity,
+                error: compensationError?.message || String(compensationError),
+              },
+            },
+          })
+          .catch(() => {});
       }
     }
     await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } });

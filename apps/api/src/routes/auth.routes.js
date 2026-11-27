@@ -5,7 +5,12 @@ const { prisma } = require("@big-eds/database");
 const { loginSchema } = require("@big-eds/validation");
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { validateBody } = require("../middleware/validate");
-const { requireAuth } = require("../middleware/auth");
+// /me is shared session-check infra for both apps/admin and apps/pos (both
+// poll it to hydrate their own useAuth hook) — it must stay reachable for a
+// Cashier so POS's own login works, so this route uses the Cashier-allowing
+// variant. Every route that actually serves admin-only data uses the
+// default-exported requireAuth (blocks Cashier-only) instead.
+const { requireAuthAllowCashier } = require("../middleware/auth");
 const { UnauthorizedError } = require("../lib/errors");
 const {
   signAccessToken,
@@ -141,7 +146,7 @@ router.post(
 
 router.get(
   "/me",
-  requireAuth,
+  requireAuthAllowCashier,
   asyncHandler(async (req, res) => {
     res.json({
       user: {

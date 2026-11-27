@@ -12,9 +12,12 @@ const loginSchema = z.object({
 // Mirrors the Prisma RoleName enum (packages/database/prisma/schema.prisma)
 // exactly. Kept as a plain literal list rather than importing the generated
 // Prisma client here, since packages/validation has no dependency on
-// packages/database today — these four values change rarely and are already
+// packages/database today — these five values change rarely and are already
 // duplicated as plain strings elsewhere (seed.js, admin app/users/page.jsx).
-const roleNameSchema = z.enum(["ADMIN", "MANAGER", "SALESMAN", "CASHIER"]);
+// NOTE: this list drifted out of sync with Prisma once already (missing
+// SUPER_ADMIN after it was added in migration 20261117035239) — if Prisma's
+// RoleName enum changes, update this list in the same commit.
+const roleNameSchema = z.enum(["SUPER_ADMIN", "ADMIN", "MANAGER", "SALESMAN", "CASHIER"]);
 
 const userCreateSchema = z.object({
   email: z.string().email(),
@@ -126,6 +129,10 @@ const customerChangePasswordSchema = z
     path: ["newPassword"],
   });
 
+// `type` is deliberately absent: customerAccount.service.js's createAddress
+// always hardcodes it to SHIPPING for this self-service flow (BILLING is
+// staff-side only), same reasoning as email's absence from
+// customerProfileUpdateSchema above.
 const customerAddressSchema = z.object({
   line1: z.string().trim().min(1, "Street address is required").max(200),
   line2: z.string().trim().max(200).transform(blankToNull).optional().nullable(),

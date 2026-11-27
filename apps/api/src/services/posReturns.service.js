@@ -326,16 +326,45 @@ async function createReturn({
   // Step 2 (independent calls, each its own transaction): apply the correct
   // inventory movement per line's condition — sellable returns add back to
   // on-hand, anything else goes to quarantine, never the other way around.
-  for (const l of lineInputs) {
-    const fn = l.condition === "SELLABLE" ? inventoryService.restockFromReturn : inventoryService.quarantineStock;
-    await fn({
-      variantId: l.orderLine.variantId,
-      locationId,
-      quantity: l.quantity,
-      reasonCode: `return:${l.reasonCode}`,
-      referenceId: returnTransaction.id,
-      performedById,
-    });
+  // If one line throws partway through (a transient DB error, a crash), the
+  // ReturnTransaction header is already committed from Step 1 — so this
+  // can't roll back cleanly the way ringSale()'s all-or-nothing reservation
+  // step can. Instead, record exactly which lines made it through before the
+  // throw: a durable, queryable trail for manual reconciliation, since a
+  // raised exception here otherwise leaves no trace of which lines are
+  // missing their stock movement.
+  const appliedLineIds = [];
+  try {
+    for (const l of lineInputs) {
+      const fn = l.condition === "SELLABLE" ? inventoryService.restockFromReturn : inventoryService.quarantineStock;
+      await fn({
+        variantId: l.orderLine.variantId,
+        locationId,
+        quantity: l.quantity,
+        reasonCode: `return:${l.reasonCode}`,
+        referenceId: returnTransaction.id,
+        performedById,
+      });
+      appliedLineIds.push(l.orderLineId);
+    }
+  } catch (err) {
+    const unappliedLineIds = lineInputs.map((l) => l.orderLineId).filter((id) => !appliedLineIds.includes(id));
+    console.error(
+      `[posReturns.service] createReturn partially failed for return ${returnTransaction.id} — ${unappliedLineIds.length} line(s) missing their stock movement and need manual reconciliation`,
+      err
+    );
+    await prisma.auditLog
+      .create({
+        data: {
+          userId: performedById,
+          action: "pos.return.stock_apply_failed",
+          entityType: "ReturnTransaction",
+          entityId: returnTransaction.id,
+          metadata: { orderId, appliedLineIds, unappliedLineIds, error: err?.message || String(err) },
+        },
+      })
+      .catch(() => {});
+    throw err;
   }
 
   let balanceDueCents = 0;
