@@ -110,7 +110,7 @@ function ReportsContent() {
 
 export default function ReportsPage() {
   return (
-    <RequireAuth permission="reports:read">
+    <RequireAuth permission="reports:view">
       <ReportsContent />
     </RequireAuth>
   );

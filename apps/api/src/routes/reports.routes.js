@@ -6,7 +6,16 @@ const { requireAuth, requirePermission } = require("../middleware/auth");
 const router = express.Router();
 
 router.use(requireAuth);
+// Base gate stays reports:read — /sales-trend (shared with the Dashboard)
+// and /register-sessions (shared with the Registers page) are still used
+// outside the Reports page itself, so they can't be locked to the narrower
+// reports:view below without breaking those other pages for MANAGER.
 router.use(requirePermission("reports:read"));
+// reports:view is the Reports-page-only carve-out — only ADMIN/SUPER_ADMIN
+// hold it (see seed.js). Applied per-route below to every endpoint that
+// backs a Reports tab or its alerts strip, same "extra permission layered on
+// a broader one" pattern as catalog:cost:view on /margin.
+const requireReportsView = requirePermission("reports:view");
 
 function parseDayRange(dateParam) {
   const start = dateParam ? new Date(dateParam) : new Date();
@@ -61,6 +70,7 @@ async function getLowStockCount() {
 // overlapping, potentially-diverging numbers for the same concept.
 router.get(
   "/overview",
+  requireReportsView,
   asyncHandler(async (req, res) => {
     const { start, end } = req.query.month ? parseMonthRange(req.query.month) : parseDayRange(req.query.date);
 
@@ -245,6 +255,7 @@ router.get(
 // claims to guarantee.
 router.get(
   "/margin",
+  requireReportsView,
   requirePermission("catalog:cost:view"),
   asyncHandler(async (req, res) => {
     const { start, end } = req.query.month ? parseMonthRange(req.query.month) : parseDayRange(req.query.date);
@@ -332,6 +343,7 @@ router.get(
 // sales are, so this intentionally ignores the date/month range).
 router.get(
   "/products",
+  requireReportsView,
   asyncHandler(async (req, res) => {
     const { start, end } = req.query.month ? parseMonthRange(req.query.month) : parseDayRange(req.query.date);
 
@@ -347,7 +359,7 @@ router.get(
         by: ["productId"],
         _count: { _all: true },
         _avg: { rating: true },
-        orderBy: { _count: { _all: "desc" } },
+        orderBy: { _count: { productId: "desc" } },
         take: 10,
       }),
     ]);
@@ -406,6 +418,7 @@ router.get(
 // reported separately rather than silently excluded from the total.
 router.get(
   "/orders-breakdown",
+  requireReportsView,
   asyncHandler(async (req, res) => {
     const { start, end } = req.query.month ? parseMonthRange(req.query.month) : parseDayRange(req.query.date);
 
@@ -443,6 +456,7 @@ router.get(
 // hasn't reached RECEIVED/CANCELED/DRAFT matter here.
 router.get(
   "/po-alerts",
+  requireReportsView,
   asyncHandler(async (req, res) => {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -501,6 +515,7 @@ router.get(
 // than shown as a padded zero row.
 router.get(
   "/performance",
+  requireReportsView,
   asyncHandler(async (req, res) => {
     const { start, end } = req.query.month ? parseMonthRange(req.query.month) : parseDayRange(req.query.date);
 

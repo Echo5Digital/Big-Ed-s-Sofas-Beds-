@@ -29,7 +29,9 @@ function formatExpectedDate(iso) {
 export default function NotificationBell() {
   const { hasPermission } = useAuth();
   const canApproveReopen = hasPermission("pos:register:approve-reopen");
-  const canReadReports = hasPermission("reports:read");
+  // /reports/po-alerts is gated on reports:view (Reports-page-only, admin/
+  // super admin), not the broader reports:read — see reports.routes.js.
+  const canReadReports = hasPermission("reports:view");
   const canReadMessages = hasPermission("messages:read");
 
   const [reopenSessions, setReopenSessions] = useState([]);

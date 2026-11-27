@@ -43,7 +43,7 @@ const NAV_ITEMS = [
   { label: "Payments", href: "/payments", icon: CreditCard, permission: "reports:read" },
   { label: "Deliveries", href: "/deliveries", icon: Truck, permission: "orders:read" },
   { label: "Registers", href: "/registers", icon: MonitorSmartphone, permission: "pos:register:approve-reopen" },
-  { label: "Reports", href: "/reports", icon: BarChart3, permission: "reports:read" },
+  { label: "Reports", href: "/reports", icon: BarChart3, permission: "reports:view" },
   { label: "Users", href: "/users", icon: UserCog, permission: "users:manage" },
   { label: "Settings", href: "/settings", icon: Settings, permission: null },
 ];
@@ -205,7 +205,7 @@ export default function AppShell({ children }) {
           </button>
           <span className="flex-1 font-display text-base font-bold text-brand-red lg:hidden">BIG ED OS</span>
           <div className="ml-auto flex items-center gap-2">
-            {(hasPermission("reports:read") ||
+            {(hasPermission("reports:view") ||
               hasPermission("pos:register:approve-reopen") ||
               hasPermission("messages:read")) && <NotificationBell />}
           </div>

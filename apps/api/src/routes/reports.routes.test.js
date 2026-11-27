@@ -256,11 +256,20 @@ describe("reports.routes — products/orders/PO/performance aggregates", () => {
       ],
     });
 
+    // Same orderBy shape as the real /reports/products route — orderBy._count
+    // must key off the grouped field itself (productId), not "_all"; Prisma
+    // rejects `orderBy: { _count: { _all: "desc" } }` even though `_count: {
+    // _all: true }` is valid in the select. This regression previously made
+    // every Reports tab 500 (the Alerts strip's /reports/products call failed
+    // on every page load), so this test exercises the literal route query
+    // rather than a simplified equivalent.
     const grouped = await prisma.review.groupBy({
       by: ["productId"],
       where: { productId: product.id },
       _count: { _all: true },
       _avg: { rating: true },
+      orderBy: { _count: { productId: "desc" } },
+      take: 10,
     });
 
     expect(grouped).toHaveLength(1);
