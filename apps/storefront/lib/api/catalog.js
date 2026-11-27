@@ -36,14 +36,14 @@ export async function getProducts({ category, q, page, pageSize, sort, deals, ne
 // per-interaction one.
 const MAX_PAGE_SIZE = 100;
 
-export async function getAllProducts({ category, sort, next } = {}) {
-  const first = await getProducts({ category, sort, page: 1, pageSize: MAX_PAGE_SIZE, next });
+export async function getAllProducts({ category, q, sort, next } = {}) {
+  const first = await getProducts({ category, q, sort, page: 1, pageSize: MAX_PAGE_SIZE, next });
   const { total, pageSize } = first.pagination;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
   const rest = await Promise.all(
-    remainingPages.map((page) => getProducts({ category, sort, page, pageSize: MAX_PAGE_SIZE, next }))
+    remainingPages.map((page) => getProducts({ category, q, sort, page, pageSize: MAX_PAGE_SIZE, next }))
   );
 
   const products = first.products.concat(...rest.map((result) => result.products));

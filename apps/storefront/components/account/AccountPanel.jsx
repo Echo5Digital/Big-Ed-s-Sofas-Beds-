@@ -99,8 +99,14 @@ export default function AccountPanel({ onSignedIn = () => {}, onViewChange = () 
   const cardRef = useCardTilt(glass);
   // loading | signin | register | verify | signedin
   const [view, setViewState] = useState("loading");
+  // Mirrors `view` synchronously (state itself only updates on the next
+  // render) so the initial-load effect below can tell, the instant its
+  // getCurrentCustomer() call resolves, whether the user already navigated
+  // away from "loading" — and if so, skip clobbering their choice.
+  const viewRef = useRef("loading");
   const setView = useCallback(
     (next) => {
+      viewRef.current = next;
       setViewState(next);
       onViewChange(next);
     },
@@ -121,14 +127,24 @@ export default function AccountPanel({ onSignedIn = () => {}, onViewChange = () 
     let cancelled = false;
     getCurrentCustomer()
       .then((current) => {
-        if (cancelled) return;
+        // getCurrentCustomer can take two round trips (a /me 401 falls
+        // through to /refresh — see lib/api/customerAuth.js), slow enough
+        // that an impatient visitor can tap "Create Account" (or even submit
+        // the sign-up form) while this is still in flight. Only this effect's
+        // own initial "loading" -> signin/signedin transition belongs here;
+        // once the user has navigated to a real view (viewRef no longer
+        // "loading"), this resolving late must never stomp back over their
+        // choice — that was bouncing a mid-signup visitor back to "Sign In"
+        // for no reason they caused.
+        if (cancelled || viewRef.current !== "loading") return;
         setCustomer(current);
         setView(current ? "signedin" : "signin");
       })
       .catch(() => {
         // Can't tell (API unreachable): show the sign-in form rather than a
         // blank card; submitting it will surface the real connection error.
-        if (!cancelled) setView("signin");
+        // Same late-resolution guard as above.
+        if (!cancelled && viewRef.current === "loading") setView("signin");
       });
     return () => {
       cancelled = true;

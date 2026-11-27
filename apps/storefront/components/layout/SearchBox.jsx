@@ -66,7 +66,28 @@ export default function SearchBox({ className = "" }) {
   const showResults = focused && trimmedQuery.length > 0;
   const activeOptionId = activeIndex >= 0 && results[activeIndex] ? `${listId}-option-${activeIndex}` : undefined;
 
+  function goToResultsPage() {
+    router.push(`/search?q=${encodeURIComponent(trimmedQuery)}`);
+    setFocused(false);
+  }
+
   function handleKeyDown(event) {
+    if (event.key === "Enter") {
+      // With a suggestion highlighted (arrowed to), Enter still goes straight
+      // to that one product's page — same as clicking it. Otherwise (the
+      // common case: typed a keyword and hit Enter without touching the
+      // arrow keys) it goes to the full search-results page instead of doing
+      // nothing, which was this box's previous behavior.
+      if (!trimmedQuery) return;
+      event.preventDefault();
+      if (showResults && activeIndex >= 0 && results[activeIndex]) {
+        router.push(`/shop/${results[activeIndex].slug}`);
+        setFocused(false);
+      } else {
+        goToResultsPage();
+      }
+      return;
+    }
     if (!showResults || results.length === 0) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -74,10 +95,6 @@ export default function SearchBox({ className = "" }) {
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setActiveIndex((prev) => (prev <= 0 ? results.length - 1 : prev - 1));
-    } else if (event.key === "Enter" && activeIndex >= 0) {
-      event.preventDefault();
-      const product = results[activeIndex];
-      if (product) router.push(`/shop/${product.slug}`);
     } else if (event.key === "Escape") {
       setFocused(false);
     }
@@ -105,7 +122,20 @@ export default function SearchBox({ className = "" }) {
           autoComplete="off"
           className="w-full min-w-0 bg-transparent text-sm text-brand-charcoal placeholder:text-brand-charcoal/40 focus:outline-none"
         />
-        <Search className="size-4 shrink-0 text-brand-charcoal/50" aria-hidden="true" />
+        <button
+          type="button"
+          // mousedown (not click/onClick) fires before the input's onBlur,
+          // so this still works even though the blur listener above would
+          // otherwise close showResults/clear focus first on a plain click.
+          onMouseDown={(event) => {
+            event.preventDefault();
+            if (trimmedQuery) goToResultsPage();
+          }}
+          aria-label="Search"
+          className="shrink-0 text-brand-charcoal/50 hover:text-brand-charcoal focus-visible:outline-2 focus-visible:outline-brand-red"
+        >
+          <Search className="size-4" aria-hidden="true" />
+        </button>
       </div>
 
       {showResults && (

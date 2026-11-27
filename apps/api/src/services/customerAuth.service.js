@@ -202,7 +202,10 @@ async function verifyRegistration({ pendingId, code }, { now = new Date() } = {}
     if (claimed.count === 0) throw notFoundError();
 
     const existing = await findCustomerByEmail(tx, registration.email);
-    if (existing?.passwordHash) {
+    // Same "really registered" guard as startRegistration above (both fields,
+    // not just passwordHash) — otherwise a row with passwordHash set but
+    // emailVerifiedAt still null would be misreported as an existing account.
+    if (existing?.passwordHash && existing.emailVerifiedAt) {
       throw new ConflictError("An account with this email already exists. Please sign in.", { reason: "account_exists" });
     }
 
